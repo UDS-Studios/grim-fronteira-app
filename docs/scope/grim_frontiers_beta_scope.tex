@@ -1,0 +1,236 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amssymb}
+
+\usepackage[margin=2.5cm]{geometry}
+
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=black
+}
+
+\title{\textbf{Grim Frontiers Web Application}\\
+\large Beta Scope Proposal}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{Objective}
+
+Deliver a functional web-based application that:
+
+\begin{itemize}[leftmargin=2em]
+    \item Allows multiplayer sessions (Marshal + Players)
+    \item Handles the core card mechanics (Ashcan core rules, pp. 13--15)
+    \item Assists scene resolution
+    \item Supports solo play for rules learning
+    \item Is stable, usable, and technically solid
+\end{itemize}
+
+This beta is a \textbf{rules engine and table assistant}, not a full narrative platform.
+
+\section{Multiplayer (Beta Level)}
+
+\subsection*{Included}
+
+\begin{itemize}[leftmargin=2em]
+    \item Create a game room (unique code)
+    \item Join via room code (no account system required)
+    \item Role assignment:
+        \begin{itemize}
+            \item 1 Marshal
+            \item N Players
+        \end{itemize}
+    \item Each participant sees:
+        \begin{itemize}
+            \item Their own deck
+            \item Their own hand
+        \end{itemize}
+    \item Shared table view:
+        \begin{itemize}
+            \item Scene state
+            \item Draw pile size
+            \item Discard pile
+            \item Event log
+        \end{itemize}
+\end{itemize}
+
+\subsection*{Not Included in Beta}
+
+\begin{itemize}[leftmargin=2em]
+    \item Persistent user accounts
+    \item Campaign storage across sessions
+    \item Voice or video integration
+    \item In-app chat (external communication assumed)
+    \item Native mobile application
+\end{itemize}
+
+\section{Core Mechanics Implemented}
+
+\subsection{Deck Handling}
+
+\begin{itemize}[leftmargin=2em]
+    \item Standard 52-card deck (+ Jokers as per rules)
+    \item Shuffle
+    \item Draw
+    \item Discard
+    \item Reshuffle when required
+    \item Visible discard pile
+    \item Automatic Joker handling (if required by rules)
+\end{itemize}
+
+\subsection{Resolution System}
+
+\begin{itemize}[leftmargin=2em]
+    \item Action declaration
+    \item Card draw resolution
+    \item Total calculation (Blackjack-style logic where applicable)
+    \item Success / Partial / Failure determination
+    \item Damage assignment
+    \item Condition tracking
+\end{itemize}
+
+\subsection{Dirty Business (Non-Combat Resolution)}
+
+\begin{itemize}[leftmargin=2em]
+    \item Structured resolution flow
+    \item Marshal-triggered draws where required
+    \item Automatic outcome logging
+\end{itemize}
+
+\section{Scene Assistant}
+
+The application supports structured scene flow:
+
+\begin{itemize}[leftmargin=2em]
+    \item Start Scene
+    \item Track active participants
+    \item Track damage and conditions
+    \item Resolve action
+    \item Log outcomes
+\end{itemize}
+
+All actions generate a timestamped event log.
+
+\textbf{Example Log Output:}
+
+{\ttfamily
+[Turn 3] Player A draws 9$\spadesuit$ \newline
+[Turn 3] Total = 18 → Success \newline
+[Turn 3] Marshal draws Q$\diamondsuit$
+}
+
+Session logs can be exported (JSON or text).
+
+\section{Solo Mode}
+
+Purpose: Learn mechanics and test rules.
+
+\begin{itemize}[leftmargin=2em]
+    \item Single player vs automated Marshal deck logic
+    \item App performs Marshal draws automatically
+    \item No narrative generation
+    \item Simple scene loop
+    \item Reset functionality
+\end{itemize}
+
+This is rules automation, not AI storytelling.
+
+\section{User Interface Philosophy}
+
+\begin{itemize}[leftmargin=2em]
+    \item Clean
+    \item Functional
+    \item Minimal
+    \item No animations required
+    \item Cards displayed as:
+        \begin{itemize}
+            \item Simple symbols (e.g., Q$\spadesuit$), or
+            \item Static card images (optional)
+        \end{itemize}
+\end{itemize}
+
+Primary focus: clarity and stability.
+
+\section{Technical Approach (Beta)}
+
+\begin{itemize}[leftmargin=2em]
+    \item Backend: Python (FastAPI)
+    \item Real-time synchronization: WebSockets
+    \item Storage: SQLite (beta-level persistence)
+    \item Frontend: Minimal React interface
+    \item Hosting: VPS or staging server
+\end{itemize}
+
+\section{Explicit Beta Limitations}
+
+This beta:
+
+\begin{itemize}[leftmargin=2em]
+    \item Is not final product quality
+    \item Is not optimized for mobile
+    \item Is not load-tested
+    \item Is not a publishing platform
+    \item Is not feature-complete
+\end{itemize}
+
+It is a proof-of-concept to validate:
+
+\begin{itemize}[leftmargin=2em]
+    \item Gameplay flow
+    \item Multiplayer feasibility
+    \item Solo learning mode
+    \item Technical viability
+\end{itemize}
+
+\section{Proposed Timeline}
+
+\textbf{Week 1:} Game engine module (backend logic only)
+
+\textbf{Week 2:} Room system + WebSocket synchronization
+
+\textbf{Week 3:} Core resolution + damage + logging
+
+\textbf{Week 4:} Solo mode automation
+
+\textbf{Week 5:} Stabilization and minimal polish
+
+\bigskip
+
+\textbf{Target:} End of May – Closed Beta Demonstration
+
+\section*{Scope Discipline}
+
+Any of the following would move this from ``beta'' to ``startup'' and are intentionally excluded:
+
+\begin{itemize}[leftmargin=2em]
+    \item Campaign persistence
+    \item Character sheet system
+    \item XP progression
+    \item Map system
+    \item AI narration
+    \item Card animations
+    \item Marketplace or store integration
+\end{itemize}
+
+\bigskip
+
+\noindent
+\textit{The purpose of this beta is to validate mechanics, not to finalize the platform.}
+
+\end{document}
