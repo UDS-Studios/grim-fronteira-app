@@ -21,6 +21,29 @@ def play(state: DeckState) -> DeckState:
         removed=state.removed,
     )
 
+def pick_to_in_play(state: DeckState, card_id: str) -> DeckState:
+    """
+    Move a specific card from draw_pile to in_play (append),
+    preserving the relative order of all other cards.
+    """
+    if card_id not in state.draw_pile:
+        raise ValueError(f"Cannot pick: card {card_id} not found in draw_pile.")
+
+    new_draw = state.draw_pile.copy()
+    new_draw.remove(card_id)
+
+    return DeckState(
+        version=state.version,
+        schema=state.schema,
+        created_utc=state.created_utc,
+        notes=state.notes,
+        settings=state.settings,
+        draw_pile=new_draw,
+        in_play=state.in_play + [card_id],
+        discard_pile=state.discard_pile,
+        removed=state.removed,
+    )
+
 def discard(state: DeckState, card_id: str) -> DeckState:
     if card_id not in state.in_play:
         raise ValueError(f"Card {card_id} is not in play.")
