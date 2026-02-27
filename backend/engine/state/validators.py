@@ -38,3 +38,69 @@ def validate_unique_cards(state: GameState) -> None:
         sample = ", ".join(dupes[:10])
         more = "" if len(dupes) <= 10 else f" (+{len(dupes)-10} more)"
         raise ValueError(f"Duplicate cards detected: {sample}{more}")
+    
+def validate_card_conservation(
+    state: GameState,
+    *,
+    expected_total: int | None = None,
+    enforce_unique: bool = True,
+) -> None:
+    """
+    Ensures total number of cards across deck piles + all zones
+    equals expected_total.
+
+    This catches lost-card or extra-card bugs.
+
+    If expected_total is None:
+        - try state.deck.settings["deck_size"]
+        - fallback to 54
+    """
+    if state.deck is None:
+        raise ValueError("GameState has no deck.")
+
+    if enforce_unique:
+        validate_unique_cards(state)
+
+    cards = _all_cards(state)
+    total = len(cards)
+
+    if expected_total is None:
+        settings = state.deck.settings or {}
+        if isinstance(settings, dict) and "deck_size" in settings:
+            try:
+                expected_total = int(settings["deck_size"])
+            except Exception:
+                expected_total = 54
+        else:
+            expected_total = 54
+
+    if total == expected_total:
+        return
+
+    # helpful breakdown
+    breakdown = {
+        "draw_pile": len(state.deck.draw_pile),
+        "in_play": len(state.deck.in_play),
+        "discard_pile": len(state.deck.discard_pile),
+        "removed": len(state.deck.removed),
+        **{f"zone:{k}": len(v) for k, v in state.zones.items()},
+    }
+
+    raise ValueError(
+        f"Card conservation failed: expected {expected_total}, found {total}. "
+        f"Breakdown: {breakdown}"
+    )
+
+def validate_game_state(
+    state: GameState,
+    *,
+    expected_total: int | None = None,
+) -> None:
+    """
+    Convenience wrapper: enforce both invariants.
+
+    - Uniqueness: no card appears in multiple places.
+    - Conservation: total cards matches expected_total (or inferred).
+    """
+    validate_unique_cards(state)
+    validate_card_conservation(state, expected_total=expected_total, enforce_unique=False)
