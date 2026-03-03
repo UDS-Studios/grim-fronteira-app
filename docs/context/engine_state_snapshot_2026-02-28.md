@@ -87,12 +87,14 @@ Deck templates live under `data/templates/`:
 - `standard_52.json` (no jokers; used by blackjack minigame)
 
 Card ID format:
+
 - Number + suit: `2C ... 10S`
 - Face + suit: `JC, QH, KD, ...`
 - Ace: `AS`
 - Jokers: `RJ`, `BJ`
 
 Deck convention:
+
 - `draw_pile` is ordered bottom → top
 - **top card is the LAST element** (`pop()` semantics)
 
@@ -101,6 +103,7 @@ Deck convention:
 ## 3) Engine modules implemented
 
 ### A) `backend/engine/grimdeck/*`
+
 **Purpose:** deck representation + pure operations (immutable returns).
 
 - `models.py`
@@ -113,6 +116,7 @@ Deck convention:
   - plus targeted helpers used by setup logic for non-top moves
 
 ### B) `backend/engine/state/*`
+
 **Purpose:** game-wide state wrapper around a deck + named zones.
 
 - `game_state.py`
@@ -125,6 +129,7 @@ Deck convention:
   - `validate_game_state(state)` wrapper (runs the invariant checks)
 
 ### C) `backend/engine/minigames/blackjack.py`
+
 **Purpose:** small “blackjack correctness harness” using the same core primitives.
 
 - `deal(game)`, `hit(game, who)`, `stand(game)`
@@ -134,9 +139,11 @@ Deck convention:
   - `claim_from_in_play()` → card moved into zone (e.g. `hands.player`)
 
 ### D) `backend/engine/rules/grim_fronteira/setup.py`
+
 **Purpose:** Grim Fronteira setup rules (multi-player) using shared deck and zones.
 
 Key zones:
+
 - `setup.face_pile` (extracted from draw_pile)
 - `players.<pid>.character`
 - `players.<pid>.scum`
@@ -144,6 +151,7 @@ Key zones:
 - `players.<pid>.rewards`
 
 Key functions:
+
 - `extract_face_pile(game)` / `return_face_pile_to_deck(game, ...)`
 - `shuffle_zone(game, zone_name, seed)`
 - `choose_from_face_pile(...)` / `draw_from_face_pile(...)`
@@ -152,6 +160,7 @@ Key functions:
 - `setup_players(game, player_ids, ...)` orchestrator (shared deck, optional deterministic shuffle, optional explicit choices)
 
 ### E) `backend/engine/rules/grim_fronteira/scene_difficulty.py`
+
 **Purpose:** Marshal difficulty helper with a modifiable rules strategy.
 
 - Current assumed rule: **base 10 + 1 drawn card**
@@ -171,6 +180,7 @@ Key functions:
 Location: `backend/app/*`
 
 ### Endpoints
+
 - `POST /api/gf/new`
   - Creates a new game from a deck template
   - Returns `{game_id, revision, state, events, result}`
@@ -184,10 +194,12 @@ Location: `backend/app/*`
   - Fetch latest state from in-memory store
 
 ### View redaction (“public vs debug”)
+
 Serializer: `backend/app/serializers.py`
 
 - `view="debug"` → full state
 - `view="public"` → redact `deck.draw_pile` to:
+
   ```json
   {"count": N}
   ```
@@ -197,18 +209,24 @@ Serializer: `backend/app/serializers.py`
 ## 5) Current invariants and conventions (important for UI)
 
 ### State authority
+
 The backend state is authoritative. Clients are expected to:
+
 - send actions
 - receive full updated state (or redacted view)
 - render from returned state
 
 ### Revisioning
+
 `meta.revision` increments on:
+
 - `new_game`
 - every `/api/gf/action` call (including `gf.get_state`)
 
 ### Zones are “bags of cards”
+
 Zones are lists of `CardID`. Their meaning is by naming convention, e.g.:
+
 - `players.p1.scum` is “the Scum pile”, but its content is normal cards.
 
 ---
@@ -219,6 +237,7 @@ Zones are lists of `CardID`. Their meaning is by naming convention, e.g.:
 - `backend/tests/test_gf_setup.py`
 
 Run:
+
 ```bash
 PYTHONPATH=. pytest backend/tests/
 ```
@@ -238,12 +257,14 @@ PYTHONPATH=. pytest backend/tests/
 ## 8) Next work packages (engine vs app-arch)
 
 ### ENGINE thread (this one)
+
 - Scene resolution helpers (blackjack resolution against difficulty)
 - Scum/Vengeance spend + validation
 - Rewards/wounds/elimination bookkeeping
 - Dark scene rules
 
 ### APP-ARCH thread (frontend scaffold)
+
 - Minimal UI rendering of zones/meta + action buttons
 - Debug vs public view selection
 - State polling or websocket plan (later)
