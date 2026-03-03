@@ -100,8 +100,12 @@ Deck convention:
 
 ### grimdeck/
 
-Low-level card mechanics: - `play()` - `discard()` - `shuffle(seed)` -
-`reset(seed)`
+Low-level card mechanics:
+
+- `play()`
+- `discard()`
+- `shuffle(seed)`
+- `reset(seed)`
 
 No knowledge of players, zones, or game rules.
 
@@ -109,8 +113,11 @@ No knowledge of players, zones, or game rules.
 
 ### state/
 
-Game session abstraction: - `GameState` - dynamic zones
-(`dict[str, list[CardID]]`) - global validators (no duplicate cards)
+Game session abstraction:
+
+- `GameState`
+- Dynamic zones (`dict[str, list[CardID]]`)
+- Global validators (no duplicate cards)
 
 The deck is embedded inside `GameState`.
 
@@ -118,8 +125,11 @@ The deck is embedded inside `GameState`.
 
 ### minigames/
 
-Blackjack: - deterministic test harness - phase-controlled state
-machine - strict rule enforcement
+Blackjack:
+
+- Deterministic test harness
+- Phase-controlled state machine
+- Strict rule enforcement
 
 Used to validate engine integrity before implementing Grim Fronteira
 rules.
