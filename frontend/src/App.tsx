@@ -8,9 +8,24 @@ export default function App() {
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
   async function run(p: Promise<ActionResponse>) {
-    const r = await p;
-    setResp(r);
-    if (!r.error && r.game_id) setGameId(r.game_id);
+    try {
+      const r = await p;
+      setResp(r);
+      if (!r.error && r.game_id) setGameId(r.game_id);
+    } catch (e: any) {
+      setResp({
+        game_id: gameId,
+        revision: 0,
+        state: {},
+        events: [],
+        result: {},
+        error: {
+          code: "CLIENT_FETCH_ERROR",
+          message: e?.message ?? String(e),
+          details: null,
+        },
+      });
+    }
   }
 
   return (
@@ -116,7 +131,7 @@ export default function App() {
       </div>
 
       <pre style={{ marginTop: 12, padding: 12, border: "1px solid #ddd", overflowX: "auto" }}>
-        {resp ? JSON.stringify(resp.state, null, 2) : "No state yet."}
+        {resp ? JSON.stringify(resp, null, 2) : "No state yet."}
       </pre>
     </div>
   );
