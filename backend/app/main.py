@@ -19,6 +19,7 @@ from backend.engine.state.validators import validate_game_state
 
 from backend.engine.rules.grim_fronteira.setup import setup_players
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
+from backend.engine.rules.grim_fronteira.meta_enrich import enrich_meta_for_ui
 
 app = FastAPI(title="Grim Fronteira API", version="0.1.0")
 
@@ -143,8 +144,9 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     validate_game_state(game)
 
     game_id = str(uuid4())
+    game = enrich_meta_for_ui(game)
     GAMES[game_id] = StoredGame(state=game)
-
+    
     return ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
@@ -160,6 +162,7 @@ def get_state(game_id: str, view: Literal["public", "debug"] = "debug") -> Actio
     g = _get_game(game_id)
     game = g.state
     validate_game_state(game)
+    game = enrich_meta_for_ui(game)
 
     return ActionResponse(
         game_id=game_id,
@@ -228,7 +231,7 @@ def action(req: ActionRequest) -> ActionResponse:
                 "base": diff.base,
                 "value": diff.value,
                 "drawn_cards": diff.drawn_cards,
-                "effects": [e.__dict__ for e in diff.effects],
+                "effects": [e.kind for e in diff.effects],
             },
         }
 
@@ -240,6 +243,7 @@ def action(req: ActionRequest) -> ActionResponse:
         game = _bump_revision(game)
 
     validate_game_state(game)
+    game = enrich_meta_for_ui(game)
     g.state = game
 
     return ActionResponse(
