@@ -27,7 +27,11 @@ def reward_card_points(card_id: CardID) -> int:
         return 10
     if r == "A":
         return 11
-    return int(r)
+    
+    try:
+        return int(r)
+    except ValueError:
+        raise ValueError(f"Invalid card rank '{r}' in card_id '{card_id}'")
 
 
 def infer_player_ids(game: GameState) -> List[str]:
