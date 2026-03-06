@@ -16,6 +16,7 @@ export type ActionResponse = {
 };
 
 export type NewGameRequest = {
+  creator_id: string;
   template_path: string;
   seed?: number | null;
   view: View;
