@@ -1,9 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { newGame, gfAction, getGame } from "./api/gf";
 import type { ActionResponse, View } from "./api/types";
 
 type MetaAny = Record<string, any>;
 type Zones = Record<string, string[]>;
+
+function getOrCreateClientId(): string {
+  const key = "gf_client_id";
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+
+  const id = `player-${Math.random().toString(36).slice(2, 8)}`;
+  localStorage.setItem(key, id);
+  return id;
+}
 
 function CardImg({
   cardId,
@@ -437,10 +447,10 @@ function LobbyView({
                   )
                 }
                 disabled={
-                !selectedPlayerId.trim() ||
-                !claimCardId.trim() ||
-                lobby.character_assignment_mode !== "choice"
-              }
+                  !selectedPlayerId.trim() ||
+                  !claimCardId.trim() ||
+                  lobby.character_assignment_mode !== "choice"
+                }
               >
                 Claim Character
               </button>
@@ -603,22 +613,222 @@ function LobbyView({
   );
 }
 
+function HomeView({
+  joinGameId,
+  setJoinGameId,
+  onNewGame,
+  onJoinGame,
+}: {
+  joinGameId: string;
+  setJoinGameId: (v: string) => void;
+  onNewGame: () => void;
+  onJoinGame: () => void;
+}) {
+  return (
+    <div
+      style={{
+        minHeight: "70vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          background: "#faf8f2",
+          border: "1px solid #333",
+          borderRadius: 16,
+          padding: 24,
+          minWidth: 760,
+          display: "grid",
+          gap: 22,
+        }}
+      >
+      <div style={{ textAlign: "center" }}>
+        <h1
+          style={{
+            margin: 0,
+            fontFamily: "LavaArabic, serif",
+            fontSize: "4.4em",
+            letterSpacing: "0.05em",
+            lineHeight: 1,
+          }}
+        >
+          Grim Fronteira
+        </h1>
+
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: "1.2em",
+            letterSpacing: "0.12em",
+            opacity: 0.85,
+            fontStyle: "italic",
+          }}
+        >
+          The Frontier is Waiting...
+        </div>
+      </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 28,
+            alignItems: "start",
+          }}
+        >
+          <button
+            onClick={onNewGame}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              justifySelf: "center",
+            }}
+            title="Create a new game"
+          >
+            <img
+              src="/ui/new-game.png"
+              alt="New Game"
+              style={{
+                width: 260,
+                height: "auto",
+                display: "block",
+              }}
+            />
+          </button>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 10,
+              justifyItems: "center",
+            }}
+          >
+            <input
+              value={joinGameId}
+              onChange={(e) => setJoinGameId(e.target.value)}
+              placeholder="game_id"
+              style={{
+                width: 260,
+                textAlign: "center",
+                padding: "8px 10px",
+              }}
+            />
+
+            <button
+              onClick={onJoinGame}
+              disabled={!joinGameId.trim()}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: joinGameId.trim() ? "pointer" : "default",
+                opacity: joinGameId.trim() ? 1 : 0.45,
+              }}
+              title={joinGameId.trim() ? "Join existing game" : "Enter a game id first"}
+            >
+              <img
+                src="/ui/join-game.png"
+                alt="Join Game"
+                style={{
+                  width: 260,
+                  height: "auto",
+                  display: "block",
+                }}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorView({
+  error,
+  onBackHome,
+}: {
+  error: ActionResponse;
+  onBackHome: () => void;
+}) {
+  return (
+    <div
+      style={{
+        minHeight: "70vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff4f4",
+          border: "1px solid #c00",
+          borderRadius: 16,
+          padding: 24,
+          minWidth: 420,
+          display: "grid",
+          gap: 16,
+          justifyItems: "center",
+        }}
+      >
+        <img
+          src="/ui/error-404.png"
+          alt="Error 404"
+          style={{
+            width: 300,
+            height: "auto",
+            display: "block",
+          }}
+        />
+
+        <div>
+          <b>{error.error?.code ?? "UNKNOWN_ERROR"}</b>
+        </div>
+
+        <div style={{ textAlign: "center" }}>
+          {error.error?.message ?? "Unknown error."}
+        </div>
+
+        <button onClick={onBackHome}>Back Home</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<View>("public");
   const [gameId, setGameId] = useState("");
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
-  const [creatorId, setCreatorId] = useState("host1");
-  const [actorId, setActorId] = useState("host1");
+  const [creatorId, setCreatorId] = useState("");
+  const [actorId, setActorId] = useState("");
   const [joinPlayerId, setJoinPlayerId] = useState("");
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [claimCardId, setClaimCardId] = useState("");
+  const [joinGameId, setJoinGameId] = useState("");
+  const [screen, setScreen] = useState<"home" | "game" | "error">("home");
+
+  useEffect(() => {
+    const id = getOrCreateClientId();
+    setCreatorId(id);
+    setActorId(id);
+    setSelectedPlayerId(id);
+  }, []);
 
   async function run(p: Promise<ActionResponse>) {
     try {
       const r = await p;
       setResp(r);
-      if (!r.error && r.game_id) setGameId(r.game_id);
+      if (!r.error && r.game_id) {
+        setGameId(r.game_id);
+        setScreen("game");
+      } else if (r.error) {
+        setScreen("error");
+      }
     } catch (e: any) {
       setResp({
         game_id: gameId,
@@ -632,6 +842,7 @@ export default function App() {
           details: null,
         },
       });
+      setScreen("error");
     }
   }
 
@@ -648,26 +859,11 @@ export default function App() {
         minHeight: "100vh",
       }}
     >
-      <h1 style={{ marginTop: 0 }}>Grim Fronteira — Saloon Lobby</h1>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <label>
-          View:&nbsp;
-          <select value={view} onChange={(e) => setView(e.target.value as View)}>
-            <option value="public">public</option>
-            <option value="debug">debug</option>
-          </select>
-        </label>
-
-        <input
-          value={creatorId}
-          onChange={(e) => setCreatorId(e.target.value)}
-          placeholder="creator_id"
-          style={{ width: 160 }}
-        />
-
-        <button
-          onClick={() =>
+      {screen === "home" && (
+        <HomeView
+          joinGameId={joinGameId}
+          setJoinGameId={setJoinGameId}
+          onNewGame={() =>
             run(
               newGame({
                 creator_id: creatorId,
@@ -677,78 +873,99 @@ export default function App() {
               })
             )
           }
-        >
-          Create Game
-        </button>
-
-        <button disabled={!gameId} onClick={() => run(getGame(gameId, view))}>
-          Refresh
-        </button>
-
-        <input
-          style={{ width: 360 }}
-          placeholder="game_id"
-          value={gameId}
-          onChange={(e) => setGameId(e.target.value)}
+          onJoinGame={() => run(getGame(joinGameId, view))}
         />
-      </div>
+      )}
 
-      {resp?.error && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 12,
-            border: "1px solid #c00",
-            borderRadius: 10,
-            background: "#fff4f4",
+      {screen === "error" && resp && (
+        <ErrorView
+          error={resp}
+          onBackHome={() => {
+            setResp(null);
+            setGameId("");
+            setJoinGameId("");
+            setScreen("home");
           }}
-        >
-          <b>Error:</b> {resp.error.code} — {resp.error.message}
-        </div>
-      )}
-
-      <div style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <div><b>revision:</b> {resp?.revision ?? "-"}</div>
-        <div><b>game_id:</b> {resp?.game_id ?? "-"}</div>
-        <div><b>phase:</b> {phase}</div>
-      </div>
-
-      {!resp && (
-        <div style={{ marginTop: 20, opacity: 0.8 }}>
-          Create a game to enter the saloon.
-        </div>
-      )}
-
-      {resp && phase === "lobby" && (
-        <LobbyView
-          resp={resp}
-          view={view}
-          actorId={actorId}
-          setActorId={setActorId}
-          joinPlayerId={joinPlayerId}
-          setJoinPlayerId={setJoinPlayerId}
-          selectedPlayerId={selectedPlayerId}
-          setSelectedPlayerId={setSelectedPlayerId}
-          claimCardId={claimCardId}
-          setClaimCardId={setClaimCardId}
-          run={run}
-          setResp={setResp}
         />
       )}
 
-      {resp && phase === "started" && <StartedView resp={resp} view={view} />}
+      {screen === "game" && (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <label>
+              View:&nbsp;
+              <select value={view} onChange={(e) => setView(e.target.value as View)}>
+                <option value="public">public</option>
+                <option value="debug">debug</option>
+              </select>
+            </label>
 
-      <pre
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: "1px solid #ddd",
-          overflowX: "auto",
-          background: "#fff",
-        }}
-      >
-        {resp ? JSON.stringify(resp, null, 2) : "No state yet."}
-      </pre>
+            <button onClick={() => setScreen("home")}>Home</button>
+
+            <button disabled={!gameId} onClick={() => run(getGame(gameId, view))}>
+              Refresh
+            </button>
+
+            <input
+              style={{ width: 360 }}
+              placeholder="game_id"
+              value={gameId}
+              onChange={(e) => setGameId(e.target.value)}
+            />
+          </div>
+
+          {resp?.error && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                border: "1px solid #c00",
+                borderRadius: 10,
+                background: "#fff4f4",
+              }}
+            >
+              <b>Error:</b> {resp.error.code} — {resp.error.message}
+            </div>
+          )}
+
+          <div style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div><b>revision:</b> {resp?.revision ?? "-"}</div>
+            <div><b>game_id:</b> {resp?.game_id ?? "-"}</div>
+            <div><b>phase:</b> {phase}</div>
+          </div>
+
+          {resp && phase === "lobby" && (
+            <LobbyView
+              resp={resp}
+              view={view}
+              actorId={actorId}
+              setActorId={setActorId}
+              joinPlayerId={joinPlayerId}
+              setJoinPlayerId={setJoinPlayerId}
+              selectedPlayerId={selectedPlayerId}
+              setSelectedPlayerId={setSelectedPlayerId}
+              claimCardId={claimCardId}
+              setClaimCardId={setClaimCardId}
+              run={run}
+              setResp={setResp}
+            />
+          )}
+
+          {resp && phase === "started" && <StartedView resp={resp} view={view} />}
+
+          <pre
+            style={{
+              marginTop: 14,
+              padding: 12,
+              border: "1px solid #ddd",
+              overflowX: "auto",
+              background: "#fff",
+            }}
+          >
+            {resp ? JSON.stringify(resp, null, 2) : "No state yet."}
+          </pre>
+        </>
+      )}
     </div>
   );
 }
