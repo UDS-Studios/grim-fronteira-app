@@ -231,8 +231,7 @@ function StartedView({
 function LobbyView({
   resp,
   view,
-  actorId,
-  setActorId,
+  currentActorId,
   joinPlayerId,
   setJoinPlayerId,
   selectedPlayerId,
@@ -244,8 +243,7 @@ function LobbyView({
 }: {
   resp: ActionResponse;
   view: View;
-  actorId: string;
-  setActorId: (v: string) => void;
+  currentActorId: string;
   joinPlayerId: string;
   setJoinPlayerId: (v: string) => void;
   selectedPlayerId: string;
@@ -265,7 +263,7 @@ function LobbyView({
   const availableFigures: string[] = zones["lobby.figure_pool.available"] ?? [];
   const claimedFigures: Record<string, string> = lobby.claimed_figures ?? {};
 
-  const effectiveActorId = actorId || marshalId || "host1";
+  const effectiveActorId = currentActorId || marshalId || "host1";
 
   return (
     <>
@@ -282,16 +280,6 @@ function LobbyView({
 
         <Section title="Marshal Controls">
           <div style={{ display: "grid", gap: 10 }}>
-            <label>
-              Actor ID:&nbsp;
-              <input
-                value={actorId}
-                onChange={(e) => setActorId(e.target.value)}
-                placeholder={marshalId || "host1"}
-                style={{ width: 220 }}
-              />
-            </label>
-
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 onClick={() =>
@@ -804,8 +792,7 @@ export default function App() {
   const [gameId, setGameId] = useState("");
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
-  const [creatorId, setCreatorId] = useState("");
-  const [actorId, setActorId] = useState("");
+  const [currentActorId, setCurrentActorId] = useState("");
   const [joinPlayerId, setJoinPlayerId] = useState("");
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [claimCardId, setClaimCardId] = useState("");
@@ -814,8 +801,7 @@ export default function App() {
 
   useEffect(() => {
     const id = getOrCreateClientId();
-    setCreatorId(id);
-    setActorId(id);
+    setCurrentActorId(id);
     setSelectedPlayerId(id);
   }, []);
 
@@ -866,7 +852,7 @@ export default function App() {
           onNewGame={() =>
             run(
               newGame({
-                creator_id: creatorId,
+                creator_id: currentActorId,
                 template_path: "data/templates/standard_54.json",
                 seed: 42,
                 view,
@@ -938,8 +924,7 @@ export default function App() {
             <LobbyView
               resp={resp}
               view={view}
-              actorId={actorId}
-              setActorId={setActorId}
+              currentActorId={currentActorId}
               joinPlayerId={joinPlayerId}
               setJoinPlayerId={setJoinPlayerId}
               selectedPlayerId={selectedPlayerId}
