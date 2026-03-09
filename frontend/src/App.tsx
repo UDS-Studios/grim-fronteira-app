@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { getGame, newGame } from "./api/gf";
+import { newGame, getGame, gfAction } from "./api/gf";
 import type { ActionResponse, View } from "./api/types";
-import { getFreshPlayerId, getOrCreateClientId } from "./utils/identity";
+import { getOrCreateClientId } from "./utils/identity";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
@@ -25,6 +25,35 @@ export default function App() {
     setCurrentActorId(id);
     setSelectedPlayerId(id);
   }, []);
+
+  useEffect(() => {
+    if (screen !== "game" || !gameId) return;
+
+    let cancelled = false;
+
+    const sync = async () => {
+      try {
+        const r = await getGame(gameId, view);
+        if (cancelled) return;
+
+        if (!r.error) {
+          setResp(r);
+        }
+      } catch {
+        // ignore transient polling failures for now
+      }
+    };
+
+    // initial sync immediately
+    sync();
+
+    const id = window.setInterval(sync, 1500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [screen, gameId, view]);
 
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
@@ -91,9 +120,16 @@ export default function App() {
             const marshalId = loadedMeta.marshal_id ?? "";
 
             if (currentActorId !== marshalId) {
-              const freshPlayerId = getFreshPlayerId();
-              setCurrentActorId(freshPlayerId);
-              setSelectedPlayerId(freshPlayerId);
+              setSelectedPlayerId(currentActorId);
+
+              await run(
+                gfAction({
+                  game_id: r.game_id,
+                  action: "gf.join_lobby",
+                  params: { player_id: currentActorId },
+                  view,
+                })
+              );
             } else {
               setSelectedPlayerId(currentActorId);
             }
