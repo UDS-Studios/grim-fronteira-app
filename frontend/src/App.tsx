@@ -841,18 +841,12 @@ function PlayerLobbyView({
   resp,
   view,
   currentActorId,
-  selectedPlayerId,
-  setSelectedPlayerId,
   run,
-  setResp,
 }: {
   resp: ActionResponse;
   view: View;
   currentActorId: string;
-  selectedPlayerId: string;
-  setSelectedPlayerId: (v: string) => void;
   run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
-  setResp: React.Dispatch<React.SetStateAction<ActionResponse | null>>;
 }) {
   const state = (resp.state as any) ?? {};
   const meta: MetaAny = state.meta ?? {};
@@ -1063,10 +1057,7 @@ function LobbyView(props: {
       resp={props.resp}
       view={props.view}
       currentActorId={props.currentActorId}
-      selectedPlayerId={props.selectedPlayerId}
-      setSelectedPlayerId={props.setSelectedPlayerId}
       run={props.run}
-      setResp={props.setResp}
     />
   );
 }
