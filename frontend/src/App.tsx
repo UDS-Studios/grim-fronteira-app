@@ -15,6 +15,10 @@ function getOrCreateClientId(): string {
   return id;
 }
 
+function getFreshPlayerId(): string {
+  return `player-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function CardImg({
   cardId,
   faceDown = false,
@@ -26,6 +30,8 @@ function CardImg({
   width?: number;
   title?: string;
 }) {
+  const [hover, setHover] = useState(false);
+
   const src = faceDown
     ? "/assets/cards/back/back.jpg"
     : `/assets/cards/front/${cardId}.jpg`;
@@ -35,13 +41,21 @@ function CardImg({
       src={src}
       alt={faceDown ? "Card back" : cardId}
       title={title ?? (faceDown ? "Face-down" : cardId)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         width,
         height: "auto",
         borderRadius: 10,
-        boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
         border: "1px solid rgba(0,0,0,0.2)",
         background: "#fff",
+        boxShadow: hover
+          ? "0 8px 22px rgba(0,0,0,0.35)"
+          : "0 2px 10px rgba(0,0,0,0.25)",
+        transform: hover ? "translateY(-6px) scale(1.12)" : "translateY(0) scale(1)",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease",
+        position: "relative",
+        zIndex: hover ? 10 : 1,
       }}
       onError={(e) => {
         (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -272,7 +286,7 @@ function StartedView({
   );
 }
 
-function LobbyView({
+function MarshalLobbyView({
   resp,
   view,
   currentActorId,
@@ -295,7 +309,7 @@ function LobbyView({
   setSelectedPlayerId: (v: string) => void;
   claimCardId: string;
   setClaimCardId: (v: string) => void;
-  run: (p: Promise<ActionResponse>) => Promise<void>;
+  run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
   setResp: React.Dispatch<React.SetStateAction<ActionResponse | null>>;
   onBackHome: () => void;
 }) {
@@ -603,6 +617,27 @@ function LobbyView({
         >
           {availableFigures.length === 0 ? (
             <div style={{ opacity: 0.7 }}>— no figures available —</div>
+          ) : isMarshal ? (
+            assignmentMode === "random" ? (
+              availableFigures.map((_, idx) => (
+                <CardImg
+                  key={`marshal-hidden-${idx}`}
+                  cardId="BACK"
+                  faceDown
+                  width={86}
+                  title="Hidden figure"
+                />
+              ))
+            ) : (
+              availableFigures.map((c) => (
+                <CardImg
+                  key={c}
+                  cardId={c}
+                  width={86}
+                  title={Object.values(claimedFigures).includes(c) ? `${c} already claimed` : c}
+                />
+              ))
+            )
           ) : assignmentMode === "random" ? (
             availableFigures.map((_, idx) => (
               <button
@@ -705,7 +740,7 @@ function LobbyView({
                         : `Set player_id before claiming ${c}`
                   }
                 >
-                  <CardImg cardId={c} width={86} />
+                  <CardImg cardId={c} width={86} title={c} />
                 </button>
               );
             })
@@ -802,6 +837,240 @@ function LobbyView({
   );
 }
 
+function PlayerLobbyView({
+  resp,
+  view,
+  currentActorId,
+  selectedPlayerId,
+  setSelectedPlayerId,
+  run,
+  setResp,
+}: {
+  resp: ActionResponse;
+  view: View;
+  currentActorId: string;
+  selectedPlayerId: string;
+  setSelectedPlayerId: (v: string) => void;
+  run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
+  setResp: React.Dispatch<React.SetStateAction<ActionResponse | null>>;
+}) {
+  const state = (resp.state as any) ?? {};
+  const meta: MetaAny = state.meta ?? {};
+  const zones: Zones = state.zones ?? {};
+
+  const marshalId = meta.marshal_id ?? "";
+  const lobby = meta.lobby ?? {};
+  const playersOrder: string[] = meta.players_order ?? [];
+  const availableFigures: string[] = zones["lobby.figure_pool.available"] ?? [];
+  const claimedFigures: Record<string, string> = lobby.claimed_figures ?? {};
+
+  const assignmentMode = lobby.character_assignment_mode ?? "choice";
+  const currentPlayerId = currentActorId;
+  const myClaimedFigure = claimedFigures[currentPlayerId] ?? null;
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        border: "1px solid #333",
+        borderRadius: 16,
+        padding: 16,
+        background: "#faf8f2",
+        display: "grid",
+        gap: 14,
+      }}
+    >
+      {/* Title only */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "56px 1fr 56px",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <div />
+        <h1
+          style={{
+            margin: 0,
+            textAlign: "center",
+            fontFamily: "LavaArabic, serif",
+            letterSpacing: "0.04em",
+          }}
+        >
+          Saloon Lobby
+        </h1>
+        <div />
+      </div>
+
+      {/* Available figures */}
+      <Section title="Available Figures">
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+            minHeight: 110,
+            alignItems: "center",
+          }}
+        >
+          {availableFigures.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>— no figures available —</div>
+          ) : assignmentMode === "random" ? (
+            availableFigures.map((_, idx) => (
+              <button
+                key={`hidden-${idx}`}
+                type="button"
+                disabled={!!myClaimedFigure}
+                onClick={() => {
+                  run(
+                    gfAction({
+                      game_id: resp.game_id,
+                      action: "gf.draw_character",
+                      params: { player_id: currentPlayerId, seed: 321 + idx },
+                      view,
+                    })
+                  );
+                }}
+                style={{
+                  border: "1px solid transparent",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: myClaimedFigure ? "default" : "pointer",
+                  borderRadius: 12,
+                  opacity: myClaimedFigure ? 0.5 : 1,
+                }}
+                title={
+                  myClaimedFigure
+                    ? "You already selected a figure"
+                    : `Draw random character for ${currentPlayerId}`
+                }
+              >
+                <CardImg cardId="BACK" faceDown width={86} title="Hidden figure" />
+              </button>
+            ))
+          ) : (
+            availableFigures.map((c) => (
+              <button
+                key={c}
+                type="button"
+                disabled={!!myClaimedFigure}
+                onClick={() => {
+                  run(
+                    gfAction({
+                      game_id: resp.game_id,
+                      action: "gf.claim_character",
+                      params: { player_id: currentPlayerId, card_id: c },
+                      view,
+                    })
+                  );
+                }}
+                style={{
+                  border: "1px solid transparent",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: myClaimedFigure ? "default" : "pointer",
+                  borderRadius: 12,
+                  opacity: myClaimedFigure ? 0.5 : 1,
+                }}
+                title={
+                  myClaimedFigure
+                    ? "You already selected a figure"
+                    : `Claim ${c}`
+                }
+              >
+                <CardImg cardId={c} width={86} title={c} />
+              </button>
+            ))
+          )}
+        </div>
+      </Section>
+
+      {/* Lower two-box layout */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "240px 1fr",
+          gap: 14,
+          alignItems: "stretch",
+        }}
+      >
+        <Section title="Your Figure">
+          <div
+            style={{
+              minHeight: 320,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {myClaimedFigure ? (
+              <CardImg cardId={myClaimedFigure} width={180} title={myClaimedFigure} />
+            ) : (
+              <div style={{ opacity: 0.65, textAlign: "center" }}>
+                Choose your figure
+              </div>
+            )}
+          </div>
+        </Section>
+
+        <Section title="Informations">
+          <div style={{ display: "grid", gap: 10 }}>
+            <div><b>You are:</b> {currentPlayerId}</div>
+            <div><b>Marshal:</b> {marshalId || "-"}</div>
+            <div><b>Players in saloon:</b> {playersOrder.length}</div>
+            <div><b>Character creation:</b> {assignmentMode}</div>
+            <div><b>Your selected figure:</b> {myClaimedFigure ?? "none yet"}</div>
+
+            <div style={{ marginTop: 12, opacity: 0.8 }}>
+              {myClaimedFigure
+                ? "Waiting for the Marshal to start the game."
+                : assignmentMode === "random"
+                  ? "Choose a facedown card to draw your figure."
+                  : "Choose one available figure from the row above."}
+            </div>
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+function LobbyView(props: {
+  resp: ActionResponse;
+  view: View;
+  currentActorId: string;
+  joinPlayerId: string;
+  setJoinPlayerId: (v: string) => void;
+  selectedPlayerId: string;
+  setSelectedPlayerId: (v: string) => void;
+  claimCardId: string;
+  setClaimCardId: (v: string) => void;
+  run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
+  setResp: React.Dispatch<React.SetStateAction<ActionResponse | null>>;
+  onBackHome: () => void;
+}) {
+  const meta = ((props.resp.state as any)?.meta ?? {}) as MetaAny;
+  const marshalId = meta.marshal_id ?? "";
+  const isMarshal = props.currentActorId === marshalId;
+
+  if (isMarshal) {
+    return <MarshalLobbyView {...props} />;
+  }
+
+  return (
+    <PlayerLobbyView
+      resp={props.resp}
+      view={props.view}
+      currentActorId={props.currentActorId}
+      selectedPlayerId={props.selectedPlayerId}
+      setSelectedPlayerId={props.setSelectedPlayerId}
+      run={props.run}
+      setResp={props.setResp}
+    />
+  );
+}
+
 function HomeView({
   joinGameId,
   setJoinGameId,
@@ -811,7 +1080,7 @@ function HomeView({
   joinGameId: string;
   setJoinGameId: (v: string) => void;
   onNewGame: () => void;
-  onJoinGame: () => void;
+  onJoinGame: () => Promise<void>;
 }) {
   return (
     <div
@@ -1006,7 +1275,7 @@ export default function App() {
     setSelectedPlayerId(id);
   }, []);
 
-  async function run(p: Promise<ActionResponse>) {
+  async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
       const r = await p;
       setResp(r);
@@ -1016,8 +1285,9 @@ export default function App() {
       } else if (r.error) {
         setScreen("error");
       }
+      return r;
     } catch (e: any) {
-      setResp({
+      const errResp: ActionResponse = {
         game_id: gameId,
         revision: 0,
         state: {},
@@ -1028,8 +1298,10 @@ export default function App() {
           message: e?.message ?? String(e),
           details: null,
         },
-      });
+      };
+      setResp(errResp);
       setScreen("error");
+      return errResp;
     }
   }
 
@@ -1060,7 +1332,21 @@ export default function App() {
               })
             )
           }
-          onJoinGame={() => run(getGame(joinGameId, view))}
+          onJoinGame={async () => {
+            const r = await run(getGame(joinGameId, view));
+            if (r.error) return;
+
+            const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
+            const marshalId = loadedMeta.marshal_id ?? "";
+
+            if (currentActorId !== marshalId) {
+              const freshPlayerId = getFreshPlayerId();
+              setCurrentActorId(freshPlayerId);
+              setSelectedPlayerId(freshPlayerId);
+            } else {
+              setSelectedPlayerId(currentActorId);
+            }
+          }}
         />
       )}
 
