@@ -28,6 +28,7 @@ export default function PlayerLobbyView({
   const claimedFigures: Record<string, string> = lobby.claimed_figures ?? {};
 
   const assignmentMode = lobby.character_assignment_mode ?? "choice";
+  const registrationOpen = !!lobby.registration_open;
   const currentPlayerId = currentActorId;
   const myClaimedFigure = claimedFigures[currentPlayerId] ?? null;
 
@@ -79,69 +80,22 @@ export default function PlayerLobbyView({
             <div style={{ opacity: 0.7 }}>— no figures available —</div>
           ) : assignmentMode === "random" ? (
             availableFigures.map((_, idx) => (
-              <button
-                key={`hidden-${idx}`}
-                type="button"
-                disabled={!!myClaimedFigure}
-                onClick={() => {
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.draw_character",
-                      params: { player_id: currentPlayerId, seed: 321 + idx },
-                      view,
-                    })
-                  );
-                }}
-                style={{
-                  border: "1px solid transparent",
-                  background: "transparent",
-                  padding: 0,
-                  cursor: myClaimedFigure ? "default" : "pointer",
-                  borderRadius: 12,
-                  opacity: myClaimedFigure ? 0.5 : 1,
-                }}
-                title={
-                  myClaimedFigure
-                    ? "You already selected a figure"
-                    : `Draw random character for ${currentPlayerId}`
-                }
-              >
-                <CardImg cardId="BACK" faceDown width={86} title="Hidden figure" />
-              </button>
+              <CardImg
+                key={`marshal-hidden-${idx}`}
+                cardId="BACK"
+                faceDown
+                width={86}
+                title="Hidden figure"
+              />
             ))
           ) : (
             availableFigures.map((c) => (
-              <button
+              <CardImg
                 key={c}
-                type="button"
-                disabled={!!myClaimedFigure}
-                onClick={() => {
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.claim_character",
-                      params: { player_id: currentPlayerId, card_id: c },
-                      view,
-                    })
-                  );
-                }}
-                style={{
-                  border: "1px solid transparent",
-                  background: "transparent",
-                  padding: 0,
-                  cursor: myClaimedFigure ? "default" : "pointer",
-                  borderRadius: 12,
-                  opacity: myClaimedFigure ? 0.5 : 1,
-                }}
-                title={
-                  myClaimedFigure
-                    ? "You already selected a figure"
-                    : `Claim ${c}`
-                }
-              >
-                <CardImg cardId={c} width={86} title={c} />
-              </button>
+                cardId={c}
+                width={86}
+                title={Object.values(claimedFigures).includes(c) ? `${c} already claimed` : c}
+              />
             ))
           )}
         </div>

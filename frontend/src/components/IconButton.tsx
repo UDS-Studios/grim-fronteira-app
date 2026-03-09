@@ -28,7 +28,7 @@ export default function IconButton({
         background: "transparent",
         border: "none",
         padding: 0,
-        cursor: "pointer",
+        cursor: onClick ? "pointer" : "default",
         opacity: hover ? 1 : 0.85,
         transition: "opacity 0.15s ease",
       }}
