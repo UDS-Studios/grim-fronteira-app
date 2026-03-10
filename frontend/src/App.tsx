@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { newGame, getGame, gfAction } from "./api/gf";
 import type { ActionResponse, View } from "./api/types";
-import { getOrCreateClientId } from "./utils/identity";
+import { getFreshPlayerId, getOrCreateClientId } from "./utils/identity";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
@@ -116,23 +116,20 @@ export default function App() {
             const r = await run(getGame(joinGameId, view));
             if (r.error) return;
 
-            const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
-            const marshalId = loadedMeta.marshal_id ?? "";
+            const freshPlayerId = getFreshPlayerId();
 
-            if (currentActorId !== marshalId) {
-              setSelectedPlayerId(currentActorId);
+            const joinResp = await run(
+              gfAction({
+                game_id: r.game_id,
+                action: "gf.join_lobby",
+                params: { player_id: freshPlayerId },
+                view,
+              })
+            );
+            if (joinResp.error) return;
 
-              await run(
-                gfAction({
-                  game_id: r.game_id,
-                  action: "gf.join_lobby",
-                  params: { player_id: currentActorId },
-                  view,
-                })
-              );
-            } else {
-              setSelectedPlayerId(currentActorId);
-            }
+            setCurrentActorId(freshPlayerId);
+            setSelectedPlayerId(freshPlayerId);
           }}
         />
       )}

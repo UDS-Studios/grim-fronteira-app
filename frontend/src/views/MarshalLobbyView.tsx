@@ -8,8 +8,6 @@ export default function MarshalLobbyView({
   resp,
   view,
   currentActorId,
-  joinPlayerId,
-  setJoinPlayerId,
   selectedPlayerId,
   setSelectedPlayerId,
   claimCardId,
@@ -458,78 +456,46 @@ export default function MarshalLobbyView({
       >
         <Section title="Informations">
           <div style={{ display: "grid", gap: 8 }}>
-            <div><b>marshal:</b> {marshalId || "-"}</div>
             <div><b>players joined:</b> {playersOrder.length}</div>
             <div><b>registration:</b> {registrationOpen ? "open" : "closed"}</div>
             <div><b>assignment:</b> {assignmentMode}</div>
             <div><b>locked:</b> {assignmentLocked ? "yes" : "no"}</div>
             <div><b>available figures:</b> {availableCount}</div>
-            <div><b>selected player:</b> {selectedPlayerId || "—"}</div>
           </div>
         </Section>
 
         <Section title="Players in Saloon">
           <div style={{ display: "grid", gap: 8 }}>
-            {playersOrder.length === 0 ? (
+            {playersOrder.filter((pid) => pid !== marshalId).length === 0 ? (
               <div style={{ opacity: 0.7 }}>— nobody yet —</div>
             ) : (
-              playersOrder.map((pid) => {
-                const claimed = claimedFigures[pid];
+              playersOrder
+                .filter((pid) => pid !== marshalId)
+                .map((pid) => {
+                  const claimed = claimedFigures[pid];
 
-                return (
-                  <button
-                    key={pid}
-                    type="button"
-                    onClick={() => setSelectedPlayerId(pid)}
-                    style={{
-                      textAlign: "left",
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      border: selectedPlayerId === pid ? "2px solid #8b5a2b" : "1px solid #bbb",
-                      background: selectedPlayerId === pid ? "#fff8ea" : "#fff",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700 }}>{pid}</div>
-                    <div style={{ fontSize: 14, opacity: 0.8 }}>
-                      {claimed ? `Figure: ${claimed}` : "No figure yet"}
-                    </div>
-                  </button>
-                );
-              })
+                  return (
+                    <button
+                      key={pid}
+                      type="button"
+                      onClick={() => setSelectedPlayerId(pid)}
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: selectedPlayerId === pid ? "2px solid #8b5a2b" : "1px solid #bbb",
+                        background: selectedPlayerId === pid ? "#fff8ea" : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{pid}</div>
+                      <div style={{ fontSize: 14, opacity: 0.8 }}>
+                        {claimed ? `Figure: ${claimed}` : "No figure yet"}
+                      </div>
+                    </button>
+                  );
+                })
             )}
-
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                flexWrap: "wrap",
-                marginTop: 8,
-              }}
-            >
-              <input
-                value={joinPlayerId}
-                onChange={(e) => setJoinPlayerId(e.target.value)}
-                placeholder="player_id"
-                style={{ width: 180 }}
-              />
-              <button
-                onClick={() =>
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.join_lobby",
-                      params: { player_id: joinPlayerId },
-                      view,
-                    })
-                  )
-                }
-                disabled={!joinPlayerId.trim()}
-              >
-                Join Lobby
-              </button>
-            </div>
           </div>
         </Section>
       </div>
