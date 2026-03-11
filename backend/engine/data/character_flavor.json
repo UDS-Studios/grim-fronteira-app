@@ -1,0 +1,140 @@
+{
+  "names": {
+    "Criollo": {
+      "Kid": [
+        "Diego Malacara",
+        "Tomás Sombra",
+        "Rafa Cenicero",
+        "Mateo Pólvora",
+        "Nico del Fierro",
+        "Gaspar Llovizna"
+      ],
+      "Lady": [
+        "Inés del Cuervo",
+        "Catalina Fierro",
+        "Beatriz Salmuera",
+        "María Candela",
+        "Leonor del Paso",
+        "Isabela Rencor"
+      ],
+      "Boss": [
+        "Don Hilario Víbora",
+        "Esteban del Trueno",
+        "Baltasar Rojo",
+        "Leandro Quebranto",
+        "Ramiro Valiente",
+        "Severino del Oro"
+      ]
+    },
+    "Paisà": {
+      "Kid": [
+        "Gennaro Scassamuro",
+        "Turi Mezzacanna",
+        "Nino Sfunnaporti",
+        "Peppino Duecolpi",
+        "Mimmo Sparamale",
+        "Ciccio Cardillo"
+      ],
+      "Lady": [
+        "Assunta Jeri",
+        "Rosina Spaccacuore",
+        "Filomena Due lune",
+        "Ninetta Mancafredda",
+        "Carmela Sparamare",
+        "Teresa Brontolì"
+      ],
+      "Boss": [
+        "Don Totò Senzasete",
+        "Mastro Ciccio Fumamara",
+        "Don Calogero Trecarte",
+        "Zì Pasquale Strammuorto",
+        "Compare Rocco Settevite",
+        "Don Mimì Mezzanotte"
+      ]
+    },
+    "Yankee": {
+      "Kid": [
+        "Billy Dryboots",
+        "Tom Pepper",
+        "Eddie Longshot",
+        "Bobby Tinstar",
+        "Cal Hush",
+        "Willy No-Trouble"
+      ],
+      "Lady": [
+        "Molly Sixguns",
+        "Nancy Blackbottle",
+        "Betty Dustcoat",
+        "Pearl Longsmile",
+        "Daisy Flint",
+        "Sadie Crowhat"
+      ],
+      "Boss": [
+        "Donald Drunk",
+        "Buck Hardsaddle",
+        "Silas Crowbar",
+        "Sheriff Mudwell",
+        "Mister Flintjaw",
+        "Abner Coldiron"
+      ]
+    },
+    "Chichimeca": {
+      "Kid": [
+        "Tepin Citlali",
+        "Yohualli Tenamaxtli",
+        "Iktan Tzompan",
+        "Apozan Metztli",
+        "Cusi Yaretzi",
+        "Nayeli Ohtli"
+      ],
+      "Lady": [
+        "Cusi Pachakama",
+        "Yaretzi Coatl",
+        "Nicté Ayau",
+        "Malinalli Ocelia",
+        "Citlali Xumari",
+        "Nayra Temilotzin"
+      ],
+      "Boss": [
+        "Tupac Yohualli",
+        "Acolmiztli Técpatl",
+        "Izel Quauhtli",
+        "Temilotzin Cozamalotl",
+        "Yupanqui Tlaloc",
+        "Aukan Metztli"
+      ]
+    }
+  },
+  "features": [
+    "a large skull ring",
+    "a broken front tooth",
+    "a huge cowboy hat",
+    "a scar across one eyebrow",
+    "a silver rosary wrapped around one wrist",
+    "a mole on the cheek",
+    "a snakebone necklace",
+    "a weather-beaten leather coat",
+    "a missing left glove",
+    "a pair of cracked spectacles",
+    "an old cavalry saber at the hip",
+    "a black feather tucked in the hatband",
+    "a coat lined with saint cards",
+    "a brass earring shaped like a bullet",
+    "a voice like dry gravel",
+    "an ivory-handled knife",
+    "a sun-faded poncho",
+    "a tobacco-stained moustache",
+    "a velvet ribbon around the throat",
+    "a belt full of mismatched charms",
+    "a polished boot with a silver spur",
+    "a scarred knuckle tattoo",
+    "a half-burned prayer booklet",
+    "a heavy turquoise bracelet",
+    "a wolf-tooth pendant",
+    "a crimson neckerchief",
+    "a patched gambler's vest",
+    "a chipped saint medallion",
+    "a hand carved cane",
+    "a long braid tied with leather cord"
+  ]
+}
