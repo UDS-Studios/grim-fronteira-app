@@ -21,7 +21,8 @@
         "Damián Candil",
         "Ulises Rencilla",
         "Fabián Cuatrero",
-        "Ciro Veta"
+        "Ciro Veta",
+        "Ezequiel Bramido"
       ],
       "Lady": [
         "Inés del Cuervo",
@@ -43,7 +44,8 @@
         "Milagros Afilada",
         "Esperanza Brasa",
         "Regina Cuervo",
-        "Soledad del Hierro"
+        "Soledad del Hierro",
+        "Marina Espinela"
       ],
       "Boss": [
         "Don Hilario Víbora",
@@ -65,7 +67,8 @@
         "Máximo Rencilla",
         "Don Lisandro Tormento",
         "Valerio del Rayo",
-        "Don Ceferino Fierabrás"
+        "Don Ceferino Fierabrás",
+        "Don Braulio Relámpago"
       ]
     },
     "Paisà": {
@@ -89,7 +92,8 @@
         "Ciro Bellafaccia",
         "Vito Mezzalira",
         "Dodo Sferracavallo",
-        "Luca Tagliacorde"
+        "Luca Tagliacorde",
+        "Santino Scurdammo"
       ],
       "Lady": [
         "Assunta Jeri",
@@ -111,7 +115,8 @@
         "Nunzia Tagliabrina",
         "Bianca Tredita",
         "Serafina Ammaliatrice",
-        "Gilda Scorticaluna"
+        "Gilda Scorticaluna",
+        "Vittoria Spaccastelle"
       ],
       "Boss": [
         "Don Totò Senzasete",
@@ -133,7 +138,8 @@
         "Don Saverio Senzapaura",
         "Cavaliere Pino Sfregio",
         "Don Alfio Mezzosangue",
-        "Mastro Ciro Settevizi"
+        "Mastro Ciro Settevizi",
+        "Don Luciano Ferrochiodo"
       ]
     },
     "Yankee": {
@@ -157,7 +163,8 @@
         "Otis Knucklebone",
         "Pete Rattlesnake",
         "Dean Lowfire",
-        "Clyde Whiskeyson"
+        "Clyde Whiskeyson",
+        "Ricky Coyote"
       ],
       "Lady": [
         "Molly Sixguns",
@@ -179,7 +186,8 @@
         "Minnie Burntgold",
         "Clara Thornfield",
         "Ruth Blackdust",
-        "Jenny Fairshot"
+        "Jenny Fairshot",
+        "Hattie Coldlace"
       ],
       "Boss": [
         "Donald Drunk",
@@ -201,7 +209,8 @@
         "Gideon Vexler",
         "Harvey Ironmule",
         "Ulysses Crowe",
-        "Thaddeus Grimbar"
+        "Thaddeus Grimbar",
+        "Marshal Boone Tallow"
       ]
     },
     "Chichimeca": {
@@ -225,7 +234,8 @@
         "Xiu Tepoz",
         "Chaska Acolmiz",
         "Kallpa Nenetl",
-        "Maita Quetzin"
+        "Maita Quetzin",
+        "Yoltic Tenoch"
       ],
       "Lady": [
         "Cusi Pachakama",
@@ -247,7 +257,8 @@
         "Amaruq Citlalmina",
         "Yma Sumak",
         "Xiuhnenetl Tzitzimitl",
-        "Nenetl Amapola"
+        "Nenetl Amapola",
+        "Citlalicue Yara"
       ],
       "Boss": [
         "Tupac Yohualli",
@@ -269,7 +280,8 @@
         "Xolotzin Tepal",
         "Atahualpa Citlalcoatl",
         "Mazatl Ocelocoatl",
-        "Tenoch Yancuic"
+        "Tenoch Yancuic",
+        "Tlacaelel Oceloyotl"
       ]
     }
   },
@@ -303,6 +315,9 @@
     "a patched gambler's vest",
     "a chipped saint medallion",
     "a hand carved cane",
-    "a long braid tied with leather cord"
+    "a long braid tied with leather cord",
+    "a cracked tin flask hanging from the belt",
+    "a stack of lucky coins sewn into the vest lining",
+    "a weathered deck of marked cards tucked in a boot"
   ]
 }
