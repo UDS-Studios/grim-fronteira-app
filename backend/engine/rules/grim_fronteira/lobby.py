@@ -78,7 +78,7 @@ def initialize_lobby(game: GameState, creator_id: str) -> GameState:
     meta["players_order"] = [creator_id]
     meta["lobby"] = {
         "registration_open": True,
-        "character_assignment_mode": None,
+        "character_assignment_mode": "choice",
         "character_assignment_locked": False,
         "game_started": False,
     }

@@ -63,7 +63,8 @@ export default function App() {
         setGameId(r.game_id);
         setScreen("game");
       } else if (r.error) {
-        setScreen("error");
+        console.error("API action error:", r);
+        // stay on the current screen so we can inspect the real error
       }
       return r;
     } catch (e: any) {
