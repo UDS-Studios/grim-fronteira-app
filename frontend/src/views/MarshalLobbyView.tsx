@@ -34,28 +34,29 @@ export default function MarshalLobbyView({
   const assignmentLocked = !!lobby.character_assignment_locked;
   const availableCount = lobby.available_figures_count ?? availableFigures.length;
 
-  async function copyGameId() {
-    try {
-      await navigator.clipboard.writeText(resp.game_id);
-      setResp({
-        ...resp,
-        error: {
-          code: "COPIED",
-          message: "Game ID copied to clipboard.",
-          details: null,
-        },
-      });
-    } catch {
-      setResp({
-        ...resp,
-        error: {
-          code: "COPY_FAILED",
-          message: "Could not copy Game ID.",
-          details: null,
-        },
-      });
+async function copyGameId() {
+  const text = resp.game_id;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
     }
+  } catch {
+    console.warn("Could not copy Game ID to clipboard");
   }
+}
 
   return (
     <div

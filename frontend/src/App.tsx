@@ -31,6 +31,13 @@ export default function App() {
 
     let cancelled = false;
 
+    const resetToHome = () => {
+      setResp(null);
+      setGameId("");
+      setJoinGameId("");
+      setScreen("home");
+    };
+
     const sync = async () => {
       try {
         const r = await getGame(gameId, view);
@@ -38,15 +45,18 @@ export default function App() {
 
         if (!r.error) {
           setResp(r);
+          return;
+        }
+
+        if (r.error.code === "HTTP_404") {
+          resetToHome();
         }
       } catch {
         // ignore transient polling failures for now
       }
     };
 
-    // initial sync immediately
     sync();
-
     const id = window.setInterval(sync, 1500);
 
     return () => {
