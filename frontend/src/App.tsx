@@ -6,6 +6,7 @@ import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
 import StartedView from "./views/StartedView";
+import RegistrationClosedView from "./views/RegistrationClosedView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
@@ -18,7 +19,9 @@ export default function App() {
   const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
-  const [screen, setScreen] = useState<"home" | "game" | "error">("home");
+  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">("home");
+  const [closedGameId, setClosedGameId] = useState("");
+  const [closedMarshalId, setClosedMarshalId] = useState("");
 
   useEffect(() => {
     const id = getOrCreateClientId();
@@ -127,6 +130,17 @@ export default function App() {
             const r = await run(getGame(joinGameId, view));
             if (r.error) return;
 
+            const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
+            const lobby = loadedMeta.lobby ?? {};
+            const marshalId = loadedMeta.marshal_id ?? "";
+
+            if (!lobby.registration_open) {
+              setClosedGameId(r.game_id);
+              setClosedMarshalId(marshalId);
+              setScreen("registration-closed");
+              return;
+            }
+
             const freshPlayerId = getFreshPlayerId();
 
             const joinResp = await run(
@@ -141,6 +155,21 @@ export default function App() {
 
             setCurrentActorId(freshPlayerId);
             setSelectedPlayerId(freshPlayerId);
+          }}
+        />
+      )}
+
+      {screen === "registration-closed" && (
+        <RegistrationClosedView
+          gameId={closedGameId}
+          marshalId={closedMarshalId}
+          onBackHome={() => {
+            setResp(null);
+            setGameId("");
+            setJoinGameId("");
+            setClosedGameId("");
+            setClosedMarshalId("");
+            setScreen("home");
           }}
         />
       )}
