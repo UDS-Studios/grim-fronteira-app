@@ -89,7 +89,7 @@ with open(DATA_PATH, "r", encoding="utf-8") as f:
     _FLAVOR = json.load(f)
 
 
-def pick_three(kind: str, seed: int | None = None) -> List[str]:
+def pick_three(kind: str, seed: int | None = None) -> list[str]:
     """
     Return three random suggestions.
 

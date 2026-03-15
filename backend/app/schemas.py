@@ -30,6 +30,8 @@ class ActionRequest(BaseModel):
         "gf.draw_character",
         "gf.join_lobby",
         "gf.set_registration_open",
+        "gf.submit_character_name",
+        "gf.submit_character_feature",
         "gf.start_game",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)

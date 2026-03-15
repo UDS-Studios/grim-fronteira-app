@@ -13,6 +13,9 @@ from backend.engine.rules.grim_fronteira.setup import (
     return_face_pile_to_deck,
 )
 
+from backend.engine.helpers.characters import character_label
+from backend.engine.helpers.character_creation import pick_three
+
 FIGURE_POOL_ZONE = "lobby.figure_pool.available"
 
 
@@ -22,6 +25,28 @@ def _meta_copy(meta: dict | None) -> dict:
 
 def _lobby_copy(meta: dict) -> dict:
     return dict(meta.get("lobby") or {})
+
+def _lobby_players(meta: dict) -> dict:
+    lobby = dict(meta.get("lobby") or {})
+    players = dict(lobby.get("players") or {})
+    lobby["players"] = players
+    meta["lobby"] = lobby
+    return players
+
+
+def _empty_lobby_player_state(player_id: str) -> dict:
+    return {
+        "stage": "waiting_for_figure",
+        "card_id": None,
+        "character_label": None,
+        "name_suggestions": [],
+        "chosen_name": None,
+        "feature_suggestions": [],
+        "chosen_feature": None,
+        "ready": False,
+        "summary_text": None,
+        "display_text": f"{player_id} has not selected a figure yet",
+    }
 
 
 def _ensure_player_zones(game: GameState, player_id: str) -> GameState:
@@ -82,6 +107,8 @@ def initialize_lobby(game: GameState, creator_id: str) -> GameState:
         "character_assignment_locked": False,
         "game_started": False,
     }
+    players = _lobby_players(meta)
+    players[creator_id] = _empty_lobby_player_state(creator_id)
 
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
 
@@ -126,6 +153,10 @@ def join_lobby(game: GameState, player_id: str) -> GameState:
     meta["players_order"] = order
 
     game = _ensure_player_zones(game, player_id)
+
+    players = _lobby_players(meta)
+    players[player_id] = _empty_lobby_player_state(player_id)
+
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
 
 
@@ -147,12 +178,28 @@ def claim_character(game: GameState, player_id: str, card_id: CardID) -> GameSta
     game = setup_starting_baggage(game, player_id)
 
     meta = _meta_copy(game.meta)
+    players = _lobby_players(meta)
+    pstate = dict(players.get(player_id) or _empty_lobby_player_state(player_id))
+
+    pstate["card_id"] = card_id
+    pstate["character_label"] = character_label(card_id)
+    pstate["name_suggestions"] = pick_three(card_id)
+    pstate["chosen_name"] = None
+    pstate["feature_suggestions"] = []
+    pstate["chosen_feature"] = None
+    pstate["ready"] = False
+    pstate["stage"] = "waiting_for_name"
+    pstate["summary_text"] = None
+    pstate["display_text"] = f"{player_id} selected {pstate['character_label']}. Choose a name."
+
+    players[player_id] = pstate
+    game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+
     lobby = _lobby_copy(meta)
     lobby["character_assignment_locked"] = True
     meta["lobby"] = lobby
 
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
-
 
 def draw_character(game: GameState, player_id: str, seed: int | None = None) -> GameState:
     _require_lobby(game)
@@ -174,13 +221,86 @@ def draw_character(game: GameState, player_id: str, seed: int | None = None) -> 
     game = draw_from_face_pile(game, dest_zone, face_pile_zone=FIGURE_POOL_ZONE)
     game = setup_starting_baggage(game, player_id)
 
+    card_id = game.zones[f"players.{player_id}.character"][0]
+
     meta = _meta_copy(game.meta)
+    players = _lobby_players(meta)
+    pstate = dict(players.get(player_id) or _empty_lobby_player_state(player_id))
+
+    pstate["card_id"] = card_id
+    pstate["character_label"] = character_label(card_id)
+    pstate["name_suggestions"] = pick_three(card_id, seed=seed)
+    pstate["chosen_name"] = None
+    pstate["feature_suggestions"] = []
+    pstate["chosen_feature"] = None
+    pstate["ready"] = False
+    pstate["stage"] = "waiting_for_name"
+    pstate["summary_text"] = None
+    pstate["display_text"] = f"{player_id} selected {pstate['character_label']}. Choose a name."
+
+    players[player_id] = pstate
     lobby = _lobby_copy(meta)
     lobby["character_assignment_locked"] = True
     meta["lobby"] = lobby
 
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
 
+def submit_character_name(game: GameState, player_id: str, name: str, seed: int | None = None) -> GameState:
+    _require_lobby(game)
+
+    if player_id not in _registered_players(game):
+        raise ValueError(f"Player '{player_id}' is not registered.")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Character name must be a non-empty string.")
+
+    meta = _meta_copy(game.meta)
+    players = _lobby_players(meta)
+    pstate = dict(players.get(player_id) or _empty_lobby_player_state(player_id))
+
+    if pstate.get("stage") != "waiting_for_name":
+        raise ValueError("Player is not waiting for a character name.")
+
+    chosen_name = name.strip()
+    pstate["chosen_name"] = chosen_name
+    pstate["feature_suggestions"] = pick_three("feature", seed=seed)
+    pstate["stage"] = "waiting_for_feature"
+    pstate["display_text"] = f"{chosen_name} is ready. Choose a distinctive feature."
+
+    players[player_id] = pstate
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+def submit_character_feature(game: GameState, player_id: str, feature: str) -> GameState:
+    _require_lobby(game)
+
+    if player_id not in _registered_players(game):
+        raise ValueError(f"Player '{player_id}' is not registered.")
+    if not isinstance(feature, str) or not feature.strip():
+        raise ValueError("Character feature must be a non-empty string.")
+
+    meta = _meta_copy(game.meta)
+    players = _lobby_players(meta)
+    pstate = dict(players.get(player_id) or _empty_lobby_player_state(player_id))
+
+    if pstate.get("stage") != "waiting_for_feature":
+        raise ValueError("Player is not waiting for a character feature.")
+    if not pstate.get("chosen_name"):
+        raise ValueError("Player must choose a character name first.")
+    if not pstate.get("character_label"):
+        raise ValueError("Player must choose a figure first.")
+
+    chosen_feature = feature.strip()
+    pstate["chosen_feature"] = chosen_feature
+    pstate["ready"] = True
+    pstate["stage"] = "ready"
+    pstate["summary_text"] = (
+        f"{pstate['chosen_name']}, a {pstate['character_label']} with {chosen_feature}"
+    )
+    pstate["display_text"] = (
+        f"Your character is {pstate['chosen_name']}, a {pstate['character_label']} with {chosen_feature}."
+    )
+
+    players[player_id] = pstate
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
 
 def set_registration_open(game: GameState, actor_id: str, is_open: bool) -> GameState:
     _require_lobby(game)
@@ -208,6 +328,16 @@ def start_game(game: GameState, actor_id: str, seed: int | None = None) -> GameS
         raise ValueError("Game already started.")
     if lobby.get("character_assignment_mode") not in ("choice", "random"):
         raise ValueError("Character assignment mode must be set before starting the game.")
+    players = dict(lobby.get("players") or {})
+    order = list(meta.get("players_order") or [])
+    marshal_id = meta.get("marshal_id")
+
+    not_ready = [
+        pid for pid in order
+        if pid != marshal_id and not bool((players.get(pid) or {}).get("ready", False))
+    ]
+    if not_ready:
+        raise ValueError(f"Cannot start game: players not ready: {', '.join(not_ready)}")
 
     missing = [pid for pid in _registered_players(game) if not _player_has_character(game, pid)]
     if missing:

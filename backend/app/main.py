@@ -28,6 +28,8 @@ from backend.engine.rules.grim_fronteira.lobby import (
     draw_character,
     join_lobby,
     set_registration_open,
+    submit_character_name,
+    submit_character_feature,
     start_game,
 )
 
@@ -295,6 +297,47 @@ def action(req: ActionRequest) -> ActionResponse:
         game = draw_character(game, player_id=player_id, seed=seed)
         mutated = True
         result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.submit_character_name":
+        params = req.params
+        player_id = params.get("player_id")
+        name = params.get("name")
+        seed = params.get("seed")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(name, str):
+            raise HTTPException(status_code=400, detail="params.name must be a string")
+        if seed is not None and not isinstance(seed, int):
+            raise HTTPException(status_code=400, detail="params.seed must be an integer or omitted")
+
+        game = submit_character_name(game, player_id=player_id, name=name, seed=seed)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "player_id": player_id,
+            "name": name,
+        }
+
+    elif req.action == "gf.submit_character_feature":
+        params = req.params
+        player_id = params.get("player_id")
+        feature = params.get("feature")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(feature, str):
+            raise HTTPException(status_code=400, detail="params.feature must be a string")
+
+        game = submit_character_feature(game, player_id=player_id, feature=feature)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "player_id": player_id,
+            "feature": feature,
+        }
 
     elif req.action == "gf.set_registration_open":
         params = req.params

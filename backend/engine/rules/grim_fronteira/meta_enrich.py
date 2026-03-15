@@ -4,6 +4,24 @@ from backend.engine.state.game_state import GameState
 from backend.engine.rules.grim_fronteira.reward_points import compute_reward_points, infer_player_ids
 from backend.engine.rules.grim_fronteira.lobby import FIGURE_POOL_ZONE
 
+def _compute_all_players_ready(game: GameState, meta: dict) -> bool:
+    marshal_id = meta.get("marshal_id")
+    order = meta.get("players_order") or []
+    lobby = dict(meta.get("lobby") or {})
+    lobby_players = dict(lobby.get("players") or {})
+
+    non_marshal = [pid for pid in order if pid != marshal_id]
+
+    # If no non-marshal players are registered, allow start
+    if not non_marshal:
+        return True
+
+    for pid in non_marshal:
+        pstate = lobby_players.get(pid) or {}
+        if not pstate.get("ready", False):
+            return False
+
+    return True
 
 def enrich_meta_for_ui(game: GameState) -> GameState:
     """
@@ -41,6 +59,7 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
 
     lobby["claimed_figures"] = claimed
     lobby["available_figures_count"] = len(game.zones.get(FIGURE_POOL_ZONE, []))
+    lobby["all_players_ready"] = _compute_all_players_ready(game, meta)
     meta["lobby"] = lobby
 
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
