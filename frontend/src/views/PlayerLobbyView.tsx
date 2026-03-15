@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
 import Section from "../components/Section";
@@ -11,26 +12,268 @@ type PlayerLobbyViewProps = {
   run: RunAction;
 };
 
+type LobbyPlayerState = {
+  stage?: "waiting_for_figure" | "waiting_for_name" | "waiting_for_feature" | "ready";
+  card_id?: string | null;
+  character_label?: string | null;
+  name_suggestions?: string[];
+  chosen_name?: string | null;
+  feature_suggestions?: string[];
+  chosen_feature?: string | null;
+  ready?: boolean;
+  summary_text?: string | null;
+  display_text?: string | null;
+};
+
 export default function PlayerLobbyView({
   resp,
   view,
   currentActorId,
   run,
 }: PlayerLobbyViewProps) {
+  const [customName, setCustomName] = useState("");
+  const [customFeature, setCustomFeature] = useState("");
+
   const state = (resp.state as any) ?? {};
   const meta: MetaAny = state.meta ?? {};
   const zones: Zones = state.zones ?? {};
 
   const marshalId = meta.marshal_id ?? "";
   const lobby = meta.lobby ?? {};
-  const playersOrder: string[] = meta.players_order ?? [];
+  const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
   const availableFigures: string[] = zones["lobby.figure_pool.available"] ?? [];
-  const claimedFigures: Record<string, string> = lobby.claimed_figures ?? {};
 
   const assignmentMode = lobby.character_assignment_mode ?? "choice";
   const registrationOpen = !!lobby.registration_open;
   const currentPlayerId = currentActorId;
-  const myClaimedFigure = claimedFigures[currentPlayerId] ?? null;
+
+  const pstate: LobbyPlayerState =
+    lobbyPlayers[currentPlayerId] ?? { stage: "waiting_for_figure" };
+
+  const stage = pstate.stage ?? "waiting_for_figure";
+  const myCardId = pstate.card_id ?? null;
+  const characterLabel = pstate.character_label ?? null;
+  const chosenName = pstate.chosen_name ?? null;
+  const chosenFeature = pstate.chosen_feature ?? null;
+  const nameSuggestions = pstate.name_suggestions ?? [];
+  const featureSuggestions = pstate.feature_suggestions ?? [];
+  const displayText = pstate.display_text ?? null;
+
+  const canPickFigure =
+    registrationOpen && stage === "waiting_for_figure";
+
+  async function submitName(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    const seed = deterministicSeedFrom(
+      `${resp.game_id}|${currentPlayerId}|${trimmed}`
+    );
+
+    setCustomName("");
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.submit_character_name",
+        params: {
+          player_id: currentPlayerId,
+          name: trimmed,
+          seed,
+        },
+        view,
+      })
+    );
+  }
+
+  function deterministicSeedFrom(text: string): number {
+    let h = 2166136261;
+
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+
+    return Math.abs(h >>> 0);
+  }
+
+  async function submitFeature(feature: string) {
+    const trimmed = feature.trim();
+    if (!trimmed) return;
+
+    setCustomFeature("");
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.submit_character_feature",
+        params: {
+          player_id: currentPlayerId,
+          feature: trimmed,
+        },
+        view,
+      })
+    );
+  }
+
+  function renderInfoContent() {
+    if (stage === "waiting_for_figure") {
+      return (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div>
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+          </div>
+
+          <div style={{ marginTop: 12, opacity: 0.8 }}>
+            {assignmentMode === "random"
+              ? "Choose one of the facedown cards to draw your figure."
+              : "Choose one of the available figures above."}
+          </div>
+        </div>
+      );
+    }
+
+    if (stage === "waiting_for_name") {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            Your Character is a{" "}
+            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
+              {characterLabel}
+            </span>
+          </div>
+
+          <div style={{ fontWeight: 700 }}>Pick one of these names:</div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {nameSuggestions.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => submitName(name)}
+                style={{
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #bbb",
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 8 }}>Or write your own</div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+              placeholder="Write a custom name"
+              style={{ flex: 1, padding: "10px 12px" }}
+            />
+            <button
+              type="button"
+              onClick={() => submitName(customName)}
+              disabled={!customName.trim()}
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (stage === "waiting_for_feature") {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            Your Character is{" "}
+            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
+              {chosenName}
+            </span>{" "}
+            a{" "}
+            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
+              {characterLabel}
+            </span>
+          </div>
+
+          <div style={{ fontWeight: 700 }}>Pick one of these features:</div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {featureSuggestions.map((feature) => (
+              <button
+                key={feature}
+                type="button"
+                onClick={() => submitFeature(feature)}
+                style={{
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #bbb",
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                {feature}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 8 }}>Or write your own</div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={customFeature}
+              onChange={(e) => setCustomFeature(e.target.value)}
+              placeholder="Write a custom feature"
+              style={{ flex: 1, padding: "10px 12px" }}
+            />
+            <button
+              type="button"
+              onClick={() => submitFeature(customFeature)}
+              disabled={!customFeature.trim()}
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (stage === "ready") {
+      return (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            Your Character is{" "}
+            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
+              {chosenName}
+            </span>{" "}
+            a{" "}
+            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
+              {characterLabel}
+            </span>{" "}
+            with{" "}
+            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
+              {chosenFeature}
+            </span>
+          </div>
+
+          <div style={{ opacity: 0.85 }}>
+            Waiting for the Marshal to start the game.
+          </div>
+
+          {displayText && (
+            <div style={{ fontSize: 14, opacity: 0.7 }}>
+              {displayText}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  }
 
   return (
     <div
@@ -83,7 +326,7 @@ export default function PlayerLobbyView({
               <button
                 key={`hidden-${idx}`}
                 type="button"
-                disabled={!registrationOpen || !!myClaimedFigure}
+                disabled={!canPickFigure}
                 onClick={() => {
                   run(
                     gfAction({
@@ -98,16 +341,14 @@ export default function PlayerLobbyView({
                   border: "1px solid transparent",
                   background: "transparent",
                   padding: 0,
-                  cursor: !registrationOpen || myClaimedFigure ? "default" : "pointer",
+                  cursor: canPickFigure ? "pointer" : "default",
                   borderRadius: 12,
-                  opacity: !registrationOpen || myClaimedFigure ? 0.5 : 1,
+                  opacity: canPickFigure ? 1 : 0.5,
                 }}
                 title={
                   !registrationOpen
                     ? "Registration is closed"
-                    : myClaimedFigure
-                      ? "You already selected a figure"
-                      : `Draw random character for ${currentPlayerId}`
+                    : "Draw random character"
                 }
               >
                 <CardImg cardId="BACK" faceDown width={86} title="Hidden figure" />
@@ -118,7 +359,7 @@ export default function PlayerLobbyView({
               <button
                 key={c}
                 type="button"
-                disabled={!registrationOpen || !!myClaimedFigure}
+                disabled={!canPickFigure}
                 onClick={() => {
                   run(
                     gfAction({
@@ -133,16 +374,14 @@ export default function PlayerLobbyView({
                   border: "1px solid transparent",
                   background: "transparent",
                   padding: 0,
-                  cursor: !registrationOpen || myClaimedFigure ? "default" : "pointer",
+                  cursor: canPickFigure ? "pointer" : "default",
                   borderRadius: 12,
-                  opacity: !registrationOpen || myClaimedFigure ? 0.5 : 1,
+                  opacity: canPickFigure ? 1 : 0.5,
                 }}
                 title={
                   !registrationOpen
                     ? "Registration is closed"
-                    : myClaimedFigure
-                      ? "You already selected a figure"
-                      : `Claim ${c}`
+                    : `Claim ${c}`
                 }
               >
                 <CardImg cardId={c} width={86} title={c} />
@@ -169,8 +408,8 @@ export default function PlayerLobbyView({
               justifyContent: "center",
             }}
           >
-            {myClaimedFigure ? (
-              <CardImg cardId={myClaimedFigure} width={180} title={myClaimedFigure} />
+            {myCardId ? (
+              <CardImg cardId={myCardId} width={180} title={myCardId} />
             ) : (
               <div style={{ opacity: 0.65, textAlign: "center" }}>
                 Choose your figure
@@ -180,21 +419,7 @@ export default function PlayerLobbyView({
         </Section>
 
         <Section title="Informations">
-          <div style={{ display: "grid", gap: 10 }}>
-            <div><b>You are:</b> {currentPlayerId}</div>
-            <div><b>Marshal:</b> {marshalId || "-"}</div>
-            <div><b>Players in saloon:</b> {playersOrder.length}</div>
-            <div><b>Character creation:</b> {assignmentMode}</div>
-            <div><b>Your selected figure:</b> {myClaimedFigure ?? "none yet"}</div>
-
-            <div style={{ marginTop: 12, opacity: 0.8 }}>
-              {myClaimedFigure
-                ? "Waiting for the Marshal to start the game."
-                : assignmentMode === "random"
-                  ? "Choose a facedown card to draw your figure."
-                  : "Choose one available figure from the row above."}
-            </div>
-          </div>
+          {renderInfoContent()}
         </Section>
       </div>
     </div>
