@@ -142,6 +142,7 @@ export default function PlayerLobbyView({
 }: PlayerLobbyViewProps) {
   const [customName, setCustomName] = useState("");
   const [customFeature, setCustomFeature] = useState("");
+  const isWaitingMessageVisible = useBlink(700);
 
   const state = (resp.state as any) ?? {};
   const meta: MetaAny = state.meta ?? {};
@@ -420,7 +421,15 @@ export default function PlayerLobbyView({
 
           {renderCharacterRules()}
 
-          <div style={{ marginTop: 40, opacity: 0.85 }}>
+          <div
+            style={{
+              marginTop: 40,
+              opacity: 0.85,
+              fontFamily: "LavaArabic, serif",
+              fontSize: "1.5rem",
+              color: `rgba(0, 0, 0, ${isWaitingMessageVisible ? 0.5 : 0.2})`,
+            }}
+          >
             Waiting for the Marshal to start the game.
           </div>
         </div>
