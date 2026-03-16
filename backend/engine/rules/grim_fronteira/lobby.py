@@ -248,6 +248,10 @@ def draw_character(game: GameState, player_id: str, seed: int | None = None) -> 
     card_id = game.zones[f"players.{player_id}.character"][0]
     info = figure_to_character(card_id)
 
+    meta = _meta_copy(game.meta)
+    players = _lobby_players(meta)
+    pstate = dict(players.get(player_id) or _empty_lobby_player_state(player_id))
+
     pstate["card_id"] = card_id
     pstate["character_label"] = character_label(card_id)
 
@@ -263,12 +267,6 @@ def draw_character(game: GameState, player_id: str, seed: int | None = None) -> 
         info["ability_rule_text"],
     ]
 
-    meta = _meta_copy(game.meta)
-    players = _lobby_players(meta)
-    pstate = dict(players.get(player_id) or _empty_lobby_player_state(player_id))
-
-    pstate["card_id"] = card_id
-    pstate["character_label"] = character_label(card_id)
     pstate["name_suggestions"] = pick_three(card_id, seed=seed)
     pstate["chosen_name"] = None
     pstate["feature_suggestions"] = []
@@ -279,6 +277,7 @@ def draw_character(game: GameState, player_id: str, seed: int | None = None) -> 
     pstate["display_text"] = f"{player_id} selected {pstate['character_label']}. Choose a name."
 
     players[player_id] = pstate
+
     lobby = _lobby_copy(meta)
     lobby["character_assignment_locked"] = True
     meta["lobby"] = lobby
