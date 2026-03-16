@@ -15,14 +15,23 @@ def _load_data() -> Dict[str, Any]:
 _DATA = _load_data()
 
 
+def rank_burden_text(role: str) -> str:
+    if role == "Kid":
+        return "As a Kid, your initial burden will be 2 Scum Cards"
+    if role == "Lady":
+        return "As a Lady, your initial burden will be a Vengeance Card and a Scum Card"
+    if role == "Boss":
+        return "As a Boss, your initial burden will be 2 Vengeance Cards"
+    raise ValueError(f"Unknown role: {role}")
+
+
 def figure_to_character(card_id: str) -> Dict[str, str]:
     """
     Convert a figure card into character info.
 
     Example:
-        "KC" -> Paisà Boss
+        "QD" -> Criollo Lady
     """
-
     rank = card_id[:-1]
     suit = card_id[-1]
 
@@ -30,22 +39,25 @@ def figure_to_character(card_id: str) -> Dict[str, str]:
         raise ValueError(f"{card_id} is not a figure card")
 
     faction = _DATA["factions"][suit]
+    role = _DATA["ranks"][rank]
+
+    burden = rank_burden_text(role)
+
+    ability_rule = (
+        f"As a {faction['name']}, you'll have the ability "
+        f"{faction['ability_name']}: {faction['ability_text']}"
+    )
 
     return {
         "faction": faction["name"],
-        "role": _DATA["ranks"][rank],
+        "role": role,
         "ability_name": faction["ability_name"],
         "ability_text": faction["ability_text"],
+        "rank_burden_text": burden,
+        "ability_rule_text": ability_rule,
     }
 
 
 def character_label(card_id: str) -> str:
-    """
-    Human readable label.
-
-    Example:
-        "JC" -> "Paisà Kid"
-    """
-
     info = figure_to_character(card_id)
     return f'{info["faction"]} {info["role"]}'

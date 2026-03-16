@@ -13,7 +13,7 @@ from backend.engine.rules.grim_fronteira.setup import (
     return_face_pile_to_deck,
 )
 
-from backend.engine.helpers.characters import character_label
+from backend.engine.helpers.characters import character_label, figure_to_character
 from backend.engine.helpers.character_creation import pick_three
 
 FIGURE_POOL_ZONE = "lobby.figure_pool.available"
@@ -39,6 +39,16 @@ def _empty_lobby_player_state(player_id: str) -> dict:
         "stage": "waiting_for_figure",
         "card_id": None,
         "character_label": None,
+
+        "rank_name": None,
+        "rank_burden_text": None,
+
+        "faction_name": None,
+        "ability_name": None,
+        "ability_text": None,
+
+        "character_rules": [],
+
         "name_suggestions": [],
         "chosen_name": None,
         "feature_suggestions": [],
@@ -181,8 +191,22 @@ def claim_character(game: GameState, player_id: str, card_id: CardID) -> GameSta
     players = _lobby_players(meta)
     pstate = dict(players.get(player_id) or _empty_lobby_player_state(player_id))
 
+    info = figure_to_character(card_id)
+
     pstate["card_id"] = card_id
     pstate["character_label"] = character_label(card_id)
+
+    pstate["rank_name"] = info["role"]
+    pstate["rank_burden_text"] = info["rank_burden_text"]
+
+    pstate["faction_name"] = info["faction"]
+    pstate["ability_name"] = info["ability_name"]
+    pstate["ability_text"] = info["ability_text"]
+
+    pstate["character_rules"] = [
+        info["rank_burden_text"],
+        info["ability_rule_text"],
+    ]
     pstate["name_suggestions"] = pick_three(card_id)
     pstate["chosen_name"] = None
     pstate["feature_suggestions"] = []
@@ -222,6 +246,22 @@ def draw_character(game: GameState, player_id: str, seed: int | None = None) -> 
     game = setup_starting_baggage(game, player_id)
 
     card_id = game.zones[f"players.{player_id}.character"][0]
+    info = figure_to_character(card_id)
+
+    pstate["card_id"] = card_id
+    pstate["character_label"] = character_label(card_id)
+
+    pstate["rank_name"] = info["role"]
+    pstate["rank_burden_text"] = info["rank_burden_text"]
+
+    pstate["faction_name"] = info["faction"]
+    pstate["ability_name"] = info["ability_name"]
+    pstate["ability_text"] = info["ability_text"]
+
+    pstate["character_rules"] = [
+        info["rank_burden_text"],
+        info["ability_rule_text"],
+    ]
 
     meta = _meta_copy(game.meta)
     players = _lobby_players(meta)
