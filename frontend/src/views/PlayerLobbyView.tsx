@@ -1,9 +1,56 @@
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
 import Section from "../components/Section";
 import type { MetaAny, Zones, RunAction } from "./types";
 import type { ActionResponse, View } from "../api/types";
+
+function useTypewriter(text: string, speed = 18) {
+  const [display, setDisplay] = React.useState("");
+
+  React.useEffect(() => {
+    let i = 0;
+    setDisplay("");
+
+    const interval = setInterval(() => {
+      i++;
+      setDisplay(text.slice(0, i));
+
+      if (i >= text.length) {
+        clearInterval(interval);
+      }
+    }, speed);
+
+    return () => clearInterval(interval);
+  }, [text, speed]);
+
+  return display;
+}
+
+function useBlink(period = 500) {
+  const [visible, setVisible] = React.useState(true);
+
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      setVisible((v) => !v);
+    }, period);
+
+    return () => window.clearInterval(id);
+  }, [period]);
+
+  return visible;
+}
+
+function deterministicSeedFrom(text: string): number {
+  let h = 2166136261;
+
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+
+  return Math.abs(h >>> 0);
+}
 
 type PlayerLobbyViewProps = {
   resp: ActionResponse;
@@ -23,6 +70,12 @@ type LobbyPlayerState = {
   ready?: boolean;
   summary_text?: string | null;
   display_text?: string | null;
+  rank_name?: string | null;
+  rank_burden_text?: string | null;
+  faction_name?: string | null;
+  ability_name?: string | null;
+  ability_text?: string | null;
+  character_rules?: string[];
 };
 
 export default function PlayerLobbyView({
@@ -57,7 +110,8 @@ export default function PlayerLobbyView({
   const chosenFeature = pstate.chosen_feature ?? null;
   const nameSuggestions = pstate.name_suggestions ?? [];
   const featureSuggestions = pstate.feature_suggestions ?? [];
-  const displayText = pstate.display_text ?? null;
+  // const displayText = pstate.display_text ?? null;
+  const characterRules = pstate.character_rules ?? [];
 
   const canPickFigure =
     registrationOpen && stage === "waiting_for_figure";
@@ -85,17 +139,6 @@ export default function PlayerLobbyView({
     );
   }
 
-  function deterministicSeedFrom(text: string): number {
-    let h = 2166136261;
-
-    for (let i = 0; i < text.length; i++) {
-      h ^= text.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-
-    return Math.abs(h >>> 0);
-  }
-
   async function submitFeature(feature: string) {
     const trimmed = feature.trim();
     if (!trimmed) return;
@@ -111,6 +154,82 @@ export default function PlayerLobbyView({
         },
         view,
       })
+    );
+  }
+
+  function renderCharacterRules() {
+    if (!characterRules || characterRules.length === 0) return null;
+
+    return (
+      <div style={{ display: "grid", gap: 4 }}>
+        {characterRules.map((rule, i) => {
+          if (i === 0) {
+            // Rank rule
+            const parts = rule.match(/^As a ([^,]+), (.*)$/);
+
+            if (parts) {
+              const rank = parts[1];
+              const rest = parts[2];
+
+              return (
+                <div key={rule}>
+                  As a <b>{rank}</b>, {rest}
+                </div>
+              );
+            }
+          }
+
+          if (i === 1) {
+            // Ability rule
+            const parts = rule.match(/^As a ([^,]+), you'll have the ability ([^:]+): (.*)$/);
+
+            if (parts) {
+              const faction = parts[1];
+              const ability = parts[2];
+              const description = parts[3];
+
+              return (
+                <div key={rule}>
+                  As a <b>{faction}</b>, you'll have the ability{" "}
+                  <b>{ability}</b>: <i>{description}</i>
+                </div>
+              );
+            }
+          }
+
+          return <div key={rule}>{rule}</div>;
+        })}
+      </div>
+    );
+  }
+
+const characterSentence =
+  stage === "waiting_for_name"
+    ? `Your Character is a ${characterLabel}`
+    : stage === "waiting_for_feature"
+    ? `Your Character is ${chosenName} a ${characterLabel}`
+    : stage === "ready"
+    ? `Your Character is ${chosenName} a ${characterLabel} with ${chosenFeature}`
+    : "";
+
+const animatedSentence = useTypewriter(characterSentence);
+const cursorVisible = useBlink(500);
+
+  function renderAnimatedSentence() {
+    if (!characterSentence) return null;
+
+    return (
+      <div
+        style={{
+          marginTop: 15,
+          fontFamily: "LavaArabic, serif",
+          fontSize: "1.8em",
+          lineHeight: 1.4,
+        }}
+      >
+        {animatedSentence}
+        <span style={{ opacity: cursorVisible ? 0.5 : 0 }}>▌</span>
+      </div>
     );
   }
 
@@ -135,11 +254,10 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            Your Character is a{" "}
-            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
-              {characterLabel}
-            </span>
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
           </div>
+
+          {renderAnimatedSentence()}
 
           <div style={{ fontWeight: 700 }}>Pick one of these names:</div>
 
@@ -188,15 +306,9 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            Your Character is{" "}
-            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
-              {chosenName}
-            </span>{" "}
-            a{" "}
-            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
-              {characterLabel}
-            </span>
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
           </div>
+          {renderAnimatedSentence()}
 
           <div style={{ fontWeight: 700 }}>Pick one of these features:</div>
 
@@ -245,29 +357,16 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            Your Character is{" "}
-            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
-              {chosenName}
-            </span>{" "}
-            a{" "}
-            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
-              {characterLabel}
-            </span>{" "}
-            with{" "}
-            <span style={{ fontFamily: "LavaArabic, serif", fontSize: "1.2em" }}>
-              {chosenFeature}
-            </span>
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
           </div>
 
-          <div style={{ opacity: 0.85 }}>
+          {renderAnimatedSentence()}
+
+          {renderCharacterRules()}
+
+          <div style={{ marginTop: 40, opacity: 0.85 }}>
             Waiting for the Marshal to start the game.
           </div>
-
-          {displayText && (
-            <div style={{ fontSize: 14, opacity: 0.7 }}>
-              {displayText}
-            </div>
-          )}
         </div>
       );
     }
