@@ -303,7 +303,7 @@ def submit_character_name(game: GameState, player_id: str, name: str, seed: int 
     pstate["chosen_name"] = chosen_name
     pstate["feature_suggestions"] = pick_three("feature", seed=seed)
     pstate["stage"] = "waiting_for_feature"
-    pstate["display_text"] = f"{chosen_name} is ready. Choose a distinctive feature."
+    pstate["display_text"] = f"{chosen_name} has taken a name. Now choose a distinctive feature."
 
     players[player_id] = pstate
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
