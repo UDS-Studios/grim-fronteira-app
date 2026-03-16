@@ -1,30 +1,86 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
 import Section from "../components/Section";
 import type { MetaAny, Zones, RunAction } from "./types";
 import type { ActionResponse, View } from "../api/types";
 
-function useTypewriter(text: string, speed = 18) {
-  const [display, setDisplay] = React.useState("");
+type SentenceSegment = {
+  text: string;
+  color?: string;
+};
+
+function useTypewriterCount(fullText: string, speed = 18) {
+  const [visibleChars, setVisibleChars] = React.useState(0);
 
   React.useEffect(() => {
     let i = 0;
-    setDisplay("");
+    setVisibleChars(0);
 
     const interval = setInterval(() => {
       i++;
-      setDisplay(text.slice(0, i));
+      setVisibleChars(i);
 
-      if (i >= text.length) {
+      if (i >= fullText.length) {
         clearInterval(interval);
       }
     }, speed);
 
     return () => clearInterval(interval);
-  }, [text, speed]);
+  }, [fullText, speed]);
 
-  return display;
+  return visibleChars;
+}
+
+function getCharacterSentenceSegments(
+  stage: LobbyPlayerState["stage"],
+  characterLabel: string | null,
+  chosenName: string | null,
+  chosenFeature: string | null
+): SentenceSegment[] {
+  if (!characterLabel) return [];
+
+  if (stage === "waiting_for_name") {
+    return [{ text: `Your Character is a ${characterLabel}` }];
+  }
+
+  if (stage === "waiting_for_feature" && chosenName) {
+    return [
+      { text: "Your Character is " },
+      { text: chosenName, color: "#8B0000" },
+      { text: ` a ${characterLabel}` },
+    ];
+  }
+
+  if (stage === "ready" && chosenName && chosenFeature) {
+    return [
+      { text: "Your Character is " },
+      { text: chosenName, color: "#8B0000" },
+      { text: ` a ${characterLabel} with ${chosenFeature}` },
+    ];
+  }
+
+  return [];
+}
+
+function renderTypedSegments(
+  segments: SentenceSegment[],
+  visibleChars: number
+): React.ReactNode {
+  let remainingChars = visibleChars;
+
+  return segments.map((segment, index) => {
+    if (remainingChars <= 0) return null;
+
+    const visibleText = segment.text.slice(0, remainingChars);
+    remainingChars -= visibleText.length;
+
+    return (
+      <span key={`${index}-${segment.text}`} style={{ color: segment.color }}>
+        {visibleText}
+      </span>
+    );
+  });
 }
 
 function useBlink(period = 500) {
@@ -203,17 +259,17 @@ export default function PlayerLobbyView({
     );
   }
 
-const characterSentence =
-  stage === "waiting_for_name"
-    ? `Your Character is a ${characterLabel}`
-    : stage === "waiting_for_feature"
-    ? `Your Character is ${chosenName} a ${characterLabel}`
-    : stage === "ready"
-    ? `Your Character is ${chosenName} a ${characterLabel} with ${chosenFeature}`
-    : "";
-
-const animatedSentence = useTypewriter(characterSentence);
-const cursorVisible = useBlink(500);
+  const characterSentenceSegments = getCharacterSentenceSegments(
+    stage,
+    characterLabel,
+    chosenName,
+    chosenFeature
+  );
+  const characterSentence = characterSentenceSegments
+    .map((segment) => segment.text)
+    .join("");
+  const visibleSentenceChars = useTypewriterCount(characterSentence);
+  const cursorVisible = useBlink(500);
 
   function renderAnimatedSentence() {
     if (!characterSentence) return null;
@@ -227,7 +283,7 @@ const cursorVisible = useBlink(500);
           lineHeight: 1.4,
         }}
       >
-        {animatedSentence}
+        {renderTypedSegments(characterSentenceSegments, visibleSentenceChars)}
         <span style={{ opacity: cursorVisible ? 0.5 : 0 }}>▌</span>
       </div>
     );
