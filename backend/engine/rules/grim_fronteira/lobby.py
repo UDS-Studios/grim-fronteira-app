@@ -13,6 +13,7 @@ from backend.engine.rules.grim_fronteira.setup import (
     return_face_pile_to_deck,
 )
 
+from backend.engine.helpers.hooks import generate_hook_suggestions
 from backend.engine.helpers.characters import character_label, figure_to_character
 from backend.engine.helpers.character_creation import pick_three
 
@@ -397,6 +398,34 @@ def start_game(game: GameState, actor_id: str, seed: int | None = None) -> GameS
     lobby["game_started"] = True
     lobby["character_assignment_locked"] = True
     meta["lobby"] = lobby
-    meta["phase"] = "started"
+
+    meta["phase"] = "hook_selection"
+    meta["hooks"] = {
+        "suggestions": generate_hook_suggestions(seed=seed, count=3),
+        "selected_hook": None,
+    }
+
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+def begin_table(game: GameState, actor_id: str, selected_hook: str | None = None) -> GameState:
+    if (game.meta or {}).get("phase") != "hook_selection":
+        raise ValueError("Action allowed only during hook_selection phase.")
+
+    if (game.meta or {}).get("marshal_id") != actor_id:
+        raise ValueError("Only the Marshal can perform this action.")
+
+    meta = _meta_copy(game.meta)
+    hooks = dict(meta.get("hooks") or {})
+
+    suggestions = hooks.get("suggestions") or []
+    if selected_hook is not None:
+        if not isinstance(selected_hook, str) or not selected_hook.strip():
+            raise ValueError("selected_hook must be a non-empty string or omitted.")
+        if selected_hook not in suggestions:
+            raise ValueError("selected_hook must be one of the suggested hooks.")
+        hooks["selected_hook"] = selected_hook
+
+    meta["hooks"] = hooks
+    meta["phase"] = "table"
 
     return GameState(deck=game.deck, zones=game.zones, meta=meta)

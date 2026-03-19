@@ -33,6 +33,7 @@ class ActionRequest(BaseModel):
         "gf.submit_character_name",
         "gf.submit_character_feature",
         "gf.start_game",
+        "gf.begin_table",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)
     view: Literal["public", "debug"] = "debug"

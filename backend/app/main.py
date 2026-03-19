@@ -31,6 +31,7 @@ from backend.engine.rules.grim_fronteira.lobby import (
     submit_character_name,
     submit_character_feature,
     start_game,
+    begin_table,
 )
 
 app = FastAPI(title="Grim Fronteira API", version="0.1.0")
@@ -366,6 +367,25 @@ def action(req: ActionRequest) -> ActionResponse:
         game = start_game(game, actor_id=actor_id, seed=seed)
         mutated = True
         result = {"ok": True, "action": req.action, "phase": "started"}
+
+    elif req.action == "gf.begin_table":
+        params = req.params
+        actor_id = params.get("actor_id")
+        selected_hook = params.get("selected_hook")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if selected_hook is not None and not isinstance(selected_hook, str):
+            raise HTTPException(status_code=400, detail="params.selected_hook must be a string or omitted")
+
+        game = begin_table(game, actor_id=actor_id, selected_hook=selected_hook)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "phase": "table",
+            "selected_hook": selected_hook,
+        }
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'")
