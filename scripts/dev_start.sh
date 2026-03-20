@@ -19,20 +19,19 @@ trap cleanup EXIT INT TERM
 echo "== Grim Fronteira dev start =="
 echo "Project root: $ROOT_DIR"
 
-cd "$ROOT_DIR"
-
-echo
-echo "Starting backend on http://${BACKEND_HOST}:${BACKEND_PORT}"
-PYTHONPATH=. uvicorn backend.app.main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" &
+(
+  cd "$ROOT_DIR"
+  PYTHONPATH=. uvicorn backend.app.main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT"
+) &
 BACKEND_PID=$!
 
-echo "Backend PID: $BACKEND_PID"
-
-echo
-echo "Starting frontend on http://${BACKEND_HOST}:${FRONTEND_PORT}"
-npm run dev &
+(
+  cd "$ROOT_DIR/frontend"
+  npm run dev
+) &
 FRONTEND_PID=$!
 
+echo "Backend PID: $BACKEND_PID"
 echo "Frontend PID: $FRONTEND_PID"
 
 echo

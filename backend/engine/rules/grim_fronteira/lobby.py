@@ -85,6 +85,9 @@ def _registered_players(game: GameState) -> List[str]:
         return [x for x in order if isinstance(x, str)]
     return []
 
+def _non_marshal_players(game: GameState) -> list[str]:
+    marshal_id = (game.meta or {}).get("marshal_id")
+    return [pid for pid in _registered_players(game) if pid != marshal_id]
 
 def _require_lobby(game: GameState) -> None:
     if (game.meta or {}).get("phase") != "lobby":
@@ -379,7 +382,11 @@ def start_game(game: GameState, actor_id: str, seed: int | None = None) -> GameS
     if not_ready:
         raise ValueError(f"Cannot start game: players not ready: {', '.join(not_ready)}")
 
-    missing = [pid for pid in _registered_players(game) if not _player_has_character(game, pid)]
+    missing = [
+        pid
+        for pid in _non_marshal_players(game)
+        if not _player_has_character(game, pid)
+    ]
     if missing:
         raise ValueError(f"Cannot start game: players without character: {', '.join(missing)}")
 

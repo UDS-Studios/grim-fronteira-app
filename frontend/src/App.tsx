@@ -6,6 +6,7 @@ import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
 import StartedView from "./views/StartedView";
+import HookSelectionView from "./views/HookSelectionView";
 import RegistrationClosedView from "./views/RegistrationClosedView";
 import type { MetaAny } from "./views/types";
 
@@ -253,7 +254,18 @@ export default function App() {
             />
           )}
 
-          {resp && phase === "started" && <StartedView resp={resp} view={view} />}
+          {resp && phase === "hook_selection" && (
+            <HookSelectionView
+              resp={resp}
+              view={view}
+              currentActorId={currentActorId}
+              run={run}
+            />
+          )}
+
+          {resp && (phase === "started" || phase === "table") && (
+            <StartedView resp={resp} view={view} />
+          )}
 
           <pre
             style={{
