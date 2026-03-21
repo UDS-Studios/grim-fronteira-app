@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from random import random
+from random import randrange
 from typing import List
 
 from backend.engine.grimdeck.models import CardID
@@ -408,7 +408,7 @@ def start_game(game: GameState, actor_id: str, seed: int | None = None) -> GameS
     meta["lobby"] = lobby
 
     if seed is None:
-        seed = random.randrange(1 << 30)
+        seed = randrange(1 << 30)
 
     meta["phase"] = "hook_selection"
     meta["hooks"] = {

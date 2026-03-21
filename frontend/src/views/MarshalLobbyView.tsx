@@ -336,7 +336,7 @@ export default function MarshalLobbyView({
                   gfAction({
                     game_id: resp.game_id,
                     action: "gf.start_game",
-                    params: { actor_id: effectiveActorId, seed: 999 },
+                    params: { actor_id: effectiveActorId },
                     view,
                   })
                 )
