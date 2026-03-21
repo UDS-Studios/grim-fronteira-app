@@ -8,6 +8,7 @@ import LobbyView from "./views/LobbyView";
 import StartedView from "./views/StartedView";
 import HookSelectionView from "./views/HookSelectionView";
 import RegistrationClosedView from "./views/RegistrationClosedView";
+import TableRouterView from "./views/TableRouterView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
@@ -264,7 +265,18 @@ export default function App() {
           )}
 
           {resp && (phase === "started" || phase === "table") && (
-            <StartedView resp={resp} view={view} />
+            <TableRouterView
+              resp={resp}
+              view={view}
+              currentActorId={currentActorId}
+              run={run}
+              onBackHome={() => {
+                setResp(null);
+                setGameId("");
+                setJoinGameId("");
+                setScreen("home");
+              }}
+            />
           )}
 
           <pre
