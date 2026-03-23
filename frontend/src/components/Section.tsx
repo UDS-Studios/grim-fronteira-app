@@ -9,10 +9,11 @@ export default function Section({ title, children }: SectionProps) {
   return (
     <div
       style={{
-        border: "1px solid #333",
+        border: "1px solid var(--border-strong)",
         borderRadius: 14,
         padding: 14,
-        background: "#faf8f2",
+        background: "var(--surface-bg)",
+        minHeight: 0,
       }}
     >
       <div style={{ fontWeight: 900, marginBottom: 10 }}>{title}</div>

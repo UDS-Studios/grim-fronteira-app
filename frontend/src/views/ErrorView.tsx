@@ -9,19 +9,22 @@ export default function ErrorView({ error, onBackHome }: ErrorViewProps) {
   return (
     <div
       style={{
-        minHeight: "70vh",
+        height: "100%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        overflow: "auto",
+        padding: 8,
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
-          background: "#fff4f4",
-          border: "1px solid #c00",
+          background: "var(--danger-bg)",
+          border: "1px solid var(--danger-border)",
           borderRadius: 16,
           padding: 24,
-          minWidth: 420,
+          width: "min(420px, 100%)",
           display: "grid",
           gap: 16,
           justifyItems: "center",
@@ -31,7 +34,7 @@ export default function ErrorView({ error, onBackHome }: ErrorViewProps) {
           src="/ui/error-404.png"
           alt="Error 404"
           style={{
-            width: 300,
+            width: "min(300px, 100%)",
             height: "auto",
             display: "block",
           }}

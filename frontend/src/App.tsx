@@ -5,7 +5,6 @@ import { getFreshPlayerId, getOrCreateClientId } from "./utils/identity";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
-import StartedView from "./views/StartedView";
 import HookSelectionView from "./views/HookSelectionView";
 import RegistrationClosedView from "./views/RegistrationClosedView";
 import TableRouterView from "./views/TableRouterView";
@@ -104,92 +103,118 @@ export default function App() {
   const state = (resp?.state as any) ?? {};
   const meta: MetaAny = state.meta ?? {};
   const phase = meta.phase ?? "no-game";
+  const viewportHeight = "calc(100vh - 32px)";
+  const useScrollableGameContent = phase === "lobby";
 
   return (
     <div
       style={{
         padding: 16,
+        boxSizing: "border-box",
         fontFamily: "system-ui, sans-serif",
-        background: "#efe3c2",
+        background: "var(--app-bg)",
         minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       {screen === "home" && (
-        <HomeView
-          joinGameId={joinGameId}
-          setJoinGameId={setJoinGameId}
-          onNewGame={() =>
-            run(
-              newGame({
-                creator_id: currentActorId,
-                template_path: "data/templates/standard_54.json",
-                seed: 42,
-                view,
-              })
-            )
-          }
-          onJoinGame={async () => {
-            const r = await run(getGame(joinGameId, view));
-            if (r.error) return;
-
-            const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
-            const lobby = loadedMeta.lobby ?? {};
-            const marshalId = loadedMeta.marshal_id ?? "";
-
-            if (!lobby.registration_open) {
-              setClosedGameId(r.game_id);
-              setClosedMarshalId(marshalId);
-              setScreen("registration-closed");
-              return;
-            }
-
-            const freshPlayerId = getFreshPlayerId();
-
-            const joinResp = await run(
-              gfAction({
-                game_id: r.game_id,
-                action: "gf.join_lobby",
-                params: { player_id: freshPlayerId },
-                view,
-              })
-            );
-            if (joinResp.error) return;
-
-            setCurrentActorId(freshPlayerId);
-            setSelectedPlayerId(freshPlayerId);
+        <div
+          style={{
+            height: viewportHeight,
+            minHeight: 0,
+            overflow: "hidden",
+            flexShrink: 0,
           }}
-        />
+        >
+          <HomeView
+            joinGameId={joinGameId}
+            setJoinGameId={setJoinGameId}
+            onNewGame={() =>
+              run(
+                newGame({
+                  creator_id: currentActorId,
+                  template_path: "data/templates/standard_54.json",
+                  seed: 42,
+                  view,
+                })
+              )
+            }
+            onJoinGame={async () => {
+              const r = await run(getGame(joinGameId, view));
+              if (r.error) return;
+
+              const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
+              const lobby = loadedMeta.lobby ?? {};
+              const marshalId = loadedMeta.marshal_id ?? "";
+
+              if (!lobby.registration_open) {
+                setClosedGameId(r.game_id);
+                setClosedMarshalId(marshalId);
+                setScreen("registration-closed");
+                return;
+              }
+
+              const freshPlayerId = getFreshPlayerId();
+
+              const joinResp = await run(
+                gfAction({
+                  game_id: r.game_id,
+                  action: "gf.join_lobby",
+                  params: { player_id: freshPlayerId },
+                  view,
+                })
+              );
+              if (joinResp.error) return;
+
+              setCurrentActorId(freshPlayerId);
+              setSelectedPlayerId(freshPlayerId);
+            }}
+          />
+        </div>
       )}
 
       {screen === "registration-closed" && (
-        <RegistrationClosedView
-          gameId={closedGameId}
-          marshalId={closedMarshalId}
-          onBackHome={() => {
-            setResp(null);
-            setGameId("");
-            setJoinGameId("");
-            setClosedGameId("");
-            setClosedMarshalId("");
-            setScreen("home");
-          }}
-        />
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <RegistrationClosedView
+            gameId={closedGameId}
+            marshalId={closedMarshalId}
+            onBackHome={() => {
+              setResp(null);
+              setGameId("");
+              setJoinGameId("");
+              setClosedGameId("");
+              setClosedMarshalId("");
+              setScreen("home");
+            }}
+          />
+        </div>
       )}
 
       {screen === "error" && resp && (
-        <ErrorView
-          error={resp}
-          onBackHome={() => {
-            setResp(null);
-            setGameId("");
-            setJoinGameId("");
-            setScreen("home");
-          }}
-        />
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <ErrorView
+            error={resp}
+            onBackHome={() => {
+              setResp(null);
+              setGameId("");
+              setJoinGameId("");
+              setScreen("home");
+            }}
+          />
+        </div>
       )}
 
       {screen === "game" && (
-        <>
+        <div
+          style={{
+            height: viewportHeight,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            flexShrink: 0,
+          }}
+        >
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <label>
               View:&nbsp;
@@ -218,9 +243,9 @@ export default function App() {
               style={{
                 marginTop: 12,
                 padding: 12,
-                border: "1px solid #c00",
+                border: "1px solid var(--danger-border)",
                 borderRadius: 10,
-                background: "#fff4f4",
+                background: "var(--danger-bg)",
               }}
             >
               <b>Error:</b> {resp.error.code} — {resp.error.message}
@@ -233,64 +258,79 @@ export default function App() {
             <div><b>phase:</b> {phase}</div>
           </div>
 
-          {resp && phase === "lobby" && (
-            <LobbyView
-              resp={resp}
-              view={view}
-              currentActorId={currentActorId}
-              joinPlayerId={joinPlayerId}
-              setJoinPlayerId={setJoinPlayerId}
-              selectedPlayerId={selectedPlayerId}
-              setSelectedPlayerId={setSelectedPlayerId}
-              claimCardId={claimCardId}
-              setClaimCardId={setClaimCardId}
-              run={run}
-              setResp={setResp}
-              onBackHome={() => {
-                setResp(null);
-                setGameId("");
-                setJoinGameId("");
-                setScreen("home");
-              }}
-            />
-          )}
-
-          {resp && phase === "hook_selection" && (
-            <HookSelectionView
-              resp={resp}
-              view={view}
-              currentActorId={currentActorId}
-              run={run}
-            />
-          )}
-
-          {resp && (phase === "started" || phase === "table") && (
-            <TableRouterView
-              resp={resp}
-              view={view}
-              currentActorId={currentActorId}
-              run={run}
-              onBackHome={() => {
-                setResp(null);
-                setGameId("");
-                setJoinGameId("");
-                setScreen("home");
-              }}
-            />
-          )}
-
-          <pre
+          <div
             style={{
-              marginTop: 14,
-              padding: 12,
-              border: "1px solid #ddd",
-              overflowX: "auto",
-              background: "#fff",
+              flex: 1,
+              minHeight: 0,
+              overflowY: useScrollableGameContent ? "auto" : "hidden",
+              overflowX: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            {resp ? JSON.stringify(resp, null, 2) : "No state yet."}
-          </pre>
-        </>
+            {resp && phase === "lobby" && (
+              <LobbyView
+                resp={resp}
+                view={view}
+                currentActorId={currentActorId}
+                joinPlayerId={joinPlayerId}
+                setJoinPlayerId={setJoinPlayerId}
+                selectedPlayerId={selectedPlayerId}
+                setSelectedPlayerId={setSelectedPlayerId}
+                claimCardId={claimCardId}
+                setClaimCardId={setClaimCardId}
+                run={run}
+                setResp={setResp}
+                onBackHome={() => {
+                  setResp(null);
+                  setGameId("");
+                  setJoinGameId("");
+                  setScreen("home");
+                }}
+              />
+            )}
+
+            {resp && phase === "hook_selection" && (
+              <HookSelectionView
+                resp={resp}
+                view={view}
+                currentActorId={currentActorId}
+                run={run}
+              />
+            )}
+
+            {resp && (phase === "started" || phase === "table") && (
+              <TableRouterView
+                resp={resp}
+                view={view}
+                currentActorId={currentActorId}
+                run={run}
+                onBackHome={() => {
+                  setResp(null);
+                  setGameId("");
+                  setJoinGameId("");
+                  setScreen("home");
+                }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {resp && screen !== "home" && (
+        <pre
+          style={{
+            marginTop: 14,
+            marginBottom: 0,
+            padding: 12,
+            border: "1px solid var(--border-muted)",
+            overflow: "auto",
+            background: "var(--surface-strong)",
+            minHeight: 120,
+          }}
+        >
+          {JSON.stringify(resp, null, 2)}
+        </pre>
       )}
     </div>
   );

@@ -14,19 +14,22 @@ export default function HomeView({
   return (
     <div
       style={{
-        minHeight: "70vh",
+        height: "100%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        overflow: "auto",
+        padding: 8,
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
-          background: "#faf8f2",
-          border: "1px solid #333",
+          background: "var(--surface-bg)",
+          border: "1px solid var(--border-strong)",
           borderRadius: 16,
           padding: 24,
-          minWidth: 760,
+          width: "min(760px, 100%)",
           display: "grid",
           gap: 22,
         }}
@@ -60,7 +63,7 @@ export default function HomeView({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
             gap: 28,
             alignItems: "start",
           }}

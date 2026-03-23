@@ -14,11 +14,14 @@ export default function PlayerTableView({
   return (
     <div
       style={{
-        marginTop: 20,
-        border: "1px solid #333",
+        marginTop: 12,
+        flex: 1,
+        minHeight: 0,
+        border: "1px solid var(--border-strong)",
         borderRadius: 16,
         padding: 20,
-        background: "#faf8f2",
+        background: "var(--surface-bg)",
+        overflow: "auto",
       }}
     >
       <h2 style={{ marginTop: 0 }}>Player Control Center</h2>

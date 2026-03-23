@@ -35,10 +35,10 @@ export default function PlayerSummaryCard({
   return (
     <div
       style={{
-        border: "1px solid #bbb",
+        border: "1px solid var(--border-muted)",
         borderRadius: 12,
         padding: 10,
-        background: "#fff",
+        background: "var(--surface-strong)",
         display: "grid",
         gap: 8,
       }}

@@ -328,8 +328,9 @@ export default function PlayerLobbyView({
                   textAlign: "left",
                   padding: "10px 12px",
                   borderRadius: 10,
-                  border: "1px solid #bbb",
-                  background: "#fff",
+                  border: "1px solid var(--border-muted)",
+                  background: "var(--surface-strong)",
+                  color: "var(--text-primary)",
                   cursor: "pointer",
                 }}
               >
@@ -379,8 +380,9 @@ export default function PlayerLobbyView({
                   textAlign: "left",
                   padding: "10px 12px",
                   borderRadius: 10,
-                  border: "1px solid #bbb",
-                  background: "#fff",
+                  border: "1px solid var(--border-muted)",
+                  background: "var(--surface-strong)",
+                  color: "var(--text-primary)",
                   cursor: "pointer",
                 }}
               >
@@ -427,7 +429,7 @@ export default function PlayerLobbyView({
               opacity: 0.85,
               fontFamily: "LavaArabic, serif",
               fontSize: "1.5rem",
-              color: `rgba(0, 0, 0, ${isWaitingMessageVisible ? 0.5 : 0.2})`,
+              color: isWaitingMessageVisible ? "var(--text-muted)" : "color-mix(in srgb, var(--text-primary) 28%, transparent)",
             }}
           >
             Waiting for the Marshal to start the game.
@@ -443,10 +445,10 @@ export default function PlayerLobbyView({
     <div
       style={{
         marginTop: 12,
-        border: "1px solid #333",
+        border: "1px solid var(--border-strong)",
         borderRadius: 16,
         padding: 16,
-        background: "#faf8f2",
+        background: "var(--surface-bg)",
         display: "grid",
         gap: 14,
       }}
@@ -479,8 +481,10 @@ export default function PlayerLobbyView({
             display: "flex",
             flexWrap: "wrap",
             gap: 10,
-            minHeight: 110,
+            minHeight: 120,
             alignItems: "center",
+            overflow: "visible",
+            padding: "6px 2px 10px",
           }}
         >
           {availableFigures.length === 0 ? (
@@ -558,7 +562,7 @@ export default function PlayerLobbyView({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "240px 1fr",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
           gap: 14,
           alignItems: "stretch",
         }}
@@ -570,10 +574,15 @@ export default function PlayerLobbyView({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              padding: "12px 0",
             }}
           >
             {myCardId ? (
-              <CardImg cardId={myCardId} width={180} title={myCardId} />
+              <CardImg
+                cardId={myCardId}
+                width="clamp(180px, 22vw, 260px)"
+                title={myCardId}
+              />
             ) : (
               <div style={{ opacity: 0.65, textAlign: "center" }}>
                 Choose your figure
@@ -583,7 +592,7 @@ export default function PlayerLobbyView({
         </Section>
 
         <Section title="Informations">
-          {renderInfoContent()}
+          <div>{renderInfoContent()}</div>
         </Section>
       </div>
     </div>

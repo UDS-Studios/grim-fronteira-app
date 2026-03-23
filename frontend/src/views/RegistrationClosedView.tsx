@@ -13,10 +13,13 @@ export default function RegistrationClosedView({
   return (
     <div
       style={{
-        minHeight: "70vh",
+        height: "100%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        overflow: "auto",
+        padding: 8,
+        boxSizing: "border-box",
       }}
     >
       <div
@@ -25,7 +28,7 @@ export default function RegistrationClosedView({
           border: "1px solid #333",
           borderRadius: 16,
           padding: 24,
-          minWidth: 520,
+          width: "min(520px, 100%)",
           display: "grid",
           gap: 16,
           justifyItems: "center",
@@ -35,7 +38,7 @@ export default function RegistrationClosedView({
           src="/registration-closed.png"
           alt="Registration Closed"
           style={{
-            width: 360,
+            width: "min(360px, 100%)",
             height: "auto",
             display: "block",
           }}

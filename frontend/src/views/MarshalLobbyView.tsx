@@ -113,10 +113,10 @@ export default function MarshalLobbyView({
     <div
       style={{
         marginTop: 12,
-        border: "1px solid #333",
+        border: "1px solid var(--border-strong)",
         borderRadius: 16,
         padding: 16,
-        background: "#faf8f2",
+        background: "var(--surface-bg)",
         display: "grid",
         gap: 14,
       }}
@@ -158,7 +158,7 @@ export default function MarshalLobbyView({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "120px 1fr 180px",
+          gridTemplateColumns: "120px minmax(0, 1fr) 180px",
           gap: 12,
           alignItems: "center",
         }}
@@ -194,287 +194,333 @@ export default function MarshalLobbyView({
         </div>
       </div>
 
-      <Section title="Marshal Controls">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 16,
-          }}
-        >
+      <div style={{ display: "grid", gap: 14 }}>
+        <Section title="Marshal Controls">
           <div
             style={{
-              border: "1px solid #bbb",
-              borderRadius: 12,
-              padding: 14,
-              background: "#fffdf7",
               display: "grid",
-              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+              gap: 16,
+              alignItems: "start",
             }}
           >
             <div
               style={{
-                textAlign: "center",
-                fontFamily: "LavaArabic, serif",
-                fontSize: "1.8em",
-                letterSpacing: "0.04em",
-              }}
-            >
-              Character Creation
-            </div>
-
-            <div
-              style={{
+                border: "1px solid var(--border-muted)",
+                borderRadius: 12,
+                padding: 14,
+                background: "var(--surface-muted)",
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
+                gap: 12,
+                alignContent: "start",
               }}
             >
-              <button
-                type="button"
-                onClick={() =>
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.set_character_assignment_mode",
-                      params: { actor_id: effectiveActorId, mode: "choice" },
-                      view,
-                    })
-                  )
-                }
-                disabled={!isMarshal || assignmentLocked}
+              <div
                 style={{
+                  textAlign: "center",
                   fontFamily: "LavaArabic, serif",
-                  letterSpacing: "0.05em",
                   fontSize: "1.8em",
-                  fontWeight: 900,
-                  opacity: assignmentMode === "choice" ? 1 : 0.7,
-                  background: assignmentMode === "choice" ? "#f2e1b0" : "#f3f3f3",
-                  border: assignmentMode === "choice" ? "2px solid #8b5a2b" : "1px solid #bbb",
-                  boxShadow: assignmentMode === "choice" ? "inset 0 0 0 1px #c89b5d" : "none",
+                  letterSpacing: "0.04em",
                 }}
               >
-                CHOICE
-              </button>
+                Character Creation
+              </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.set_character_assignment_mode",
-                      params: { actor_id: effectiveActorId, mode: "random" },
-                      view,
-                    })
-                  )
-                }
-                disabled={!isMarshal || assignmentLocked}
+              <div
                 style={{
-                  fontFamily: "LavaArabic, serif",
-                  letterSpacing: "0.05em",
-                  fontSize: "1.8em",
-                  fontWeight: 900,
-                  opacity: assignmentMode === "random" ? 1 : 0.7,
-                  background: assignmentMode === "random" ? "#f2e1b0" : "#f3f3f3",
-                  border: assignmentMode === "random" ? "2px solid #8b5a2b" : "1px solid #bbb",
-                  boxShadow: assignmentMode === "random" ? "inset 0 0 0 1px #c89b5d" : "none",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                  alignItems: "stretch",
                 }}
               >
-                RANDOM
-              </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    run(
+                      gfAction({
+                        game_id: resp.game_id,
+                        action: "gf.set_character_assignment_mode",
+                        params: { actor_id: effectiveActorId, mode: "choice" },
+                        view,
+                      })
+                    )
+                  }
+                  disabled={!isMarshal || assignmentLocked}
+                  style={{
+                    fontFamily: "LavaArabic, serif",
+                    letterSpacing: "0.05em",
+                    fontSize: "1.45em",
+                    fontWeight: 900,
+                    color: "var(--text-primary)",
+                    opacity: assignmentMode === "choice" ? 1 : 0.7,
+                    background: assignmentMode === "choice"
+                      ? "var(--surface-hover)"
+                      : "var(--surface-strong)",
+                    border: assignmentMode === "choice"
+                      ? "2px solid var(--border-strong)"
+                      : "1px solid var(--border-muted)",
+                    boxShadow: assignmentMode === "choice"
+                      ? "inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 35%, transparent)"
+                      : "none",
+                    minHeight: 84,
+                    lineHeight: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "12px 16px",
+                  }}
+                >
+                  CHOICE
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    run(
+                      gfAction({
+                        game_id: resp.game_id,
+                        action: "gf.set_character_assignment_mode",
+                        params: { actor_id: effectiveActorId, mode: "random" },
+                        view,
+                      })
+                    )
+                  }
+                  disabled={!isMarshal || assignmentLocked}
+                  style={{
+                    fontFamily: "LavaArabic, serif",
+                    letterSpacing: "0.05em",
+                    fontSize: "1.45em",
+                    fontWeight: 900,
+                    color: "var(--text-primary)",
+                    opacity: assignmentMode === "random" ? 1 : 0.7,
+                    background: assignmentMode === "random"
+                      ? "var(--surface-hover)"
+                      : "var(--surface-strong)",
+                    border: assignmentMode === "random"
+                      ? "2px solid var(--border-strong)"
+                      : "1px solid var(--border-muted)",
+                    boxShadow: assignmentMode === "random"
+                      ? "inset 0 0 0 1px color-mix(in srgb, var(--border-strong) 35%, transparent)"
+                      : "none",
+                    minHeight: 84,
+                    lineHeight: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "12px 16px",
+                  }}
+                >
+                  RANDOM
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div
-            style={{
-              border: "1px solid #bbb",
-              borderRadius: 12,
-              padding: 14,
-              background: "#fffdf7",
-              display: "grid",
-              gap: 12,
-            }}
-          >
             <div
               style={{
-                textAlign: "center",
-                fontFamily: "LavaArabic, serif",
-                fontSize: "1.8em",
-                letterSpacing: "0.04em",
+                border: "1px solid var(--border-muted)",
+                borderRadius: 12,
+                padding: 14,
+                background: "var(--surface-muted)",
+                display: "grid",
+                gap: 12,
+                alignContent: "start",
               }}
             >
-              Game
+              <div
+                style={{
+                  textAlign: "center",
+                  fontFamily: "LavaArabic, serif",
+                  fontSize: "1.8em",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Game
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  run(
+                    gfAction({
+                      game_id: resp.game_id,
+                      action: "gf.set_registration_open",
+                      params: { actor_id: effectiveActorId, is_open: !registrationOpen },
+                      view,
+                    })
+                  )
+                }
+                disabled={!isMarshal}
+                style={{
+                  fontFamily: "LavaArabic, serif",
+                  letterSpacing: "0.05em",
+                  fontSize: "1.45em",
+                  minHeight: 56,
+                  lineHeight: 1.05,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "12px 16px",
+                }}
+              >
+                {registrationOpen ? "Close Registration" : "Reopen Registration"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  run(
+                    gfAction({
+                      game_id: resp.game_id,
+                      action: "gf.start_game",
+                      params: { actor_id: effectiveActorId },
+                      view,
+                    })
+                  )
+                }
+                disabled={!isMarshal || !allPlayersReady}
+                style={{
+                  fontFamily: "LavaArabic, serif",
+                  fontSize: "1.9em",
+                  letterSpacing: "0.05em",
+                  fontWeight: 900,
+                  color: "var(--accent-danger)",
+                  opacity: !allPlayersReady ? 0.55 : 1,
+                  minHeight: 64,
+                  lineHeight: 1.05,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "14px 18px",
+                }}
+                title={
+                  allPlayersReady
+                    ? "Start the game"
+                    : "All non-marshal players must finalize their character first"
+                }
+              >
+                Start Game
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                run(
-                  gfAction({
-                    game_id: resp.game_id,
-                    action: "gf.set_registration_open",
-                    params: { actor_id: effectiveActorId, is_open: !registrationOpen },
-                    view,
-                  })
-                )
-              }
-              disabled={!isMarshal}
-              style={{
-                fontFamily: "LavaArabic, serif",
-                letterSpacing: "0.05em",
-                fontSize: "1.8em",
-              }}
-            >
-              {registrationOpen ? "Close Registration" : "Reopen Registration"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                run(
-                  gfAction({
-                    game_id: resp.game_id,
-                    action: "gf.start_game",
-                    params: { actor_id: effectiveActorId },
-                    view,
-                  })
-                )
-              }
-              disabled={!isMarshal || !allPlayersReady}
-              style={{
-                fontFamily: "LavaArabic, serif",
-                fontSize: "2.3em",
-                letterSpacing: "0.05em",
-                fontWeight: 900,
-                color: "#7a1f1f",
-                opacity: !allPlayersReady ? 0.55 : 1,
-              }}
-              title={
-                allPlayersReady
-                  ? "Start the game"
-                  : "All non-marshal players must finalize their character first"
-              }
-            >
-              Start Game
-            </button>
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Available Figures">
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 10,
-            minHeight: 110,
-            alignItems: "center",
-          }}
-        >
-          {availableFigures.length === 0 ? (
-            <div style={{ opacity: 0.7 }}>— no figures available —</div>
-          ) : assignmentMode === "random" ? (
-            availableFigures.map((_, idx) => (
-              <CardImg
-                key={`marshal-hidden-${idx}`}
-                cardId="BACK"
-                faceDown
-                width={86}
-                title="Hidden figure"
-              />
-            ))
-          ) : (
-            availableFigures.map((c) => (
-              <CardImg
-                key={c}
-                cardId={c}
-                width={86}
-                title={Object.values(claimedFigures).includes(c) ? `${c} already claimed` : c}
-              />
-            ))
-          )}
-        </div>
-      </Section>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 14,
-        }}
-      >
-        <Section title="Informations">
-          <div style={{ display: "grid", gap: 8 }}>
-            <div><b>players joined:</b> {joinedPlayers.length}</div>
-            <div><b>registration:</b> {registrationOpen ? "open" : "closed"}</div>
-            <div><b>assignment:</b> {assignmentMode}</div>
-            <div><b>locked:</b> {assignmentLocked ? "yes" : "no"}</div>
-            <div><b>available figures:</b> {availableCount}</div>
-            <div><b>all players ready:</b> {allPlayersReady ? "yes" : "no"}</div>
           </div>
         </Section>
 
-        <Section title="Players in Saloon">
-          <div style={{ display: "grid", gap: 8 }}>
-            {joinedPlayers.length === 0 ? (
-              <div style={{ opacity: 0.7 }}>— nobody yet —</div>
+        <Section title="Available Figures">
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              minHeight: 120,
+              alignItems: "center",
+              overflow: "visible",
+              padding: "6px 2px 10px",
+            }}
+          >
+            {availableFigures.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>— no figures available —</div>
+            ) : assignmentMode === "random" ? (
+              availableFigures.map((_, idx) => (
+                <CardImg
+                  key={`marshal-hidden-${idx}`}
+                  cardId="BACK"
+                  faceDown
+                  width={86}
+                  title="Hidden figure"
+                />
+              ))
             ) : (
-              joinedPlayers.map((pid) => {
-                const pstate = lobbyPlayers[pid] ?? {};
-                const { prefix, summary } = renderPlayerSaloonText(pid, pstate);
-                const stage = pstate.stage ?? "waiting_for_figure";
-                const isReady = stage === "ready";
-
-                let statusColor = "#bbb";
-                if (stage === "waiting_for_name" || stage === "waiting_for_feature") {
-                  statusColor = "#d9b94b";
-                }
-                if (stage === "ready") {
-                  statusColor = "#5aa65a";
-                }
-
-                return (
-                  <button
-                    key={pid}
-                    type="button"
-                    onClick={() => setSelectedPlayerId(pid)}
-                    style={{
-                      textAlign: "left",
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      border: selectedPlayerId === pid ? "2px solid #8b5a2b" : "1px solid #bbb",
-                      background: isReady
-                        ? "#e7f4e4"
-                        : selectedPlayerId === pid
-                        ? "#fff8ea"
-                        : "#fff",
-                      cursor: "pointer",
-                    }}
-                    title={pid}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: statusColor,
-                          flexShrink: 0,
-                        }}
-                      />
-
-                      <div style={{ fontSize: 14, opacity: 0.9 }}>
-                        {prefix}
-                        <b>{summary}</b>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })
+              availableFigures.map((c) => (
+                <CardImg
+                  key={c}
+                  cardId={c}
+                  width={86}
+                  title={Object.values(claimedFigures).includes(c) ? `${c} already claimed` : c}
+                />
+              ))
             )}
           </div>
         </Section>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+            gap: 14,
+          }}
+        >
+          <Section title="Informations">
+            <div style={{ display: "grid", gap: 8 }}>
+              <div><b>players joined:</b> {joinedPlayers.length}</div>
+              <div><b>registration:</b> {registrationOpen ? "open" : "closed"}</div>
+              <div><b>assignment:</b> {assignmentMode}</div>
+              <div><b>locked:</b> {assignmentLocked ? "yes" : "no"}</div>
+              <div><b>available figures:</b> {availableCount}</div>
+              <div><b>all players ready:</b> {allPlayersReady ? "yes" : "no"}</div>
+            </div>
+          </Section>
+
+          <Section title="Players in Saloon">
+            <div style={{ display: "grid", gap: 8 }}>
+              {joinedPlayers.length === 0 ? (
+                <div style={{ opacity: 0.7 }}>— nobody yet —</div>
+              ) : (
+                joinedPlayers.map((pid) => {
+                  const pstate = lobbyPlayers[pid] ?? {};
+                  const { prefix, summary } = renderPlayerSaloonText(pid, pstate);
+                  const stage = pstate.stage ?? "waiting_for_figure";
+                  const isReady = stage === "ready";
+
+                  let statusColor = "#bbb";
+                  if (stage === "waiting_for_name" || stage === "waiting_for_feature") {
+                    statusColor = "#d9b94b";
+                  }
+                  if (stage === "ready") {
+                    statusColor = "#5aa65a";
+                  }
+
+                  return (
+                    <button
+                      key={pid}
+                      type="button"
+                      onClick={() => setSelectedPlayerId(pid)}
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: selectedPlayerId === pid ? "2px solid #8b5a2b" : "1px solid #bbb",
+                        background: isReady
+                          ? "#e7f4e4"
+                          : selectedPlayerId === pid
+                          ? "#fff8ea"
+                          : "#fff",
+                        cursor: "pointer",
+                      }}
+                      title={pid}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: statusColor,
+                            flexShrink: 0,
+                          }}
+                        />
+
+                        <div style={{ fontSize: 14, opacity: 0.9 }}>
+                          {prefix}
+                          <b>{summary}</b>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </Section>
+        </div>
       </div>
     </div>
   );
