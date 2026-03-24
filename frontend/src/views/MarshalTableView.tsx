@@ -3,7 +3,7 @@ import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import TableZone from "../components/TableZone";
 import PlayerSummaryCard from "../components/PlayerSummaryCard";
-import { getGame } from "../api/gf";
+import { getGame, gfAction } from "../api/gf";
 import type { ActionResponse, View } from "../api/types";
 
 type MarshalTableViewProps = {
@@ -72,8 +72,6 @@ function PlayerLane({
   playedCards: string[];
 }) {
   const displayName = pstate.chosen_name ?? playerId;
-  const label = pstate.character_label ?? "Unknown";
-  const feature = pstate.chosen_feature ?? null;
 
   return (
     <div
@@ -203,6 +201,7 @@ function SelectablePlayerCard({
 export default function MarshalTableView({
   resp,
   view,
+  currentActorId,
   run,
   onBackHome,
 }: MarshalTableViewProps) {
@@ -270,13 +269,14 @@ export default function MarshalTableView({
   }, [backendParticipantIds, selectedParticipantIds]);
 
   const isLocked = localSetupState === "locked";
-  const hasDifficulty =
-    difficultyCards.length > 0 || localSetupState !== "idle";
+  const hasDifficulty = scene?.difficulty?.card_id != null;
   const hasAzzardo =
-    hiddenDifficultyCards.length > 0 || localSetupState === "azzardo_drawn";
+    scene?.azzardo?.card_id != null ||
+    hiddenDifficultyCards.length > 0 ||
+    localSetupState === "azzardo_drawn";
 
   const canDeckClick =
-    localSetupState === "idle" || localSetupState === "difficulty_drawn";
+    !isLocked && (!hasDifficulty || (hasDifficulty && !hasAzzardo));
 
   const canStartScene = !isLocked && hasDifficulty && participantIds.length > 0;
 
@@ -289,25 +289,69 @@ export default function MarshalTableView({
   }, [nonMarshalPlayers, participantIds]);
 
 
-  function toggleParticipant(pid: string) {
+  async function toggleParticipant(pid: string) {
     if (isLocked) return;
-    setSelectedParticipantIds((prev) =>
-      prev.includes(pid) ? prev.filter((x) => x !== pid) : [...prev, pid]
+
+    const nextParticipants = participantIds.includes(pid)
+      ? participantIds.filter((x) => x !== pid)
+      : [...participantIds, pid];
+
+    const next = await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_set_participants",
+        params: {
+          actor_id: currentActorId,
+          participants_ids: nextParticipants,
+        },
+        view,
+      })
     );
+
+    if (!next.error) {
+      setSelectedParticipantIds(nextParticipants);
+    }
   }
 
-  function handleDeckClick() {
+  async function handleDeckClick() {
     if (isLocked) return;
 
     if (localSetupState === "idle") {
-      console.log("TODO: gf.roll_difficulty");
-      setLocalSetupState("difficulty_drawn");
+      const next = await run(
+        gfAction({
+          game_id: resp.game_id,
+          action: "gf.scene_roll_difficulty",
+          params: {
+            actor_id: currentActorId,
+          },
+          view,
+        })
+      );
+
+      if (!next.error) {
+        setLocalSetupState("difficulty_drawn");
+      }
+
       return;
     }
 
     if (localSetupState === "difficulty_drawn") {
-      console.log("TODO: gf.draw_azzardo");
-      setLocalSetupState("azzardo_drawn");
+      if (hasDifficulty && !hasAzzardo) {
+        const next = await run(
+          gfAction({
+            game_id: resp.game_id,
+            action: "gf.scene_draw_azzardo",
+            params: {
+              actor_id: currentActorId,
+            },
+            view,
+          })
+        );
+
+        if (!next.error) {
+          setLocalSetupState("azzardo_drawn");
+        }
+      }
     }
   }
 
@@ -319,14 +363,23 @@ export default function MarshalTableView({
     setLocalSetupState("difficulty_drawn");
   }
 
-  function handleStartScene() {
+  async function handleStartScene() {
     if (!canStartScene) return;
 
-    console.log("TODO: gf.start_scene", {
-      participants: selectedParticipantIds,
-    });
+    const next = await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_start",
+        params: {
+          actor_id: currentActorId,
+        },
+        view,
+      })
+    );
 
-    setLocalSetupState("locked");
+    if (!next.error) {
+      setLocalSetupState("locked");
+    }
   }
 
   function getSceneInstruction(): string {
@@ -341,17 +394,10 @@ export default function MarshalTableView({
     return "";
   }
 
-  function getLocalDifficultyCardId(): string | null {
-    if (difficultyCards.length > 0) return difficultyCards[0];
-
-    // Placeholder until backend returns the real drawn card.
-    // Use a visible mock card, not a face-down back.
-    if (localSetupState === "idle") return null;
-
-    return "10H"; // or another visible placeholder card id that exists in your deck set
-  }
-
-  const shownDifficultyCardId = getLocalDifficultyCardId();
+  const difficultyCardId =
+    scene?.difficulty?.card_id ??
+    difficultyCards[0] ??
+    null;
 
   return (
     <div
@@ -415,7 +461,7 @@ export default function MarshalTableView({
           <div><b>phase:</b> {meta.phase ?? "-"}</div>
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
-          <div><b>difficulty:</b> {scene.difficulty_value ?? (hasDifficulty ? "drawn" : "-")}</div>
+          <div><b>difficulty:</b> {scene?.difficulty?.value ?? (hasDifficulty ? "drawn" : "-")}</div>
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
         </div>
@@ -537,9 +583,9 @@ export default function MarshalTableView({
                     10 +
                   </div>
 
-                  {shownDifficultyCardId ? (
+                  {difficultyCardId ? (
                     <CardImg
-                      cardId={shownDifficultyCardId}
+                      cardId={difficultyCardId}
                       width={90}
                       title="Difficulty card"
                     />
@@ -596,12 +642,14 @@ export default function MarshalTableView({
                   alignContent: "start",
                 }}
               >
-                <div><b>difficulty value:</b> {scene.difficulty_value ?? "-"}</div>
-                <div><b>difficulty rule:</b> {scene.difficulty_rule ?? "-"}</div>
-                <div><b>difficulty base:</b> {scene.difficulty_base ?? 10}</div>
+                <div><b>difficulty value:</b> {scene?.difficulty?.value ?? "-"}</div>
+                <div><b>difficulty rule:</b> {scene?.difficulty?.rule_id ?? "-"}</div>
+                <div><b>difficulty base:</b> {scene?.difficulty?.base ?? 10}</div>
                 <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
                 <div><b>participants selected:</b> {participantIds.length}</div>
-                <div><b>scene status:</b> {isLocked ? "locked" : "setup"}</div>
+                <div>
+                  <b>scene status:</b> {scene?.status ?? (isLocked ? "active" : "setup")}
+                </div>
                 <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
               </div>
             </div>

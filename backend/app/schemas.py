@@ -15,7 +15,7 @@ class NewGameRequest(BaseModel):
     template_path: str = Field(default="data/templates/standard_54.json")
     meta: Dict[str, Any] = Field(default_factory=dict)
     seed: int | None = None
-    view: Literal["public", "debug"] = "debug"
+    view: Literal["public", "player", "debug"] = "debug"
     creator_id: str = "marshal"
 
 
@@ -34,9 +34,17 @@ class ActionRequest(BaseModel):
         "gf.submit_character_feature",
         "gf.start_game",
         "gf.begin_table",
+        "gf.scene_set_participants",
+        "gf.scene_roll_difficulty",
+        "gf.scene_draw_azzardo",
+        "gf.scene_skip_azzardo",
+        "gf.scene_start",
+        "gf.scene_resolve",
+        "gf.scene_draw_card",
+        "gf.scene_stand",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)
-    view: Literal["public", "debug"] = "debug"
+    view: Literal["public", "player", "debug"] = "debug"
 
 
 class ActionResponse(BaseModel):
