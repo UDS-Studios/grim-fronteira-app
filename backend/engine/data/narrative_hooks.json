@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "schema": "grimfronteira.hooks",
+  "notes": "Narrative hook seeds for the Marshal hook_selection phase. Hooks are grouped by tone/source and can be sampled uniformly or by category.",
+  "categories": {
+    "heritage_defilement": "Old-world landmarks profaned, occupied, repurposed, or stripped for frontier use.",
+    "contagion_panic": "Fear-driven isolation, skin disease, plague suspicion, and mob reactions.",
+    "vermin_rot": "Rats, insects, filth, foul storage, rot, infestation, and survival squalor.",
+    "frontier_greed": "Rewards, land grabs, salvage claims, trespass, fraud, and opportunism.",
+    "classic_western": "More traditional western-style openings adapted to Grim Fronteira tone."
+  },
+  "site_references": [
+    {
+      "key": "belem_tower",
+      "name": "Belém Tower",
+      "region": "Portugal",
+      "angle": "last sentinel before the dead ocean"
+    },
+    {
+      "key": "jeronimos_monastery",
+      "name": "Jerónimos Monastery",
+      "region": "Portugal",
+      "angle": "empty cloisters, unanswered prayers"
+    },
+    {
+      "key": "castle_sao_jorge",
+      "name": "Castle of São Jorge",
+      "region": "Portugal",
+      "angle": "wind-scoured stronghold, bandit seat"
+    },
+    {
+      "key": "university_of_coimbra",
+      "name": "University of Coimbra",
+      "region": "Portugal",
+      "angle": "dead knowledge, haunted archives"
+    },
+    {
+      "key": "alhambra",
+      "name": "Alhambra",
+      "region": "Spain",
+      "angle": "dry fountains, beauty without life"
+    },
+    {
+      "key": "el_escorial",
+      "name": "El Escorial",
+      "region": "Spain",
+      "angle": "tomb of kings, silent authority"
+    },
+    {
+      "key": "santiago_cathedral",
+      "name": "Cathedral of Santiago de Compostela",
+      "region": "Spain",
+      "angle": "roads still walked, but by something else"
+    },
+    {
+      "key": "toledo",
+      "name": "Toledo",
+      "region": "Spain",
+      "angle": "layered ruins of abandoned faiths"
+    },
+    {
+      "key": "seville_cathedral",
+      "name": "Seville Cathedral & Giralda",
+      "region": "Spain",
+      "angle": "empty titan overlooking a dead river"
+    },
+    {
+      "key": "segovia_aqueduct",
+      "name": "Segovia Aqueduct",
+      "region": "Spain",
+      "angle": "monument to vanished water"
+    }
+  ],
+  "hooks": [
+    {
+      "id": "H001",
+      "category": "heritage_defilement",
+      "weight": 3,
+      "text": "A Yankee Boss offers the party good silver to clear squatters out of an old church he intends to reopen as the finest saloon in three provinces. The pews have already been torn up for firewood, and the altar is marked in chalk for where the gambling tables will go."
+    },
+    {
+      "id": "H002",
+      "category": "heritage_defilement",
+      "weight": 2,
+      "site_key": "alhambra",
+      "text": "In the dry courtyards of the Alhambra, a Paisà syndicate has started penning cattle in a royal hall whose painted walls still glitter under the dust. The herd is vanishing one beast per night, and the drovers swear the fountains whisper after sundown."
+    },
+    {
+      "id": "H003",
+      "category": "heritage_defilement",
+      "weight": 2,
+      "site_key": "segovia_aqueduct",
+      "text": "At the foot of the Segovia Aqueduct, traders are chiseling out the old stone channels to build private cisterns for the rich. A local family begs the party to stop them before the only monument to water becomes a row of market troughs."
+    },
+    {
+      "id": "H004",
+      "category": "heritage_defilement",
+      "weight": 2,
+      "site_key": "el_escorial",
+      "text": "An enterprising Criollo wants to turn one wing of El Escorial into a powder magazine and stable, claiming kings have no use for marble anymore. The workers refuse to open a sealed crypt below the floor, no matter how much they are paid."
+    },
+    {
+      "id": "H005",
+      "category": "heritage_defilement",
+      "weight": 2,
+      "site_key": "university_of_coimbra",
+      "text": "In the library ruins of Coimbra, a speculator is paying scavengers by the armful for illuminated pages to wrap cigars and line saddlebags. A scholar with a knife in her boot offers the party a different reward: save one ledger before the rest are ruined."
+    },
+    {
+      "id": "H006",
+      "category": "heritage_defilement",
+      "weight": 2,
+      "site_key": "belem_tower",
+      "text": "At Belém Tower, smugglers have hung lanterns from the old battlements and turned the place into a toll station for river rafts. They say the tower is haunted by the last customs officer, but everyone pays anyway."
+    },
+    {
+      "id": "H007",
+      "category": "contagion_panic",
+      "weight": 3,
+      "text": "As soon as the players enter the saloon, someone notices the blisters across their skin. Panic spreads faster than speech: bottles shatter, tables overturn, and before they can react the townsfolk have barred the doors and started hammering planks over the windows."
+    },
+    {
+      "id": "H008",
+      "category": "contagion_panic",
+      "weight": 2,
+      "text": "A stagecoach limps into town at dusk carrying three feverish survivors and one dead priest tied upright in his seat. By sunrise, every door in the town is marked with chalk, and nobody agrees on who is meant to be burned first."
+    },
+    {
+      "id": "H009",
+      "category": "contagion_panic",
+      "weight": 2,
+      "site_key": "santiago_cathedral",
+      "text": "Pilgrims still come to Santiago, but now they travel masked and armed, praying to be judged clean. One of them collapses in the square, and within minutes the crowd is deciding whether to quarantine the living or bury them together."
+    },
+    {
+      "id": "H010",
+      "category": "vermin_rot",
+      "weight": 3,
+      "text": "The innkeeper swears the scratching in the walls is only rats, but by midnight something larger is chewing through the beams. When the kitchen floor finally gives way, the players discover an older cellar below, packed with bones and grain sacks split open from the inside."
+    },
+    {
+      "id": "H011",
+      "category": "vermin_rot",
+      "weight": 2,
+      "text": "A whole district stinks of lamp oil, dung, and wet plaster because someone has started breeding pigs in a collapsed noble residence. The owner says filth is honest profit; his neighbors say the insects pouring out of the walls are eating babies and prayer books alike."
+    },
+    {
+      "id": "H012",
+      "category": "vermin_rot",
+      "weight": 2,
+      "site_key": "jeronimos_monastery",
+      "text": "Jerónimos Monastery has become a granary, a barracks, and a rat kingdom all at once. The quartermaster wants exterminators; the monks who still haunt the cloisters want witnesses."
+    },
+    {
+      "id": "H013",
+      "category": "vermin_rot",
+      "weight": 2,
+      "text": "Something is laying eggs in the town flour. People only notice after the bread starts hatching. The miller blames saboteurs, but his daughter says she saw a man in a judge's coat feeding the insects by hand."
+    },
+    {
+      "id": "H014",
+      "category": "frontier_greed",
+      "weight": 3,
+      "text": "Three different crews arrive in town with the same Reward poster, each claiming legal right to collect. By noon one claimant is dead, one is lying, and one insists the target is actually buried beneath the tavern floor."
+    },
+    {
+      "id": "H015",
+      "category": "frontier_greed",
+      "weight": 2,
+      "site_key": "toledo",
+      "text": "In Toledo, a broker is auctioning off old ironwork, saint relics, and carved doors torn from abandoned houses by the weight. A buyer offers extra coin for a locked chest nobody has managed to pry open without hearing a woman cry inside it."
+    },
+    {
+      "id": "H016",
+      "category": "frontier_greed",
+      "weight": 2,
+      "text": "A Criollo surveyor claims a whole neighborhood is now legally his because he found a pre-Drought seal under the rubble. Every family on the street has a weapon, a grievance, and a different story about who used to own the place."
+    },
+    {
+      "id": "H017",
+      "category": "frontier_greed",
+      "weight": 2,
+      "site_key": "castle_sao_jorge",
+      "text": "Bandits holding Castle of São Jorge are selling 'safe passage' tokens stamped from melted church silver. A merchant prince wants the racket ended, but not before his own wagons are escorted through."
+    },
+    {
+      "id": "H018",
+      "category": "classic_western",
+      "weight": 1,
+      "text": "A corpse swings from the saloon sign, and every player recognizes the face."
+    },
+    {
+      "id": "H019",
+      "category": "classic_western",
+      "weight": 1,
+      "text": "A train arrives at dusk carrying one locked coffin and six armed guards."
+    },
+    {
+      "id": "H020",
+      "category": "classic_western",
+      "weight": 1,
+      "text": "The town well has run dry overnight, but the mud around it is fresh with footprints."
+    },
+    {
+      "id": "H021",
+      "category": "classic_western",
+      "weight": 1,
+      "text": "A horse returns without its rider, but with a bloodstained marshal badge in the saddlebag."
+    },
+    {
+      "id": "H022",
+      "category": "heritage_defilement",
+      "weight": 2,
+      "site_key": "seville_cathedral",
+      "text": "At the foot of the Giralda, a promoter has announced a prizefight tournament inside the old cathedral and is plastering betting odds over saints and kings. The first fighter refuses to step onto the nave because he says somebody else is already waiting in the ring."
+    },
+    {
+      "id": "H023",
+      "category": "vermin_rot",
+      "weight": 2,
+      "text": "The players are hired to sleep in a warehouse because every previous guard fled before midnight, swearing the floor was alive with roaches carrying tiny scraps of human skin."
+    },
+    {
+      "id": "H024",
+      "category": "heritage_defilement",
+      "weight": 2,
+      "text": "A Boss plans to open a luxury gambling house inside a half-collapsed convent and wants the local holy women 'relocated quietly.' The job sounds easy until one nun offers a higher price to make the Boss disappear instead."
+    }
+  ]
+}

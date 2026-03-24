@@ -1,0 +1,30 @@
+{
+  "factions": {
+    "D": {
+      "name": "Criollo",
+      "ability_name": "Law of Lead",
+      "ability_text": "Once per scene, you may convert a Scum card into a Vengeance card or vice versa."
+    },
+    "C": {
+      "name": "Paisà",
+      "ability_name": "Heart of Shadow",
+      "ability_text": "You may discard 3 Vengeance cards to gain 1 Reward."
+    },
+    "H": {
+      "name": "Yankee",
+      "ability_name": "Order and Profit",
+      "ability_text": "Before a duel you are involved in, you may look at the top card of the deck and decide whether to leave it on top or place it on the bottom."
+    },
+    "S": {
+      "name": "Chichimeca",
+      "ability_name": "Children of the Earth",
+      "ability_text": "Whenever you suffer a wound, steal one Scum card from an opponent."
+    }
+  },
+
+  "ranks": {
+    "J": "Kid",
+    "Q": "Lady",
+    "K": "Boss"
+  }
+}
