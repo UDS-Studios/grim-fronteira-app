@@ -14,6 +14,7 @@ type PlayerSummaryCardProps = {
   scumCount: number;
   vengeanceCount: number;
   rewardCount: number;
+  selected?: boolean;
 };
 
 export default function PlayerSummaryCard({
@@ -23,6 +24,7 @@ export default function PlayerSummaryCard({
   scumCount,
   vengeanceCount,
   rewardCount,
+  selected = false,
 }: PlayerSummaryCardProps) {
   const displayName =
     pstate.chosen_name ??
@@ -38,7 +40,9 @@ export default function PlayerSummaryCard({
         border: "1px solid var(--border-muted)",
         borderRadius: 12,
         padding: 10,
-        background: "var(--surface-strong)",
+        background: selected
+          ? "var(--player-selected-bg)"
+          : "var(--surface-strong)",
         display: "grid",
         gap: 8,
       }}

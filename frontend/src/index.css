@@ -28,6 +28,7 @@
   --button-bg: #f9f9f9;
   --button-text: #213547;
   --card-bg: #ffffff;
+  --player-selected-bg: rgba(0, 0, 0, 0.06);
 
   color: var(--text-primary);
   background-color: var(--app-bg);
@@ -133,5 +134,6 @@ button:focus-visible {
     --button-bg: #1f1f1f;
     --button-text: #f3ead3;
     --card-bg: #f4efe4;
+    --player-selected-bg: rgba(255, 255, 255, 0.12);
   }
 }
