@@ -15,6 +15,7 @@ from backend.app.serializers import game_state_to_dict
 from backend.engine.grimdeck.deck_io import load_deck
 from backend.engine.grimdeck.deck_ops import shuffle as shuffle_deck
 from backend.engine.state.game_state import GameState
+from backend.engine.state.debug_ops import stack_card_on_top
 from backend.engine.state.validators import validate_game_state
 
 from backend.engine.rules.grim_fronteira.setup import setup_players
@@ -234,6 +235,24 @@ def action(req: ActionRequest) -> ActionResponse:
         )
         mutated = True
         result = {"ok": True, "action": req.action}
+
+    elif req.action == "gf.debug_stack_top_card":
+        params = req.params
+        card_id = params.get("card_id")
+
+        if req.view != "debug":
+            raise HTTPException(status_code=403, detail="gf.debug_stack_top_card is debug-only")
+        if not isinstance(card_id, str):
+            raise HTTPException(status_code=400, detail="params.card_id must be a string")
+
+        game = stack_card_on_top(game, card_id=card_id)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "card_id": card_id,
+            "top_of_draw_pile": card_id,
+        }
 
     elif req.action == "gf.roll_difficulty":
         params = req.params

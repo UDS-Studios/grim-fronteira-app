@@ -24,6 +24,7 @@ class ActionRequest(BaseModel):
     action: Literal[
         "gf.get_state",
         "gf.setup_players",  # legacy/debug only
+        "gf.debug_stack_top_card",
         "gf.roll_difficulty",
         "gf.set_character_assignment_mode",
         "gf.claim_character",
