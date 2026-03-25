@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import TableZone from "../components/TableZone";
@@ -271,7 +271,27 @@ export default function MarshalTableView({
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
   const hasAzzardo = azzardoStatus !== "unavailable";
 
-  const canDeckClick = isEditable && (!hasDifficulty || !hasAzzardo);
+  const difficultyCardId = scene.difficulty?.card_id ?? null;
+  const azzardoCardId =
+    scene.azzardo?.revealed && scene.azzardo?.card_id ? scene.azzardo.card_id : null;
+
+  const difficultyValueLabel =
+    scene.difficulty?.value == null
+      ? "-"
+      : scene.azzardo?.revealed && scene.azzardo?.value != null
+        ? `${scene.difficulty.value} + ${scene.azzardo.value}`
+        : hasAzzardo
+          ? `${scene.difficulty.value} + ?`
+          : `${scene.difficulty.value}`;
+
+  const isJokerDifficulty =
+    difficultyCardId === "BJ" ||
+    difficultyCardId === "RJ" ||
+    difficultyCardId?.toUpperCase().includes("JOKER") === true;
+
+  const canDeckClick =
+    isEditable &&
+    (!hasDifficulty || (!hasAzzardo && !isJokerDifficulty));
 
   const canStartScene = !isLocked && hasDifficulty && participantIds.length > 0;
 
@@ -282,6 +302,7 @@ export default function MarshalTableView({
       return aSelected - bSelected;
     });
   }, [nonMarshalPlayers, participantIds]);
+  const [debugCardId, setDebugCardId] = useState("BJ");
 
 
   async function toggleParticipant(pid: string) {
@@ -321,7 +342,7 @@ export default function MarshalTableView({
       return;
     }
 
-    if (azzardoStatus === "unavailable") {
+    if (!hasAzzardo && !isJokerDifficulty) {
       await run(
         gfAction({
           game_id: resp.game_id,
@@ -366,34 +387,52 @@ export default function MarshalTableView({
     );
   }
 
+  async function handleDebugStackTopCard(cardId?: string) {
+    if (view !== "debug") return;
+    const chosen = (cardId ?? debugCardId).trim().toUpperCase();
+    if (!chosen) return;
+
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.debug_stack_top_card",
+        params: { card_id: chosen },
+        view,
+      })
+    );
+  }
+
   function getSceneInstruction(): string {
-    if (scene.status === "idle") return "Select participants or click deck to roll difficulty.";
-    if (scene.status === "setup" && !hasDifficulty) return "Click deck to draw difficulty.";
+    if (scene.status === "idle") {
+      return "Select participants or click deck to roll difficulty.";
+    }
+
+    if (scene.status === "setup" && !hasDifficulty) {
+      return "Click deck to draw difficulty.";
+    }
+
+    if (scene.status === "setup" && isJokerDifficulty) {
+      return "Joker drawn. No azzardo allowed. Start scene.";
+    }
+
     if (scene.status === "setup" && azzardoStatus === "unavailable") {
       return "Click deck to draw azzardo, or start scene.";
     }
-    if (scene.status === "setup" && azzardoStatus === "drawn") {
+
+    if (scene.status === "setup" && hasAzzardo) {
       return "Click azzardo to return it to the deck, or start scene.";
     }
-    if (scene.status === "active") return "Scene active. Setup is locked.";
-    if (scene.status === "resolved") return "Scene resolved.";
+
+    if (scene.status === "active") {
+      return "Scene active. Setup is locked.";
+    }
+
+    if (scene.status === "resolved") {
+      return "Scene resolved.";
+    }
+
     return "Waiting for backend scene state.";
   }
-
-  const difficultyCardId = scene.difficulty?.card_id ?? null;
-  const azzardoCardId =
-    scene.azzardo?.revealed && scene.azzardo?.card_id ? scene.azzardo.card_id : null;
-
-  const difficultyValueLabel =
-    scene.difficulty?.value == null
-      ? "-"
-      : scene.azzardo?.revealed && scene.azzardo?.value != null
-        ? `${scene.difficulty.value} + ${scene.azzardo.value}`
-        : hasAzzardo
-          ? `${scene.difficulty.value} + ?`
-          : `${scene.difficulty.value}`;
-
-  const isJokerDifficulty = scene.difficulty?.base === 20;
 
   return (
     <div
@@ -502,7 +541,9 @@ export default function MarshalTableView({
               }}
               title={
                 !canDeckClick
-                  ? "No more deck clicks allowed for this scene"
+                  ? isJokerDifficulty
+                    ? "Joker difficulty: no azzardo allowed"
+                    : "No more deck clicks allowed for this scene"
                   : !hasDifficulty
                     ? "Click to draw difficulty"
                     : "Click to draw azzardo"
@@ -526,6 +567,56 @@ export default function MarshalTableView({
               </div>
             )}
           </TableZone>
+
+          {view === "debug" ? (
+            <TableZone title="Debug Deck">
+              <div
+                style={{
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  <ActionButton
+                    label="Black Joker"
+                    onClick={() => handleDebugStackTopCard("BJ")}
+                  />
+                  <ActionButton
+                    label="Red Joker"
+                    onClick={() => handleDebugStackTopCard("RJ")}
+                  />
+                </div>
+
+                <input
+                  type="text"
+                  value={debugCardId}
+                  onChange={(e) => setDebugCardId(e.target.value)}
+                  placeholder="Card ID"
+                  spellCheck={false}
+                  style={{
+                    border: "1px solid var(--border-muted)",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    background: "var(--surface-strong)",
+                    color: "inherit",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                  }}
+                />
+
+                <ActionButton
+                  label="Stack On Top"
+                  onClick={() => handleDebugStackTopCard()}
+                />
+              </div>
+            </TableZone>
+          ) : null}
         </div>
 
         {/* CENTER BOARD */}
@@ -571,7 +662,7 @@ export default function MarshalTableView({
                   <div
                     style={{
                       fontFamily: "LavaArabic, serif",
-                      fontSize: "3rem",
+                      fontSize: isJokerDifficulty ? "4.2rem" : "3rem",
                       lineHeight: 1,
                       whiteSpace: "nowrap",
                       color: isJokerDifficulty ? "#7a1f1f" : "inherit",
