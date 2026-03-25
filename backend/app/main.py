@@ -25,6 +25,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_set_participants,
     scene_roll_difficulty,
     scene_draw_azzardo,
+    scene_remove_azzardo,
     scene_skip_azzardo,
     scene_start,
     scene_resolve,
@@ -438,6 +439,17 @@ def action(req: ActionRequest) -> ActionResponse:
             raise HTTPException(status_code=400, detail="params.seed must be an integer or omitted")
 
         game = scene_draw_azzardo(game, actor_id=actor_id, seed=seed)
+        mutated = True
+        result = {"ok": True, "action": req.action}
+
+    elif req.action == "gf.scene_remove_azzardo":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_remove_azzardo(game, actor_id=actor_id)
         mutated = True
         result = {"ok": True, "action": req.action}
 

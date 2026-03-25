@@ -57,8 +57,9 @@ def scene_set_participants(game: GameState, *, actor_id: str, participant_ids: l
     _require_marshal(game, actor_id)
 
     scene = _scene(game)
-    if scene["status"] not in (SCENE_STATUS_IDLE, SCENE_STATUS_SETUP, SCENE_STATUS_RESOLVED):
-        raise ValueError("Scene participants can only be set while the scene is idle, setup, or resolved.")
+    original_status = scene["status"]
+    if scene["status"] == SCENE_STATUS_ACTIVE:
+        raise ValueError("Scene participants cannot be changed after the scene has started.")
     if not all(isinstance(pid, str) and pid for pid in participant_ids):
         raise ValueError("participant_ids must be a list of non-empty player ids.")
 
@@ -71,14 +72,26 @@ def scene_set_participants(game: GameState, *, actor_id: str, participant_ids: l
     if missing_character:
         raise ValueError(f"Participants must already have characters: {', '.join(missing_character)}")
 
-    zones = _reset_scene_zones(game.zones)
+    old_participants = set(scene["participants"])
+    new_participants = set(participant_ids)
+
+    if scene["status"] in (SCENE_STATUS_IDLE, SCENE_STATUS_RESOLVED):
+        game = _start_clean_setup(game)
+        scene = _scene(game)
+        zones = game.zones
+    elif scene["status"] == SCENE_STATUS_SETUP:
+        zones = _remove_scene_hands_for_players(game.zones, old_participants - new_participants)
+    else:
+        raise ValueError("Scene participants can only be set while the scene is idle, setup, or resolved.")
+
     players = {pid: _default_scene_player(game, pid) for pid in participant_ids}
 
     scene["status"] = SCENE_STATUS_SETUP
     scene["participants"] = participant_ids.copy()
-    scene["dark_mode"] = False
-    scene["difficulty"] = default_scene_state()["difficulty"]
-    scene["azzardo"] = default_scene_state()["azzardo"]
+    if original_status != SCENE_STATUS_SETUP:
+        scene["dark_mode"] = False
+        scene["difficulty"] = default_scene_state()["difficulty"]
+        scene["azzardo"] = default_scene_state()["azzardo"]
     scene["players"] = players
     scene["resolution"] = default_scene_state()["resolution"]
 
@@ -89,11 +102,8 @@ def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = 
     _require_table_phase(game)
     _require_marshal(game, actor_id)
 
+    game = _ensure_scene_setup(game)
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_SETUP:
-        raise ValueError("Difficulty can only be rolled while the scene is in setup.")
-    if not scene["participants"]:
-        raise ValueError("Scene participants must be selected before rolling difficulty.")
     if scene["difficulty"]["card_id"] is not None:
         raise ValueError("Scene difficulty has already been rolled.")
 
@@ -145,6 +155,24 @@ def scene_draw_azzardo(game: GameState, *, actor_id: str, seed: int | None = Non
         "value": _blackjack_value(card_id),
         "revealed": False,
     }
+    return _replace_scene(game, scene=scene)
+
+
+def scene_remove_azzardo(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_SETUP:
+        raise ValueError("Azzardo can only be removed while the scene is in setup.")
+    if scene["azzardo"]["status"] != "drawn":
+        raise ValueError("Azzardo must be drawn before it can be removed.")
+    if scene["azzardo"]["revealed"]:
+        raise ValueError("Revealed azzardo cannot be removed.")
+
+    game = _return_zone_card_to_draw_pile(game, SCENE_AZZARDO_ZONE)
+    scene = _scene(game)
+    scene["azzardo"] = default_scene_state()["azzardo"]
     return _replace_scene(game, scene=scene)
 
 
@@ -320,6 +348,23 @@ def _default_scene_player(game: GameState, player_id: str) -> dict[str, Any]:
     }
 
 
+def _ensure_scene_setup(game: GameState) -> GameState:
+    scene = _scene(game)
+    if scene["status"] == SCENE_STATUS_IDLE:
+        return _start_clean_setup(game)
+    if scene["status"] == SCENE_STATUS_SETUP:
+        return game
+    if scene["status"] == SCENE_STATUS_RESOLVED:
+        raise ValueError("Resolved scenes must be reset with scene_set_participants before setup can continue.")
+    raise ValueError("Scene setup is locked after the scene has started.")
+
+
+def _start_clean_setup(game: GameState) -> GameState:
+    scene = default_scene_state()
+    scene["status"] = SCENE_STATUS_SETUP
+    return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones))
+
+
 def _replace_scene(game: GameState, *, scene: dict[str, Any], zones: dict[str, list[CardID]] | None = None) -> GameState:
     meta = dict(game.meta or {})
     meta["scene"] = _normalized_scene(scene)
@@ -399,6 +444,18 @@ def _reset_scene_zones(zones: dict[str, list[CardID]], *, keep_hands: bool = Fal
     return new_zones
 
 
+def _remove_scene_hands_for_players(zones: dict[str, list[CardID]], player_ids: set[str]) -> dict[str, list[CardID]]:
+    if not player_ids:
+        return {zone_name: cards.copy() for zone_name, cards in zones.items()}
+
+    new_zones: dict[str, list[CardID]] = {}
+    for zone_name, cards in zones.items():
+        if any(zone_name == f"{SCENE_HAND_PREFIX}{player_id}" for player_id in player_ids):
+            continue
+        new_zones[zone_name] = cards.copy()
+    return new_zones
+
+
 def _draw_to_zone(game: GameState, zone_name: str) -> tuple[GameState, CardID]:
     if game.deck is None:
         raise ValueError("GameState has no deck.")
@@ -408,6 +465,36 @@ def _draw_to_zone(game: GameState, zone_name: str) -> tuple[GameState, CardID]:
     card_id = game.deck.in_play[-1]
     game = claim_from_in_play(game, card_id, zone_name)
     return game, card_id
+
+
+def _return_zone_card_to_draw_pile(game: GameState, zone_name: str) -> GameState:
+    if game.deck is None:
+        raise ValueError("GameState has no deck.")
+
+    zone_cards = list(game.zones.get(zone_name, []))
+    if len(zone_cards) != 1:
+        raise ValueError(f"Zone '{zone_name}' must contain exactly one card.")
+
+    card_id = zone_cards[0]
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    zones.pop(zone_name, None)
+
+    deck = game.deck
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile + [card_id],
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile,
+        removed=deck.removed,
+    )
+
+    game = GameState(deck=new_deck, zones=zones, meta=game.meta)
+    validate_unique_cards(game)
+    return game
 
 
 def _require_table_phase(game: GameState) -> None:

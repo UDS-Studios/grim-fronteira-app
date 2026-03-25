@@ -12,6 +12,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_set_participants,
     scene_roll_difficulty,
     scene_draw_azzardo,
+    scene_remove_azzardo,
     scene_skip_azzardo,
     scene_start,
     scene_draw_card,
@@ -282,3 +283,105 @@ def test_scene_set_participants_allows_second_scene_after_resolve():
         "losers": [],
     }
     assert "scene.hand.p1" not in game.zones
+
+
+def test_scene_roll_difficulty_from_idle_enters_setup():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["5H"])
+
+    game, difficulty = scene_roll_difficulty(game, actor_id="host1")
+
+    assert game.meta["scene"]["status"] == "setup"
+    assert game.meta["scene"]["participants"] == []
+    assert difficulty["card_id"] == "5H"
+    assert game.meta["scene"]["difficulty"]["value"] == 15
+
+
+def test_scene_set_participants_preserves_difficulty_in_setup():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["5H"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "setup"
+    assert scene["participants"] == ["p1", "p2"]
+    assert scene["difficulty"] == {
+        "rule_id": "base10_plus_1card_v1",
+        "base": 10,
+        "card_id": "5H",
+        "value": 15,
+    }
+    assert scene["azzardo"] == {
+        "status": "unavailable",
+        "card_id": None,
+        "value": None,
+        "revealed": False,
+    }
+    assert game.zones["scene.difficulty"] == ["5H"]
+
+
+def test_scene_draw_and_remove_azzardo_returns_card_to_draw_pile():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["5H", "6C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+
+    assert game.zones["scene.azzardo"] == ["6C"]
+
+    game = scene_remove_azzardo(game, actor_id="host1")
+
+    assert game.meta["scene"]["azzardo"] == {
+        "status": "unavailable",
+        "card_id": None,
+        "value": None,
+        "revealed": False,
+    }
+    assert "scene.azzardo" not in game.zones
+    assert game.deck.draw_pile[-1] == "6C"
+
+
+def test_scene_set_participants_preserves_azzardo_in_setup():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["5H", "6C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+
+    scene = game.meta["scene"]
+    assert scene["participants"] == ["p1", "p2"]
+    assert scene["difficulty"]["card_id"] == "5H"
+    assert scene["azzardo"] == {
+        "status": "drawn",
+        "card_id": "6C",
+        "value": 6,
+        "revealed": False,
+    }
+    assert game.zones["scene.azzardo"] == ["6C"]
+
+
+def test_scene_setup_actions_lock_after_start():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["5H", "6C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    locked_actions = [
+        lambda current: scene_set_participants(current, actor_id="host1", participant_ids=["p1", "p2"]),
+        lambda current: scene_roll_difficulty(current, actor_id="host1"),
+        lambda current: scene_draw_azzardo(current, actor_id="host1"),
+        lambda current: scene_remove_azzardo(current, actor_id="host1"),
+    ]
+    for action in locked_actions:
+        try:
+            action(game)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("setup action should fail after scene_start")

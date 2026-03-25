@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import TableZone from "../components/TableZone";
@@ -21,11 +21,23 @@ type LobbyPlayerState = {
   summary_text?: string | null;
 };
 
-type LocalSceneSetupState =
-  | "idle"
-  | "difficulty_drawn"
-  | "azzardo_drawn"
-  | "locked";
+type SceneState = {
+  status?: "idle" | "setup" | "active" | "resolved";
+  participants?: string[];
+  dark_mode?: boolean;
+  difficulty?: {
+    rule_id?: string | null;
+    base?: number | null;
+    card_id?: string | null;
+    value?: number | null;
+  };
+  azzardo?: {
+    status?: string;
+    card_id?: string | null;
+    value?: number | null;
+    revealed?: boolean;
+  };
+};
 
 function ActionButton({
   label,
@@ -208,36 +220,31 @@ export default function MarshalTableView({
   const state = (resp.state as any) ?? {};
   const meta = state.meta ?? {};
   const zones: Record<string, string[]> = state.zones ?? {};
+  const deck = state.deck ?? {};
 
   const playersOrder: string[] = meta.players_order ?? [];
   const marshalId = meta.marshal_id ?? "";
-  const scene = meta.scene ?? {};
+  const scene: SceneState = meta.scene ?? {};
   const lobby = meta.lobby ?? {};
   const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
 
   const nonMarshalPlayers = playersOrder.filter((pid) => pid !== marshalId);
 
-  const deckCount = Array.isArray(state.deck)
-    ? state.deck.length
-    : meta.deck_count ?? "-";
+  const deckCount =
+    typeof deck?.draw_pile?.count === "number"
+      ? deck.draw_pile.count
+      : Array.isArray(deck?.draw_pile)
+        ? deck.draw_pile.length
+        : "-";
+  const discardPile: string[] = Array.isArray(deck?.discard_pile) ? deck.discard_pile : [];
 
-  const discardZone = zones["scene.discard"] ?? zones["discard"] ?? [];
-  const difficultyCards =
-    zones["scene.difficulty"] ?? zones["scene.challenge"] ?? [];
-  const hiddenDifficultyCards =
-    zones["scene.difficulty_hidden"] ?? zones["scene.azzardo"] ?? [];
-
-  function getPlayerFigure(pid: string): string | null {
-    return (zones[`players.${pid}.character`] ?? [])[0] ?? null;
+  function getPlayerFigureCardId(pid: string): string | null {
+    const cards = zones[`players.${pid}.character`] ?? [];
+    return cards[0] ?? null;
   }
 
-  function getPlayerPlayedCards(pid: string): string[] {
-    return (
-      zones[`players.${pid}.played`] ??
-      zones[`players.${pid}.hand_played`] ??
-      zones[`scene.players.${pid}.played`] ??
-      []
-    );
+  function getPlayerSceneHand(pid: string): string[] {
+    return zones[`scene.hand.${pid}`] ?? [];
   }
 
   function getPlayerScumCount(pid: string): number {
@@ -256,27 +263,15 @@ export default function MarshalTableView({
     ? scene.participants
     : [];
 
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>(
-    backendParticipantIds
-  );
-  const [localSetupState, setLocalSetupState] =
-    useState<LocalSceneSetupState>("idle");
+  const participantIds = backendParticipantIds;
 
-  const participantIds = useMemo(() => {
-    return backendParticipantIds.length > 0
-      ? backendParticipantIds
-      : selectedParticipantIds;
-  }, [backendParticipantIds, selectedParticipantIds]);
+  const isEditable = scene.status === "idle" || scene.status === "setup";
+  const isLocked = !isEditable;
+  const hasDifficulty = scene.difficulty?.card_id != null;
+  const azzardoStatus = scene.azzardo?.status ?? "unavailable";
+  const hasAzzardo = azzardoStatus !== "unavailable";
 
-  const isLocked = localSetupState === "locked";
-  const hasDifficulty = scene?.difficulty?.card_id != null;
-  const hasAzzardo =
-    scene?.azzardo?.card_id != null ||
-    hiddenDifficultyCards.length > 0 ||
-    localSetupState === "azzardo_drawn";
-
-  const canDeckClick =
-    !isLocked && (!hasDifficulty || (hasDifficulty && !hasAzzardo));
+  const canDeckClick = isEditable && (!hasDifficulty || !hasAzzardo);
 
   const canStartScene = !isLocked && hasDifficulty && participantIds.length > 0;
 
@@ -290,34 +285,30 @@ export default function MarshalTableView({
 
 
   async function toggleParticipant(pid: string) {
-    if (isLocked) return;
+    if (!isEditable) return;
 
-    const nextParticipants = participantIds.includes(pid)
+    const nextParticipantIds = participantIds.includes(pid)
       ? participantIds.filter((x) => x !== pid)
       : [...participantIds, pid];
 
-    const next = await run(
+    await run(
       gfAction({
         game_id: resp.game_id,
         action: "gf.scene_set_participants",
         params: {
           actor_id: currentActorId,
-          participants_ids: nextParticipants,
+          participant_ids: nextParticipantIds,
         },
         view,
       })
     );
-
-    if (!next.error) {
-      setSelectedParticipantIds(nextParticipants);
-    }
   }
 
   async function handleDeckClick() {
-    if (isLocked) return;
+    if (!isEditable) return;
 
-    if (localSetupState === "idle") {
-      const next = await run(
+    if (!hasDifficulty) {
+      await run(
         gfAction({
           game_id: resp.game_id,
           action: "gf.scene_roll_difficulty",
@@ -327,46 +318,43 @@ export default function MarshalTableView({
           view,
         })
       );
-
-      if (!next.error) {
-        setLocalSetupState("difficulty_drawn");
-      }
-
       return;
     }
 
-    if (localSetupState === "difficulty_drawn") {
-      if (hasDifficulty && !hasAzzardo) {
-        const next = await run(
-          gfAction({
-            game_id: resp.game_id,
-            action: "gf.scene_draw_azzardo",
-            params: {
-              actor_id: currentActorId,
-            },
-            view,
-          })
-        );
-
-        if (!next.error) {
-          setLocalSetupState("azzardo_drawn");
-        }
-      }
+    if (azzardoStatus === "unavailable") {
+      await run(
+        gfAction({
+          game_id: resp.game_id,
+          action: "gf.scene_draw_azzardo",
+          params: {
+            actor_id: currentActorId,
+          },
+          view,
+        })
+      );
     }
   }
 
-  function handleAzzardoUndo() {
-    if (isLocked) return;
-    if (localSetupState !== "azzardo_drawn") return;
+  async function handleAzzardoUndo() {
+    if (!isEditable) return;
+    if (azzardoStatus !== "drawn") return;
 
-    console.log("TODO: gf.undo_azzardo");
-    setLocalSetupState("difficulty_drawn");
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_remove_azzardo",
+        params: {
+          actor_id: currentActorId,
+        },
+        view,
+      })
+    );
   }
 
   async function handleStartScene() {
     if (!canStartScene) return;
 
-    const next = await run(
+    await run(
       gfAction({
         game_id: resp.game_id,
         action: "gf.scene_start",
@@ -376,28 +364,36 @@ export default function MarshalTableView({
         view,
       })
     );
-
-    if (!next.error) {
-      setLocalSetupState("locked");
-    }
   }
 
   function getSceneInstruction(): string {
-    if (isLocked) return "Scene locked. Waiting for player interaction.";
-    if (localSetupState === "idle") return "Click deck to draw difficulty.";
-    if (localSetupState === "difficulty_drawn") {
-      return "Click deck again to draw azzardo, or start scene.";
+    if (scene.status === "idle") return "Select participants or click deck to roll difficulty.";
+    if (scene.status === "setup" && !hasDifficulty) return "Click deck to draw difficulty.";
+    if (scene.status === "setup" && azzardoStatus === "unavailable") {
+      return "Click deck to draw azzardo, or start scene.";
     }
-    if (localSetupState === "azzardo_drawn") {
-      return "Click azzardo to return it, or start scene.";
+    if (scene.status === "setup" && azzardoStatus === "drawn") {
+      return "Click azzardo to return it to the deck, or start scene.";
     }
-    return "";
+    if (scene.status === "active") return "Scene active. Setup is locked.";
+    if (scene.status === "resolved") return "Scene resolved.";
+    return "Waiting for backend scene state.";
   }
 
-  const difficultyCardId =
-    scene?.difficulty?.card_id ??
-    difficultyCards[0] ??
-    null;
+  const difficultyCardId = scene.difficulty?.card_id ?? null;
+  const azzardoCardId =
+    scene.azzardo?.revealed && scene.azzardo?.card_id ? scene.azzardo.card_id : null;
+
+  const difficultyValueLabel =
+    scene.difficulty?.value == null
+      ? "-"
+      : scene.azzardo?.revealed && scene.azzardo?.value != null
+        ? `${scene.difficulty.value} + ${scene.azzardo.value}`
+        : hasAzzardo
+          ? `${scene.difficulty.value} + ?`
+          : `${scene.difficulty.value}`;
+
+  const isJokerDifficulty = scene.difficulty?.base === 20;
 
   return (
     <div
@@ -461,7 +457,7 @@ export default function MarshalTableView({
           <div><b>phase:</b> {meta.phase ?? "-"}</div>
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
-          <div><b>difficulty:</b> {scene?.difficulty?.value ?? (hasDifficulty ? "drawn" : "-")}</div>
+          <div><b>difficulty:</b> {scene.difficulty?.value ?? (hasDifficulty ? "drawn" : "-")}</div>
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
         </div>
@@ -505,11 +501,11 @@ export default function MarshalTableView({
                 opacity: canDeckClick ? 1 : 0.65,
               }}
               title={
-                canDeckClick
-                  ? localSetupState === "idle"
+                !canDeckClick
+                  ? "No more deck clicks allowed for this scene"
+                  : !hasDifficulty
                     ? "Click to draw difficulty"
                     : "Click to draw azzardo"
-                  : "No more deck clicks allowed for this scene"
               }
             >
               <CardImg cardId="BACK" faceDown width={86} title="Deck" />
@@ -520,11 +516,11 @@ export default function MarshalTableView({
           </TableZone>
 
           <TableZone title="Discard">
-            {discardZone.length === 0 ? (
+            {discardPile.length === 0 ? (
               <div style={{ opacity: 0.6 }}>— empty —</div>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {discardZone.map((cardId, idx) => (
+                {discardPile.map((cardId, idx) => (
                   <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={70} />
                 ))}
               </div>
@@ -578,9 +574,10 @@ export default function MarshalTableView({
                       fontSize: "3rem",
                       lineHeight: 1,
                       whiteSpace: "nowrap",
+                      color: isJokerDifficulty ? "#7a1f1f" : "inherit",
                     }}
                   >
-                    10 +
+                    {isJokerDifficulty ? "20" : "10 +"}
                   </div>
 
                   {difficultyCardId ? (
@@ -611,12 +608,16 @@ export default function MarshalTableView({
                           : "Click to return azzardo to the deck"
                       }
                     >
-                      <CardImg
-                        cardId="BACK"
-                        faceDown
-                        width={90}
-                        title="Azzardo"
-                      />
+                      {azzardoCardId ? (
+                        <CardImg cardId={azzardoCardId} width={90} title="Azzardo" />
+                      ) : (
+                        <CardImg
+                          cardId="BACK"
+                          faceDown
+                          width={90}
+                          title="Azzardo"
+                        />
+                      )}
                     </button>
                   ) : (
                     <div style={{ opacity: 0.35, fontSize: 13 }}>no azzardo</div>
@@ -642,13 +643,14 @@ export default function MarshalTableView({
                   alignContent: "start",
                 }}
               >
-                <div><b>difficulty value:</b> {scene?.difficulty?.value ?? "-"}</div>
-                <div><b>difficulty rule:</b> {scene?.difficulty?.rule_id ?? "-"}</div>
-                <div><b>difficulty base:</b> {scene?.difficulty?.base ?? 10}</div>
+                <div><b>difficulty value:</b> {difficultyValueLabel}</div>
+                <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
+                <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
+                <div><b>azzardo status:</b> {azzardoStatus}</div>
                 <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
                 <div><b>participants selected:</b> {participantIds.length}</div>
                 <div>
-                  <b>scene status:</b> {scene?.status ?? (isLocked ? "active" : "setup")}
+                  <b>scene status:</b> {scene.status ?? "-"}
                 </div>
                 <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
               </div>
@@ -675,8 +677,8 @@ export default function MarshalTableView({
                       key={pid}
                       playerId={pid}
                       pstate={lobbyPlayers[pid] ?? {}}
-                      figureCardId={getPlayerFigure(pid)}
-                      playedCards={getPlayerPlayedCards(pid)}
+                      figureCardId={getPlayerFigureCardId(pid)}
+                      playedCards={getPlayerSceneHand(pid)}
                     />
                   ))
                 )}
@@ -720,7 +722,7 @@ export default function MarshalTableView({
                       <PlayerSummaryCard
                         playerId={pid}
                         pstate={lobbyPlayers[pid] ?? {}}
-                        figureCardId={getPlayerFigure(pid)}
+                        figureCardId={getPlayerFigureCardId(pid)}
                         scumCount={getPlayerScumCount(pid)}
                         vengeanceCount={getPlayerVengeanceCount(pid)}
                         rewardCount={getPlayerRewardCount(pid)}
