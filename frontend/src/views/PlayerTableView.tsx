@@ -1,4 +1,5 @@
 import type { ActionResponse, View } from "../api/types";
+import PTVPlayerBoard from "./player_table/PTV-PlayerBoard";
 
 type PlayerTableViewProps = {
   resp: ActionResponse;
@@ -25,9 +26,27 @@ export default function PlayerTableView({
       }}
     >
       <h2 style={{ marginTop: 0 }}>Player Control Center</h2>
-      <div>Current player: <b>{currentActorId}</b></div>
+
+      <div>
+        Current player: <b>{currentActorId}</b>
+      </div>
+
       <div style={{ marginTop: 10, opacity: 0.75 }}>
         Player table view coming next.
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <PTVPlayerBoard
+          displayName="Nora Graves"
+          summaryText="A Yankee Lady with a broken front tooth"
+          figureCardId="QH"
+          scumCardIds={["BACK"]}
+          vengeanceCardIds={["BACK", "BACK"]}
+          rewardCardIds={["4C", "JS"]}
+          powerLabel="Order and Profit"
+          inScene
+          powerDisabled
+        />
       </div>
     </div>
   );

@@ -1,9 +1,10 @@
 type TableZoneProps = {
   title: string;
   children: React.ReactNode;
+  fill?: boolean;
 };
 
-export default function TableZone({ title, children }: TableZoneProps) {
+export default function TableZone({ title, children, fill = false }: TableZoneProps) {
   return (
     <div
       style={{
@@ -13,6 +14,8 @@ export default function TableZone({ title, children }: TableZoneProps) {
         background: "var(--surface-bg)",
         display: "grid",
         gap: 10,
+        gridTemplateRows: fill ? "auto minmax(0, 1fr)" : undefined,
+        height: fill ? "100%" : undefined,
         minHeight: 0,
       }}
     >

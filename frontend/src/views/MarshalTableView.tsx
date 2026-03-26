@@ -288,10 +288,14 @@ export default function MarshalTableView({
     difficultyCardId === "BJ" ||
     difficultyCardId === "RJ" ||
     difficultyCardId?.toUpperCase().includes("JOKER") === true;
+  const isFigureDifficulty =
+    difficultyCardId != null &&
+    ["J", "Q", "K"].includes(difficultyCardId.trim().toUpperCase().charAt(0));
+  const azzardoBlockedByDifficulty = isJokerDifficulty || isFigureDifficulty;
 
   const canDeckClick =
     isEditable &&
-    (!hasDifficulty || (!hasAzzardo && !isJokerDifficulty));
+    (!hasDifficulty || (!hasAzzardo && !azzardoBlockedByDifficulty));
 
   const canStartScene = !isLocked && hasDifficulty && participantIds.length > 0;
 
@@ -342,7 +346,7 @@ export default function MarshalTableView({
       return;
     }
 
-    if (!hasAzzardo && !isJokerDifficulty) {
+    if (!hasAzzardo && !azzardoBlockedByDifficulty) {
       await run(
         gfAction({
           game_id: resp.game_id,
@@ -415,6 +419,10 @@ export default function MarshalTableView({
       return "Joker drawn. No azzardo allowed. Start scene.";
     }
 
+    if (scene.status === "setup" && isFigureDifficulty) {
+      return "Figure drawn. No azzardo allowed. Start scene.";
+    }
+
     if (scene.status === "setup" && azzardoStatus === "unavailable") {
       return "Click deck to draw azzardo, or start scene.";
     }
@@ -437,10 +445,8 @@ export default function MarshalTableView({
   return (
     <div
       style={{
-        height: "100%",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
         marginTop: 12,
         gap: 12,
       }}
@@ -504,12 +510,11 @@ export default function MarshalTableView({
 
       <div
         style={{
-          flex: 1,
           minHeight: 0,
           display: "grid",
           gridTemplateColumns: "220px minmax(0, 1fr) 320px",
           gap: 14,
-          overflow: "hidden",
+          alignItems: "start",
         }}
       >
         {/* LEFT RAIL */}
@@ -541,8 +546,10 @@ export default function MarshalTableView({
               }}
               title={
                 !canDeckClick
-                  ? isJokerDifficulty
-                    ? "Joker difficulty: no azzardo allowed"
+                  ? azzardoBlockedByDifficulty
+                    ? isJokerDifficulty
+                      ? "Joker difficulty: no azzardo allowed"
+                      : "Figure difficulty: no azzardo allowed"
                     : "No more deck clicks allowed for this scene"
                   : !hasDifficulty
                     ? "Click to draw difficulty"
@@ -623,9 +630,8 @@ export default function MarshalTableView({
         <div
           style={{
             display: "grid",
-            gridTemplateRows: "auto minmax(0, 1fr)",
+            gridTemplateRows: "auto auto",
             gap: 14,
-            overflow: "hidden",
             minHeight: 0,
           }}
         >
@@ -748,12 +754,10 @@ export default function MarshalTableView({
             </div>
           </TableZone>
 
-          <div style={{ minHeight: 0, overflow: "hidden" }}>
+          <div style={{ minHeight: 0 }}>
             <TableZone title="Scene Participants">
               <div
                 style={{
-                  height: "100%",
-                  overflowY: "auto",
                   display: "grid",
                   gap: 12,
                   minHeight: 0,
@@ -782,7 +786,6 @@ export default function MarshalTableView({
         <div
           style={{
             minHeight: 0,
-            overflow: "hidden",
           }}
         >
           <TableZone title="Players">
@@ -791,9 +794,7 @@ export default function MarshalTableView({
             ) : (
               <div
                 style={{
-                  height: "100%",
                   minHeight: 0,
-                  overflowY: "auto",
                   display: "grid",
                   gap: 10,
                   alignContent: "start",

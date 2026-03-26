@@ -105,6 +105,7 @@ export default function App() {
   const phase = meta.phase ?? "no-game";
   const viewportHeight = "calc(100vh - 32px)";
   const useScrollableGameContent = phase === "lobby";
+  const useFixedGameViewport = phase === "lobby";
 
   return (
     <div
@@ -208,10 +209,11 @@ export default function App() {
       {screen === "game" && (
         <div
           style={{
-            height: viewportHeight,
+            height: useFixedGameViewport ? viewportHeight : undefined,
+            minHeight: viewportHeight,
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden",
+            overflow: useFixedGameViewport ? "hidden" : "visible",
             flexShrink: 0,
           }}
         >
@@ -260,10 +262,10 @@ export default function App() {
 
           <div
             style={{
-              flex: 1,
+              flex: useFixedGameViewport ? 1 : "0 0 auto",
               minHeight: 0,
-              overflowY: useScrollableGameContent ? "auto" : "hidden",
-              overflowX: "hidden",
+              overflowY: useScrollableGameContent ? "auto" : "visible",
+              overflowX: useFixedGameViewport ? "hidden" : "visible",
               display: "flex",
               flexDirection: "column",
             }}
