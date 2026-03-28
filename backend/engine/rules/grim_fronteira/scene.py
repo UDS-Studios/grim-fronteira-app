@@ -208,8 +208,8 @@ def scene_start(game: GameState, *, actor_id: str) -> GameState:
         raise ValueError("Scene requires at least one participant.")
     if scene["difficulty"]["card_id"] is None:
         raise ValueError("Scene difficulty must be rolled before starting.")
-    if scene["azzardo"]["status"] not in ("drawn", "skipped"):
-        raise ValueError("Azzardo must be drawn or skipped before starting the scene.")
+    if scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
+        raise ValueError("Azzardo is in an invalid state for starting the scene.")
 
     scene["status"] = SCENE_STATUS_ACTIVE
     return _replace_scene(game, scene=scene)

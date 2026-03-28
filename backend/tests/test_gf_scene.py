@@ -170,6 +170,17 @@ def test_scene_player_draw_and_stand():
     assert game.meta["scene"]["players"]["p1"]["standing"] is True
 
 
+def test_scene_start_allows_implicit_azzardo_skip():
+    game = _ready_table_game()
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+
+    game = scene_start(game, actor_id="host1")
+
+    assert game.meta["scene"]["status"] == "active"
+    assert game.meta["scene"]["azzardo"]["status"] == "unavailable"
+
+
 def test_scene_resolve_blocks_until_all_participants_done():
     game = _ready_table_game()
     game = _with_draw_order(game, ["4H"])
