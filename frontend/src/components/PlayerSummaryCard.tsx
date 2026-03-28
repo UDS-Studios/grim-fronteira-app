@@ -15,6 +15,7 @@ type PlayerSummaryCardProps = {
   vengeanceCount: number;
   rewardCount: number;
   selected?: boolean;
+  scale?: number;
 };
 
 export default function PlayerSummaryCard({
@@ -25,6 +26,7 @@ export default function PlayerSummaryCard({
   vengeanceCount,
   rewardCount,
   selected = false,
+  scale = 1,
 }: PlayerSummaryCardProps) {
   const displayName =
     pstate.chosen_name ??
@@ -38,32 +40,32 @@ export default function PlayerSummaryCard({
     <div
       style={{
         border: "1px solid var(--border-muted)",
-        borderRadius: 12,
-        padding: 10,
+        borderRadius: 12 * scale,
+        padding: 10 * scale,
         background: selected
           ? "var(--player-selected-bg)"
           : "var(--surface-strong)",
         display: "grid",
-        gap: 8,
+        gap: 8 * scale,
       }}
     >
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-        <div style={{ minWidth: 70 }}>
+      <div style={{ display: "flex", gap: 10 * scale, alignItems: "flex-start" }}>
+        <div style={{ minWidth: 70 * scale }}>
           {figureCardId ? (
-            <CardImg cardId={figureCardId} width={64} />
+            <CardImg cardId={figureCardId} width={64 * scale} />
           ) : (
-            <div style={{ opacity: 0.6 }}>No figure</div>
+            <div style={{ opacity: 0.6, fontSize: 14 * scale }}>No figure</div>
           )}
         </div>
 
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontWeight: 800 }}>{displayName}</div>
-          <div style={{ fontSize: 14, opacity: 0.9 }}>{label}</div>
-          {feature && <div style={{ fontSize: 13, opacity: 0.75 }}>{feature}</div>}
+        <div style={{ display: "grid", gap: 4 * scale }}>
+          <div style={{ fontWeight: 800, fontSize: 16 * scale }}>{displayName}</div>
+          <div style={{ fontSize: 14 * scale, opacity: 0.9 }}>{label}</div>
+          {feature && <div style={{ fontSize: 13 * scale, opacity: 0.75 }}>{feature}</div>}
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, fontSize: 14 }}>
+      <div style={{ display: "flex", gap: 12 * scale, fontSize: 14 * scale }}>
         <div><b>Scum:</b> {scumCount}</div>
         <div><b>Vengeance:</b> {vengeanceCount}</div>
         <div><b>Rewards:</b> {rewardCount}</div>

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import CardImg from "../../components/CardImg";
 
 export type PTVPlayerBoardProps = {
@@ -32,24 +33,48 @@ function getPowerArtSrc(powerLabel: string): string | null {
   return (map as Record<string, string>)[powerLabel] ?? null;
 }
 
+function useResponsiveScale(minWidth: number, maxScale: number, minScale = 1) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry.contentRect.width;
+      const nextScale = Math.max(minScale, Math.min(maxScale, width / minWidth));
+      setScale(nextScale);
+    });
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [maxScale, minScale, minWidth]);
+
+  return { ref, scale };
+}
+
 function FixedWidthFaceDownStack({
   cardIds,
   title,
+  scale = 1,
   interactive = false,
   disabled = false,
   onClick,
 }: {
   cardIds: string[];
   title: string;
+  scale?: number;
   interactive?: boolean;
   disabled?: boolean;
   onClick?: () => void;
 }) {
   const shownCount = cardIds.length;
-  const cardWidth = 120;
-  const cardHeight = 174;
-  const stackAreaWidth = 160;
-  const maxSpread = 18;
+  const cardWidth = 120 * scale;
+  const cardHeight = 174 * scale;
+  const stackAreaWidth = 160 * scale;
+  const maxSpread = 18 * scale;
 
   const offsets =
     shownCount <= 1
@@ -64,19 +89,19 @@ function FixedWidthFaceDownStack({
     <div
       style={{
         display: "grid",
-        gap: 6,
+        gap: 6 * scale,
         justifyItems: "center",
       }}
     >
       <div
         style={{
           fontFamily: "LavaArabic, serif",
-          fontSize: 18,
+          fontSize: 24 * scale,
           lineHeight: 1,
           opacity: 0.9,
           letterSpacing: "0.02em",
           textAlign: "center",
-          width: "100%",
+          width: stackAreaWidth,
         }}
       >
         {title} : {shownCount}
@@ -109,9 +134,9 @@ function FixedWidthFaceDownStack({
             <div
               key={`${title}:${idx}`}
               style={{
-                position: "absolute",
-                top: 10,
-                left,
+            position: "absolute",
+            top: 10 * scale,
+            left,
               }}
             >
               <CardImg cardId="BACK" faceDown width={cardWidth} />
@@ -125,12 +150,14 @@ function FixedWidthFaceDownStack({
 
 function AdaptiveRewardsRow({
   cardIds,
+  scale = 1,
 }: {
   cardIds: string[];
+  scale?: number;
 }) {
-  const cardWidth = 110;
-  const cardHeight = 160;
-  const containerWidth = 1000; // effectively limited by parent width
+  const cardWidth = 88 * scale;
+  const cardHeight = 128 * scale;
+  const containerWidth = 1000 * scale; // effectively limited by parent width
 
   if (cardIds.length === 0) {
     return (
@@ -139,12 +166,12 @@ function AdaptiveRewardsRow({
           width: "100%",
           minHeight: cardHeight,
           border: "1px dashed var(--border-muted)",
-          borderRadius: 12,
+          borderRadius: 12 * scale,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           opacity: 0.45,
-          fontSize: 13,
+          fontSize: 13 * scale,
         }}
       >
         no rewards yet
@@ -152,7 +179,7 @@ function AdaptiveRewardsRow({
     );
   }
 
-  const gapWhenThereIsSpace = 8;
+  const gapWhenThereIsSpace = 8 * scale;
   const naturalWidth = cardIds.length * cardWidth + Math.max(0, cardIds.length - 1) * gapWhenThereIsSpace;
   const availableWidth = containerWidth;
   const maxLeft = Math.max(availableWidth - cardWidth, 0);
@@ -173,8 +200,8 @@ function AdaptiveRewardsRow({
         position: "relative",
         width: "100%",
         minHeight: cardHeight + 24,
-        paddingTop: 8,
-        paddingBottom: 8,
+        paddingTop: 8 * scale,
+        paddingBottom: 8 * scale,
         overflow: "visible",
       }}
     >
@@ -243,10 +270,12 @@ export default function PTVPlayerBoard({
   onClickVengeance,
   onClickPower,
 }: PTVPlayerBoardProps) {
+  const { ref, scale } = useResponsiveScale(780, 1.4, 0.7);
+  const s = (value: number) => value * scale;
   const powerArtSrc = getPowerArtSrc(powerLabel);
   const summaryLines = splitSummaryText(summaryText);
-  const figureCardWidth = 150;
-  const figureCardHeight = 217;
+  const figureCardWidth = s(150);
+  const figureCardHeight = s(217);
 
   return (
     <div
@@ -257,11 +286,12 @@ export default function PTVPlayerBoard({
       }}
     >
       <div
+        ref={ref}
         style={{
           width: "100%",
-          maxWidth: 920,
+          maxWidth: 1092,
           border: "1px solid var(--border-strong)",
-          borderRadius: 18,
+          borderRadius: s(18),
           background: "var(--surface-strong)",
           overflow: "hidden",
           boxShadow: inScene ? "0 0 0 2px rgba(139,90,43,0.18)" : "none",
@@ -270,46 +300,31 @@ export default function PTVPlayerBoard({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns:
-              "minmax(140px, 1fr) minmax(180px, 1.18fr) minmax(140px, 1fr) minmax(200px, 1.12fr)",
-            columnGap: 20,
+            gridTemplateColumns: `${s(500)}px ${s(240)}px`,
+            columnGap: s(20),
             alignItems: "start",
-            padding: "18px 20px 20px",
+            justifyContent: "space-between",
+            padding: `${s(18)}px ${s(20)}px ${s(20)}px`,
             borderBottom: "1px solid var(--border-muted)",
           }}
         >
           <div
             style={{
+              width: s(500),
               display: "grid",
-              gap: 6,
-              justifyItems: "center",
+              gap: s(16),
               alignContent: "start",
-              paddingTop: 8,
-            }}
-          >
-            <FixedWidthFaceDownStack
-              cardIds={scumCardIds}
-              title="SCUM"
-              interactive={typeof onClickScum === "function"}
-              disabled={typeof onClickScum !== "function"}
-              onClick={onClickScum}
-            />
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gap: 8,
-              justifyItems: "center",
-              alignContent: "start",
+              border: "1px solid var(--border-muted)",
+              borderRadius: s(16),
+              padding: `${s(14)}px ${s(18)}px ${s(18)}px`,
+              background: "var(--surface-bg)",
             }}
           >
             <div
               style={{
-                fontFamily: "LavaArabic, serif",
-                fontSize: 30,
+                fontSize: s(28),
+                fontWeight: 800,
                 lineHeight: 1,
-                letterSpacing: "0.02em",
                 textAlign: "center",
               }}
             >
@@ -318,68 +333,112 @@ export default function PTVPlayerBoard({
 
             <div
               style={{
-                minHeight: 226,
                 display: "grid",
-                alignItems: "center",
-                justifyItems: "center",
+                gridTemplateColumns: `${s(135)}px ${s(170)}px ${s(135)}px`,
+                columnGap: s(12),
+                alignItems: "start",
+                justifyContent: "center",
               }}
             >
-              {figureCardId ? (
-                <CardImg cardId={figureCardId} width={figureCardWidth} />
-              ) : (
-                <div
-                  style={{
-                    width: figureCardWidth,
-                    height: figureCardHeight,
-                    border: "1px dashed var(--border-muted)",
-                    borderRadius: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    opacity: 0.5,
-                    fontSize: 13,
-                  }}
-                >
-                  no figure
-                </div>
-              )}
+              <div
+                style={{
+                  display: "grid",
+                  gap: s(6),
+                  justifyItems: "center",
+                  alignContent: "start",
+                  paddingTop: s(20),
+                }}
+              >
+                <FixedWidthFaceDownStack
+                  cardIds={scumCardIds}
+                  title="SCUM"
+                  scale={scale}
+                  interactive={typeof onClickScum === "function"}
+                  disabled={typeof onClickScum !== "function"}
+                  onClick={onClickScum}
+                />
+              </div>
+
+              <div
+                style={{
+                  minHeight: s(226),
+                  display: "grid",
+                  alignItems: "center",
+                  justifyItems: "center",
+                }}
+              >
+                {figureCardId ? (
+                  <CardImg cardId={figureCardId} width={figureCardWidth} />
+                ) : (
+                  <div
+                    style={{
+                      width: figureCardWidth,
+                      height: figureCardHeight,
+                      border: "1px dashed var(--border-muted)",
+                      borderRadius: s(12),
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: 0.5,
+                      fontSize: s(13),
+                    }}
+                  >
+                    no figure
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: s(6),
+                  justifyItems: "center",
+                  alignContent: "start",
+                  paddingTop: s(20),
+                }}
+              >
+                <FixedWidthFaceDownStack
+                  cardIds={vengeanceCardIds}
+                  title="VENGEANCE"
+                  scale={scale}
+                  interactive={typeof onClickVengeance === "function"}
+                  disabled={typeof onClickVengeance !== "function"}
+                  onClick={onClickVengeance}
+                />
+              </div>
             </div>
           </div>
 
           <div
             style={{
+              width: s(240),
               display: "grid",
-              gap: 6,
-              justifyItems: "center",
-              alignContent: "start",
-              paddingTop: 8,
-            }}
-          >
-            <FixedWidthFaceDownStack
-              cardIds={vengeanceCardIds}
-              title="VENGEANCE"
-              interactive={typeof onClickVengeance === "function"}
-              disabled={typeof onClickVengeance !== "function"}
-              onClick={onClickVengeance}
-            />
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gap: 18,
+              gap: s(18),
               alignContent: "start",
               justifyItems: "start",
-              paddingTop: 34,
+              paddingTop: s(22),
+              paddingLeft: s(52),
             }}
           >
             <div
               style={{
+                fontFamily: "LavaArabic, serif",
+                fontSize: s(22),
+                lineHeight: 1,
+                opacity: 0.9,
+                letterSpacing: "0.02em",
+              }}
+            >
+              DESCRIPTION
+            </div>
+
+            <div
+              style={{
                 display: "grid",
-                gap: 2,
+                gap: s(2),
                 lineHeight: 1.2,
                 opacity: 0.82,
-                fontSize: 15,
+                fontSize: s(15),
               }}
             >
               {summaryLines.length > 0 ? (
@@ -389,6 +448,18 @@ export default function PTVPlayerBoard({
               )}
             </div>
 
+            <div
+              style={{
+                fontFamily: "LavaArabic, serif",
+                fontSize: s(16),
+                lineHeight: 1,
+                opacity: 0.9,
+                letterSpacing: "0.02em",
+              }}
+            >
+              FACTION POWER
+            </div>
+
             <button
               type="button"
               onClick={powerDisabled ? undefined : onClickPower}
@@ -396,7 +467,7 @@ export default function PTVPlayerBoard({
               title={powerDisabled ? "Power not available yet" : powerLabel}
               style={{
                 border: "1px solid var(--border-muted)",
-                borderRadius: 16,
+                borderRadius: s(16),
                 background: powerDisabled
                   ? "var(--surface-muted)"
                   : "var(--surface-bg)",
@@ -405,8 +476,8 @@ export default function PTVPlayerBoard({
                 opacity: powerDisabled ? 0.82 : 1,
                 padding: 0,
                 overflow: "hidden",
-                width: 150,
-                height: 150,
+                width: s(150),
+                height: s(150),
                 display: "block",
               }}
             >
@@ -430,9 +501,10 @@ export default function PTVPlayerBoard({
                     alignItems: "center",
                     justifyContent: "center",
                     textAlign: "center",
-                    padding: 12,
+                    padding: s(12),
                     fontWeight: 800,
                     lineHeight: 1.2,
+                    fontSize: s(16),
                   }}
                 >
                   {powerLabel}
@@ -445,14 +517,14 @@ export default function PTVPlayerBoard({
         <div
           style={{
             display: "grid",
-            gap: 8,
-            padding: "14px 20px 20px",
+            gap: s(8),
+            padding: `${s(14)}px ${s(20)}px ${s(20)}px`,
           }}
         >
           <div
             style={{
               fontFamily: "LavaArabic, serif",
-              fontSize: 18,
+              fontSize: s(18),
               lineHeight: 1,
               opacity: 0.9,
               letterSpacing: "0.02em",
@@ -461,7 +533,7 @@ export default function PTVPlayerBoard({
             REWARDS
           </div>
 
-          <AdaptiveRewardsRow cardIds={rewardCardIds} />
+          <AdaptiveRewardsRow cardIds={rewardCardIds} scale={scale} />
         </div>
       </div>
     </div>

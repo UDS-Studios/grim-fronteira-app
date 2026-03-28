@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
+import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import TableZone from "../components/TableZone";
 import PlayerSummaryCard from "../components/PlayerSummaryCard";
 import { getGame, gfAction } from "../api/gf";
@@ -217,6 +218,9 @@ export default function MarshalTableView({
   run,
   onBackHome,
 }: MarshalTableViewProps) {
+  const deckScale = 1.6;
+  const playersRailScale = 1.6;
+  const ds = (value: number) => value * deckScale;
   const state = (resp.state as any) ?? {};
   const meta = state.meta ?? {};
   const zones: Record<string, string[]> = state.zones ?? {};
@@ -423,6 +427,22 @@ export default function MarshalTableView({
       return "Figure drawn. No azzardo allowed. Start scene.";
     }
 
+    if (scene.status === "setup" && participantIds.length === 0) {
+      if (!hasDifficulty) {
+        return "Select at least one participant, then draw difficulty.";
+      }
+
+      if (hasAzzardo) {
+        return "Select at least one participant before starting the scene.";
+      }
+
+      if (azzardoBlockedByDifficulty) {
+        return "Select at least one participant before starting the scene.";
+      }
+
+      return "Click deck to draw azzardo, or select at least one participant before starting the scene.";
+    }
+
     if (scene.status === "setup" && azzardoStatus === "unavailable") {
       return "Click deck to draw azzardo, or start scene.";
     }
@@ -511,69 +531,77 @@ export default function MarshalTableView({
       <div
         style={{
           minHeight: 0,
+          overflowX: "auto",
+          overflowY: "hidden",
           display: "grid",
-          gridTemplateColumns: "220px minmax(0, 1fr) 320px",
+          gridTemplateColumns: "auto minmax(0, 1fr) auto",
           gap: 14,
           alignItems: "start",
+          minWidth: "max-content",
         }}
       >
         {/* LEFT RAIL */}
         <div
           style={{
+            width: "clamp(176px, 18vw, 352px)",
             display: "grid",
             gap: 14,
             overflowY: "auto",
             minHeight: 0,
             alignContent: "start",
-          }}
-        >
-          <TableZone title="Deck">
-            <button
-              type="button"
-              onClick={handleDeckClick}
-              disabled={!canDeckClick}
-              style={{
-                border: "1px solid var(--border-muted)",
-                borderRadius: 12,
-                padding: 10,
-                background: "var(--surface-strong)",
-                cursor: canDeckClick ? "pointer" : "not-allowed",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                width: "100%",
-                opacity: canDeckClick ? 1 : 0.65,
-              }}
-              title={
-                !canDeckClick
-                  ? azzardoBlockedByDifficulty
-                    ? isJokerDifficulty
-                      ? "Joker difficulty: no azzardo allowed"
-                      : "Figure difficulty: no azzardo allowed"
-                    : "No more deck clicks allowed for this scene"
-                  : !hasDifficulty
-                    ? "Click to draw difficulty"
-                    : "Click to draw azzardo"
-              }
-            >
-              <CardImg cardId="BACK" faceDown width={86} title="Deck" />
-              <div>
-                <b>{deckCount}</b> cards
-              </div>
-            </button>
-          </TableZone>
+        }}
+      >
+          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+            <TableZone title="Deck">
+              <button
+                type="button"
+                onClick={handleDeckClick}
+                disabled={!canDeckClick}
+                style={{
+                  border: "1px solid var(--border-muted)",
+                  borderRadius: ds(12),
+                  padding: ds(10),
+                  background: "var(--surface-strong)",
+                  cursor: canDeckClick ? "pointer" : "not-allowed",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: ds(10),
+                  width: "100%",
+                  opacity: canDeckClick ? 1 : 0.65,
+                }}
+                title={
+                  !canDeckClick
+                    ? azzardoBlockedByDifficulty
+                      ? isJokerDifficulty
+                        ? "Joker difficulty: no azzardo allowed"
+                        : "Figure difficulty: no azzardo allowed"
+                      : "No more deck clicks allowed for this scene"
+                    : !hasDifficulty
+                      ? "Click to draw difficulty"
+                      : "Click to draw azzardo"
+                }
+              >
+                <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                <div style={{ fontSize: ds(16) }}>
+                  <b>{deckCount}</b> cards
+                </div>
+              </button>
+            </TableZone>
+          </ResponsiveScaleBox>
 
-          <TableZone title="Discard">
-            {discardPile.length === 0 ? (
-              <div style={{ opacity: 0.6 }}>— empty —</div>
-            ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {discardPile.map((cardId, idx) => (
-                  <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={70} />
-                ))}
-              </div>
-            )}
-          </TableZone>
+          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+            <TableZone title="Discard">
+              {discardPile.length === 0 ? (
+                <div style={{ opacity: 0.6, fontSize: ds(13) }}>— empty —</div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: ds(8) }}>
+                  {discardPile.map((cardId, idx) => (
+                    <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={ds(70)} />
+                  ))}
+                </div>
+              )}
+            </TableZone>
+          </ResponsiveScaleBox>
 
           {view === "debug" ? (
             <TableZone title="Debug Deck">
@@ -639,7 +667,7 @@ export default function MarshalTableView({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(260px, 360px) 1fr",
+                gridTemplateColumns: "minmax(0, 360px) 1fr",
                 gap: 18,
                 alignItems: "stretch",
               }}
@@ -786,46 +814,49 @@ export default function MarshalTableView({
         <div
           style={{
             minHeight: 0,
+            width: "clamp(216px, 24vw, 432px)",
           }}
         >
-          <TableZone title="Players">
-            {nonMarshalPlayers.length === 0 ? (
-              <div style={{ opacity: 0.6 }}>— no players —</div>
-            ) : (
-              <div
-                style={{
-                  minHeight: 0,
-                  display: "grid",
-                  gap: 10,
-                  alignContent: "start",
-                  paddingRight: 4,
-                }}
-              >
-                {sortedNonMarshalPlayers.map((pid) => {
-                  const selected = participantIds.includes(pid);
+          <ResponsiveScaleBox baseWidth={480} minScale={0.5} maxScale={1}>
+            <TableZone title="Players">
+              {nonMarshalPlayers.length === 0 ? (
+                <div style={{ opacity: 0.6, fontSize: 14 * playersRailScale }}>— no players —</div>
+              ) : (
+                <div
+                  style={{
+                    minHeight: 0,
+                    display: "grid",
+                    gap: 10 * playersRailScale,
+                    alignContent: "start",
+                  }}
+                >
+                  {sortedNonMarshalPlayers.map((pid) => {
+                    const selected = participantIds.includes(pid);
 
-                  return (
-                    <SelectablePlayerCard
-                      key={pid}
-                      selected={selected}
-                      disabled={isLocked}
-                      onToggle={() => toggleParticipant(pid)}
-                    >
-                      <PlayerSummaryCard
-                        playerId={pid}
-                        pstate={lobbyPlayers[pid] ?? {}}
-                        figureCardId={getPlayerFigureCardId(pid)}
-                        scumCount={getPlayerScumCount(pid)}
-                        vengeanceCount={getPlayerVengeanceCount(pid)}
-                        rewardCount={getPlayerRewardCount(pid)}
+                    return (
+                      <SelectablePlayerCard
+                        key={pid}
                         selected={selected}
-                      />
-                    </SelectablePlayerCard>
-                  );
-                })}
-              </div>
-            )}
-          </TableZone>
+                        disabled={isLocked}
+                        onToggle={() => toggleParticipant(pid)}
+                      >
+                        <PlayerSummaryCard
+                          playerId={pid}
+                          pstate={lobbyPlayers[pid] ?? {}}
+                          figureCardId={getPlayerFigureCardId(pid)}
+                          scumCount={getPlayerScumCount(pid)}
+                          vengeanceCount={getPlayerVengeanceCount(pid)}
+                          rewardCount={getPlayerRewardCount(pid)}
+                          selected={selected}
+                          scale={playersRailScale}
+                        />
+                      </SelectablePlayerCard>
+                    );
+                  })}
+                </div>
+              )}
+            </TableZone>
+          </ResponsiveScaleBox>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import CardImg from "../../components/CardImg";
+import ResponsiveScaleBox from "../../components/ResponsiveScaleBox";
 import TableZone from "../../components/TableZone";
 
 export type PTVOtherPlayersEntry = {
@@ -18,26 +19,28 @@ export type PTVOtherPlayersProps = {
 function MiniFaceDownStack({
   label,
   count,
+  scale = 1,
 }: {
   label: string;
   count: number;
+  scale?: number;
 }) {
-  const cardWidth = 54;
-  const cardHeight = 78;
-  const spread = count > 1 ? 8 : 0;
+  const cardWidth = 54 * scale;
+  const cardHeight = 78 * scale;
+  const spread = count > 1 ? 8 * scale : 0;
 
   return (
     <div
       style={{
         display: "grid",
-        gap: 4,
+        gap: 4 * scale,
         justifyItems: "center",
       }}
     >
       <div
         style={{
           fontFamily: "LavaArabic, serif",
-          fontSize: 14,
+          fontSize: 14 * scale,
           lineHeight: 1,
           textAlign: "center",
           opacity: 0.9,
@@ -81,20 +84,22 @@ function MiniFaceDownStack({
 
 function OtherPlayerMini({
   player,
+  scale = 1,
 }: {
   player: PTVOtherPlayersEntry;
+  scale?: number;
 }) {
   return (
     <div
       style={{
         border: "1px solid var(--border-muted)",
-        borderRadius: 14,
-        padding: 12,
+        borderRadius: 14 * scale,
+        padding: 12 * scale,
         background: player.inScene
           ? "var(--player-selected-bg)"
           : "var(--surface-strong)",
         display: "grid",
-        gap: 10,
+        gap: 10 * scale,
       }}
     >
       <div
@@ -102,6 +107,7 @@ function OtherPlayerMini({
           textAlign: "center",
           fontWeight: 800,
           lineHeight: 1.15,
+          fontSize: 16 * scale,
         }}
       >
         {player.displayName}
@@ -110,35 +116,35 @@ function OtherPlayerMini({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "72px 72px 72px",
+          gridTemplateColumns: `${72 * scale}px ${72 * scale}px ${72 * scale}px`,
           justifyContent: "center",
           alignItems: "start",
-          columnGap: 10,
+          columnGap: 10 * scale,
         }}
       >
-        <MiniFaceDownStack label="SCUM" count={player.scumCount} />
+        <MiniFaceDownStack label="SCUM" count={player.scumCount} scale={scale} />
 
         <div
           style={{
             display: "grid",
             justifyItems: "center",
-            gap: 4,
+            gap: 4 * scale,
           }}
         >
           {player.figureCardId ? (
-            <CardImg cardId={player.figureCardId} width={64} />
+            <CardImg cardId={player.figureCardId} width={64 * scale} />
           ) : (
             <div
               style={{
-                width: 64,
-                height: 92,
+                width: 64 * scale,
+                height: 92 * scale,
                 border: "1px dashed var(--border-muted)",
-                borderRadius: 10,
+                borderRadius: 10 * scale,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 opacity: 0.5,
-                fontSize: 11,
+                fontSize: 11 * scale,
               }}
             >
               no figure
@@ -148,7 +154,7 @@ function OtherPlayerMini({
           {player.inScene ? (
             <div
               style={{
-                fontSize: 11,
+                fontSize: 11 * scale,
                 fontWeight: 700,
                 opacity: 0.85,
               }}
@@ -158,12 +164,16 @@ function OtherPlayerMini({
           ) : null}
         </div>
 
-        <MiniFaceDownStack label="VENGEANCE" count={player.vengeanceCount} />
+        <MiniFaceDownStack
+          label="VENGEANCE"
+          count={player.vengeanceCount}
+          scale={scale}
+        />
       </div>
 
       <div
         style={{
-          fontSize: 13,
+          fontSize: 13 * scale,
           textAlign: "center",
           opacity: 0.85,
         }}
@@ -177,25 +187,30 @@ function OtherPlayerMini({
 export default function PTVOtherPlayers({
   players,
 }: PTVOtherPlayersProps) {
+  const scale = 1.6;
+
   return (
-    <TableZone title="Other Players">
-      {players.length === 0 ? (
-        <div style={{ opacity: 0.6 }}>— no other players —</div>
-      ) : (
+    <ResponsiveScaleBox baseWidth={480} minScale={0.5} maxScale={1}>
+      <TableZone title="Other Players">
+        {players.length === 0 ? (
+          <div style={{ opacity: 0.6, fontSize: 14 * scale }}>— no other players —</div>
+        ) : (
         <div
           style={{
             display: "grid",
-            gap: 12,
+            gap: 12 * scale,
           }}
         >
           {players.map((player) => (
             <OtherPlayerMini
               key={player.playerId}
               player={player}
+              scale={scale}
             />
           ))}
         </div>
-      )}
-    </TableZone>
+        )}
+      </TableZone>
+    </ResponsiveScaleBox>
   );
 }

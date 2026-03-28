@@ -1,5 +1,6 @@
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
+import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import TableZone from "../components/TableZone";
 import { getGame } from "../api/gf";
 import type { ActionResponse, View } from "../api/types";
@@ -143,6 +144,8 @@ export default function PlayerTableView({
   run,
   onBackHome,
 }: PlayerTableViewProps) {
+  const deckScale = 1.6;
+  const ds = (value: number) => value * deckScale;
   const state = (resp.state as any) ?? {};
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
@@ -308,7 +311,7 @@ export default function PlayerTableView({
           flex: 1,
           minHeight: 0,
           display: "grid",
-          gridTemplateColumns: "220px minmax(0, 1fr)",
+          gridTemplateColumns: "auto minmax(0, 1fr)",
           gap: 14,
           overflow: "hidden",
         }}
@@ -316,6 +319,7 @@ export default function PlayerTableView({
         {/* LEFT RAIL */}
       <div
         style={{
+          width: "clamp(176px, 18vw, 352px)",
           display: "grid",
           gap: 14,
           overflowY: "auto",
@@ -325,200 +329,197 @@ export default function PlayerTableView({
           gridAutoRows: "max-content",
         }}
       >
-          <TableZone title="Deck">
+          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+            <TableZone title="Deck">
               <div
                 style={{
                   border: "1px solid var(--border-muted)",
-                  borderRadius: 12,
-                  padding: 10,
+                  borderRadius: ds(12),
+                  padding: ds(10),
                   background: "var(--surface-strong)",
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
+                  gap: ds(10),
                   width: "fit-content",
                   maxWidth: "100%",
                   boxSizing: "border-box",
                 }}
                 title="Deck"
               >
-              <CardImg cardId="BACK" faceDown width={86} title="Deck" />
-              <div>
+              <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+              <div style={{ fontSize: ds(16) }}>
                 <b>{deckCount}</b> cards
               </div>
             </div>
-          </TableZone>
+            </TableZone>
+          </ResponsiveScaleBox>
 
-          <TableZone title="Discard">
-            {discardPile.length === 0 ? (
-              <div style={{ opacity: 0.6 }}>— empty —</div>
-            ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {discardPile.map((cardId, idx) => (
-                  <CardImg
-                    key={`${cardId}:${idx}`}
-                    cardId={cardId}
-                    width={70}
-                  />
-                ))}
-              </div>
-            )}
-          </TableZone>
+          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+            <TableZone title="Discard">
+              {discardPile.length === 0 ? (
+                <div style={{ opacity: 0.6, fontSize: ds(13) }}>— empty —</div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: ds(8) }}>
+                  {discardPile.map((cardId, idx) => (
+                    <CardImg
+                      key={`${cardId}:${idx}`}
+                      cardId={cardId}
+                      width={ds(70)}
+                    />
+                  ))}
+                </div>
+              )}
+            </TableZone>
+          </ResponsiveScaleBox>
         </div>
 
         {/* CENTER COLUMN */}
         <div
           style={{
             display: "grid",
-            gridTemplateRows: "auto auto minmax(0, 1fr)",
             gap: 14,
             minHeight: 0,
             overflow: "hidden",
           }}
         >
-          <TableZone title="Difficulty / Scene">
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(260px, 360px) 1fr",
-                gap: 18,
-                alignItems: "stretch",
-              }}
-            >
-              <div
-                style={{
-                  border: "1px solid var(--border-muted)",
-                  borderRadius: 14,
-                  padding: 16,
-                  background: "var(--surface-muted)",
-                  display: "grid",
-                  gap: 12,
-                  alignContent: "center",
-                  justifyItems: "center",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    flexWrap: "wrap",
-                    justifyContent: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: "LavaArabic, serif",
-                      fontSize: isJokerDifficulty ? "4.2rem" : "3rem",
-                      lineHeight: 1,
-                      whiteSpace: "nowrap",
-                      color: isJokerDifficulty ? "#7a1f1f" : "inherit",
-                    }}
-                  >
-                    {isJokerDifficulty ? "20" : "10 +"}
-                  </div>
-
-                  {difficultyCardId ? (
-                    <CardImg
-                      cardId={difficultyCardId}
-                      width={90}
-                      title="Difficulty card"
-                    />
-                  ) : (
-                    <div style={{ opacity: 0.6 }}>— no card —</div>
-                  )}
-
-                  {azzardoStatus !== "unavailable" ? (
-                    azzardoCardId ? (
-                      <CardImg
-                        cardId={azzardoCardId}
-                        width={90}
-                        title="Azzardo"
-                      />
-                    ) : (
-                      <CardImg
-                        cardId="BACK"
-                        faceDown
-                        width={90}
-                        title="Azzardo"
-                      />
-                    )
-                  ) : (
-                    <div style={{ opacity: 0.35, fontSize: 13 }}>
-                      no azzardo
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gap: 10,
-                  alignContent: "start",
-                }}
-              >
-                <div><b>difficulty value:</b> {difficultyValueLabel}</div>
-                <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
-                <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                <div><b>azzardo status:</b> {azzardoStatus}</div>
-                <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
-                <div><b>participants selected:</b> {participantIds.length}</div>
-                <div><b>scene status:</b> {scene.status ?? "-"}</div>
-                <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
-              </div>
-            </div>
-          </TableZone>
-
-          <CurrentPlayerSceneRow
-            inScene={currentPlayerInScene}
-            figureCardId={getPlayerFigureCardId(currentActorId)}
-            playedCards={getPlayerSceneHand(currentActorId)}
-            displayName={currentPlayerDisplayName}
-          />
-
           <div
             style={{
               minHeight: 0,
               overflowX: "auto",
               overflowY: "hidden",
               display: "grid",
-              gap: 18,
+              gap: 14,
             }}
           >
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(780px, 1fr) minmax(300px, 0.45fr)",
+                gridTemplateColumns: "minmax(0, 1fr) auto",
+                gridTemplateRows: "auto auto",
                 gap: 18,
                 alignItems: "start",
                 minWidth: "max-content",
                 minHeight: 0,
+                width: "100%",
               }}
             >
               <div
                 style={{
                   display: "grid",
-                  justifyItems: "stretch",
-                  alignContent: "start",
+                  gap: 14,
                   minHeight: 0,
                 }}
               >
                 <div
                   style={{
                     width: "100%",
-                    maxWidth: 1000,
                   }}
                 >
-                  <PTVPlayerBoard
-                    displayName="Nora Graves"
-                    summaryText="A Yankee Lady with a broken front tooth"
-                    figureCardId="QH"
-                    scumCardIds={["BACK"]}
-                    vengeanceCardIds={["BACK", "BACK"]}
-                    rewardCardIds={["4C", "JS"]}
-                    powerLabel="Order and Profit"
-                    inScene={participantIds.includes(currentActorId)}
-                    powerDisabled
+                  <TableZone title="Difficulty / Scene">
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 360px) 1fr",
+                        gap: 18,
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <div
+                        style={{
+                          border: "1px solid var(--border-muted)",
+                          borderRadius: 14,
+                          padding: 16,
+                          background: "var(--surface-muted)",
+                          display: "grid",
+                          gap: 12,
+                          alignContent: "center",
+                          justifyItems: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            flexWrap: "wrap",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontFamily: "LavaArabic, serif",
+                              fontSize: isJokerDifficulty ? "4.2rem" : "3rem",
+                              lineHeight: 1,
+                              whiteSpace: "nowrap",
+                              color: isJokerDifficulty ? "#7a1f1f" : "inherit",
+                            }}
+                          >
+                            {isJokerDifficulty ? "20" : "10 +"}
+                          </div>
+
+                          {difficultyCardId ? (
+                            <CardImg
+                              cardId={difficultyCardId}
+                              width={90}
+                              title="Difficulty card"
+                            />
+                          ) : (
+                            <div style={{ opacity: 0.6 }}>— no card —</div>
+                          )}
+
+                          {azzardoStatus !== "unavailable" ? (
+                            azzardoCardId ? (
+                              <CardImg
+                                cardId={azzardoCardId}
+                                width={90}
+                                title="Azzardo"
+                              />
+                            ) : (
+                              <CardImg
+                                cardId="BACK"
+                                faceDown
+                                width={90}
+                                title="Azzardo"
+                              />
+                            )
+                          ) : (
+                            <div style={{ opacity: 0.35, fontSize: 13 }}>
+                              no azzardo
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 10,
+                          alignContent: "start",
+                        }}
+                      >
+                        <div><b>difficulty value:</b> {difficultyValueLabel}</div>
+                        <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
+                        <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
+                        <div><b>azzardo status:</b> {azzardoStatus}</div>
+                        <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
+                        <div><b>participants selected:</b> {participantIds.length}</div>
+                        <div><b>scene status:</b> {scene.status ?? "-"}</div>
+                        <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
+                      </div>
+                    </div>
+                  </TableZone>
+                </div>
+
+                <div
+                  style={{
+                    width: "100%",
+                  }}
+                >
+                  <CurrentPlayerSceneRow
+                    inScene={currentPlayerInScene}
+                    figureCardId={getPlayerFigureCardId(currentActorId)}
+                    playedCards={getPlayerSceneHand(currentActorId)}
+                    displayName={currentPlayerDisplayName}
                   />
                 </div>
               </div>
@@ -528,8 +529,9 @@ export default function PlayerTableView({
                   minHeight: 0,
                   display: "grid",
                   alignContent: "start",
-                  width: "100%",
-                  maxWidth: 460,
+                  width: "clamp(240px, 24vw, 461px)",
+                  gridColumn: 2,
+                  gridRow: "1 / span 2",
                 }}
               >
                 <PTVOtherPlayers
@@ -554,6 +556,36 @@ export default function PlayerTableView({
                     },
                   ]}
                 />
+              </div>
+
+              <div
+              style={{
+                display: "grid",
+                gridColumn: 1,
+                gridRow: 2,
+                minHeight: 0,
+                justifyItems: "center",
+                alignContent: "start",
+              }}
+            >
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: 1048,
+                  }}
+                >
+                  <PTVPlayerBoard
+                    displayName="Nora Graves"
+                    summaryText="A Yankee Lady with a broken front tooth"
+                    figureCardId="QH"
+                    scumCardIds={["BACK"]}
+                    vengeanceCardIds={["BACK", "BACK"]}
+                    rewardCardIds={["4C", "JS"]}
+                    powerLabel="Order and Profit"
+                    inScene={participantIds.includes(currentActorId)}
+                    powerDisabled
+                  />
+                </div>
               </div>
             </div>
           </div>
