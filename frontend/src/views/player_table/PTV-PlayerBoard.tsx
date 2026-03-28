@@ -77,7 +77,9 @@ function FixedWidthFaceDownStack({
   const maxSpread = 18 * scale;
 
   const offsets =
-    shownCount <= 1
+    shownCount === 0
+      ? []
+      : shownCount === 1
       ? [0]
       : Array.from({ length: shownCount }, (_, idx) =>
           Math.round((idx * maxSpread) / (shownCount - 1))
@@ -130,18 +132,33 @@ function FixedWidthFaceDownStack({
             height: cardHeight + 20,
           }}
         >
-          {offsets.map((left, idx) => (
+          {shownCount === 0 ? (
             <div
-              key={`${title}:${idx}`}
               style={{
-            position: "absolute",
-            top: 10 * scale,
-            left,
+                position: "absolute",
+                top: 10 * scale,
+                left: (stackAreaWidth - cardWidth) / 2,
+                width: cardWidth,
+                height: cardHeight,
+                border: "1px dashed var(--border-muted)",
+                borderRadius: 12 * scale,
+                opacity: 0.35,
               }}
-            >
-              <CardImg cardId="BACK" faceDown width={cardWidth} />
-            </div>
-          ))}
+            />
+          ) : (
+            offsets.map((left, idx) => (
+              <div
+                key={`${title}:${idx}`}
+                style={{
+                  position: "absolute",
+                  top: 10 * scale,
+                  left,
+                }}
+              >
+                <CardImg cardId="BACK" faceDown width={cardWidth} />
+              </div>
+            ))
+          )}
         </div>
       </button>
     </div>
