@@ -229,8 +229,38 @@ function AdaptiveRewardsRow({
   );
 }
 
-function splitSummaryText(summaryText?: string | null): string[] {
-  const normalized = summaryText?.trim();
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeSummaryText(
+  summaryText?: string | null,
+  displayName?: string | null
+): string {
+  const normalized = summaryText?.trim() ?? "";
+  if (!normalized) return "";
+
+  const cleanedDisplayName = displayName?.trim();
+  let nextText = normalized;
+
+  if (cleanedDisplayName) {
+    const displayNamePattern = new RegExp(
+      `^${escapeRegExp(cleanedDisplayName)}\\s*,?\\s*`,
+      "i"
+    );
+    nextText = nextText.replace(displayNamePattern, "").trim();
+  }
+
+  if (!nextText) return "";
+
+  return nextText.replace(/^\p{L}/u, (char) => char.toUpperCase());
+}
+
+function splitSummaryText(
+  summaryText?: string | null,
+  displayName?: string | null
+): string[] {
+  const normalized = normalizeSummaryText(summaryText, displayName);
   if (!normalized) return [];
 
   const words = normalized.split(/\s+/);
@@ -273,7 +303,7 @@ export default function PTVPlayerBoard({
   const { ref, scale } = useResponsiveScale(780, 1.4, 0.7);
   const s = (value: number) => value * scale;
   const powerArtSrc = getPowerArtSrc(powerLabel);
-  const summaryLines = splitSummaryText(summaryText);
+  const summaryLines = splitSummaryText(summaryText, displayName);
   const figureCardWidth = s(150);
   const figureCardHeight = s(217);
 
@@ -417,7 +447,7 @@ export default function PTVPlayerBoard({
               alignContent: "start",
               justifyItems: "start",
               paddingTop: s(22),
-              paddingLeft: s(52),
+              paddingLeft: s(44),
             }}
           >
             <div

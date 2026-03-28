@@ -15,6 +15,13 @@ type PlayerTableViewProps = {
   onBackHome: () => void;
 };
 
+type LobbyPlayerState = {
+  chosen_name?: string | null;
+  character_label?: string | null;
+  chosen_feature?: string | null;
+  summary_text?: string | null;
+};
+
 type SceneState = {
   status?: "idle" | "setup" | "active" | "resolved";
   participants?: string[];
@@ -32,6 +39,25 @@ type SceneState = {
     revealed?: boolean;
   };
 };
+
+function getPowerFromCardId(cardId?: string | null): string {
+  if (!cardId) return "Unknown";
+
+  const suit = cardId.slice(-1).toUpperCase(); // H, D, C, S
+
+  switch (suit) {
+    case "H":
+      return "Order and Profit"; // Yankees
+    case "D":
+      return "Law of Lead"; // Criollos
+    case "C":
+      return "Heart of Shadow"; // Paisà
+    case "S":
+      return "Children of the Earth"; // Chichimeca
+    default:
+      return "Unknown";
+  }
+}
 
 function CurrentPlayerSceneRow({
   inScene,
@@ -171,7 +197,8 @@ export default function PlayerTableView({
 
   const zones: Record<string, string[]> = state.zones ?? {};
   const lobby = meta.lobby ?? {};
-  const lobbyPlayers = lobby.players ?? {};
+  const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
+  const marshalId: string = meta.marshal_id ?? "";
 
   function getPlayerFigureCardId(pid: string): string | null {
     const cards = zones[`players.${pid}.character`] ?? [];
@@ -182,8 +209,47 @@ export default function PlayerTableView({
     return zones[`scene.hand.${pid}`] ?? [];
   }
 
+  function getPlayerScumCards(pid: string): string[] {
+    return zones[`players.${pid}.scum`] ?? [];
+  }
+
+  function getPlayerVengeanceCards(pid: string): string[] {
+    return zones[`players.${pid}.vengeance`] ?? [];
+  }
+
+  function getPlayerRewardCards(pid: string): string[] {
+    return zones[`players.${pid}.rewards`] ?? [];
+  }
+
   const currentPlayerDisplayName =
     lobbyPlayers?.[currentActorId]?.chosen_name ?? currentActorId;
+
+  const playersOrder: string[] = Array.isArray(meta.players_order)
+    ? meta.players_order
+    : [];
+
+  const otherPlayers = playersOrder
+    .filter((pid) => pid !== currentActorId && pid !== marshalId)
+    .map((pid) => ({
+      playerId: pid,
+      displayName: lobbyPlayers?.[pid]?.chosen_name ?? pid,
+      figureCardId: getPlayerFigureCardId(pid),
+      scumCount: getPlayerScumCards(pid).length,
+      vengeanceCount: getPlayerVengeanceCards(pid).length,
+      rewardCount: getPlayerRewardCards(pid).length,
+      inScene: participantIds.includes(pid),
+      powerLabel: getPowerFromCardId(getPlayerFigureCardId(pid)),
+    }))
+    .filter((player) => player.figureCardId != null);
+
+  const currentPlayerFigureCardId = getPlayerFigureCardId(currentActorId);
+  const currentPlayerScumCards = getPlayerScumCards(currentActorId);
+  const currentPlayerVengeanceCards = getPlayerVengeanceCards(currentActorId);
+  const currentPlayerRewardCards = getPlayerRewardCards(currentActorId);
+
+  const currentPlayerSummaryText =
+    lobbyPlayers?.[currentActorId]?.summary_text ??
+    null;
 
   const difficultyCardId = scene.difficulty?.card_id ?? null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
@@ -534,28 +600,7 @@ export default function PlayerTableView({
                   gridRow: "1 / span 2",
                 }}
               >
-                <PTVOtherPlayers
-                  players={[
-                    {
-                      playerId: "player-a",
-                      displayName: "Aukan Metztli",
-                      figureCardId: "KS",
-                      scumCount: 0,
-                      vengeanceCount: 2,
-                      rewardCount: 0,
-                      inScene: false,
-                    },
-                    {
-                      playerId: "player-b",
-                      displayName: "Rodrigo del Filo",
-                      figureCardId: "KD",
-                      scumCount: 1,
-                      vengeanceCount: 1,
-                      rewardCount: 0,
-                      inScene: true,
-                    },
-                  ]}
-                />
+                <PTVOtherPlayers players={otherPlayers} />
               </div>
 
               <div
@@ -575,13 +620,13 @@ export default function PlayerTableView({
                   }}
                 >
                   <PTVPlayerBoard
-                    displayName="Nora Graves"
-                    summaryText="A Yankee Lady with a broken front tooth"
-                    figureCardId="QH"
-                    scumCardIds={["BACK"]}
-                    vengeanceCardIds={["BACK", "BACK"]}
-                    rewardCardIds={["4C", "JS"]}
-                    powerLabel="Order and Profit"
+                    displayName={currentPlayerDisplayName}
+                    summaryText={currentPlayerSummaryText}
+                    figureCardId={currentPlayerFigureCardId}
+                    scumCardIds={currentPlayerScumCards}
+                    vengeanceCardIds={currentPlayerVengeanceCards}
+                    rewardCardIds={currentPlayerRewardCards}
+                    powerLabel={getPowerFromCardId(currentPlayerFigureCardId)}
                     inScene={participantIds.includes(currentActorId)}
                     powerDisabled
                   />
