@@ -488,12 +488,15 @@ export default function MarshalLobbyView({
                         textAlign: "left",
                         padding: "10px 12px",
                         borderRadius: 10,
-                        border: selectedPlayerId === pid ? "2px solid #8b5a2b" : "1px solid #bbb",
+                        border: selectedPlayerId === pid
+                          ? "2px solid var(--border-strong)"
+                          : "1px solid var(--border-muted)",
                         background: isReady
-                          ? "#e7f4e4"
+                          ? "color-mix(in srgb, #5aa65a 24%, var(--surface-strong))"
                           : selectedPlayerId === pid
-                          ? "#fff8ea"
-                          : "#fff",
+                          ? "var(--surface-hover)"
+                          : "var(--surface-strong)",
+                        color: "var(--text-primary)",
                         cursor: "pointer",
                       }}
                       title={pid}
@@ -509,7 +512,7 @@ export default function MarshalLobbyView({
                           }}
                         />
 
-                        <div style={{ fontSize: 14, opacity: 0.9 }}>
+                        <div style={{ fontSize: 14, opacity: 0.9, color: "var(--text-primary)" }}>
                           {prefix}
                           <b>{summary}</b>
                         </div>
