@@ -141,6 +141,8 @@ def scene_draw_azzardo(game: GameState, *, actor_id: str, seed: int | None = Non
         raise ValueError("Scene difficulty must be rolled before drawing azzardo.")
     if scene["azzardo"]["status"] != "unavailable":
         raise ValueError("Azzardo is already set for this scene.")
+    if int(scene["difficulty"]["value"] or 0) >= 21:
+        raise ValueError("Azzardo is not allowed when scene difficulty is already 21 or higher.")
 
     if seed is not None:
         if game.deck is None:
@@ -211,6 +213,24 @@ def scene_start(game: GameState, *, actor_id: str) -> GameState:
     if scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
         raise ValueError("Azzardo is in an invalid state for starting the scene.")
 
+    initiative_order: list[tuple[str, int, int]] = []
+    for original_idx, pid in enumerate(scene["participants"]):
+        zone_name = f"{SCENE_HAND_PREFIX}{pid}"
+        game, _card_id = _draw_to_zone(game, zone_name)
+        scene = _scene(game)
+        pstate = dict(scene["players"].get(pid) or {})
+        hand_cards = list(game.zones.get(zone_name, []))
+        hand_value = _scene_hand_value(figure_card_id=pstate.get("figure_card_id"), hand_cards=hand_cards)
+        pstate["hand_value"] = hand_value
+        pstate["busted"] = hand_value > 21
+        scene["players"][pid] = pstate
+        initiative_order.append((pid, hand_value, original_idx))
+        game = _replace_scene(game, scene=scene)
+
+    initiative_order.sort(key=lambda item: (-item[1], item[2]))
+
+    scene = _scene(game)
+    scene["participants"] = [pid for pid, _score, _original_idx in initiative_order]
     scene["status"] = SCENE_STATUS_ACTIVE
     return _replace_scene(game, scene=scene)
 
@@ -236,12 +256,13 @@ def scene_draw_card(game: GameState, *, player_id: str) -> GameState:
     pstate = dict(scene["players"].get(player_id) or {})
 
     hand_cards = list(game.zones.get(zone_name, []))
-    hand_value = 10 + _cards_blackjack_value(hand_cards)
+    hand_value = _scene_hand_value(figure_card_id=pstate.get("figure_card_id"), hand_cards=hand_cards)
 
     pstate["hand_value"] = hand_value
     pstate["busted"] = hand_value > 21
     scene["players"][player_id] = pstate
-    return _replace_scene(game, scene=scene)
+    game = _replace_scene(game, scene=scene)
+    return _resolve_scene_if_all_participants_done(game)
 
 
 def scene_stand(game: GameState, *, player_id: str) -> GameState:
@@ -261,7 +282,8 @@ def scene_stand(game: GameState, *, player_id: str) -> GameState:
 
     pstate["standing"] = True
     scene["players"][player_id] = pstate
-    return _replace_scene(game, scene=scene)
+    game = _replace_scene(game, scene=scene)
+    return _resolve_scene_if_all_participants_done(game)
 
 
 def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
@@ -326,6 +348,27 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     game = _replace_scene(game, scene=scene)
     validate_unique_cards(game)
     return game
+
+
+def _resolve_scene_if_all_participants_done(game: GameState) -> GameState:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        return game
+
+    unresolved = [
+        pid
+        for pid in scene["participants"]
+        if not bool((scene["players"].get(pid) or {}).get("standing"))
+        and not bool((scene["players"].get(pid) or {}).get("busted"))
+    ]
+    if unresolved:
+        return game
+
+    marshal_id = (game.meta or {}).get("marshal_id")
+    if not isinstance(marshal_id, str) or not marshal_id:
+        raise ValueError("Scene cannot auto-resolve without a marshal_id.")
+
+    return scene_resolve(game, actor_id=marshal_id)
 
 
 def _default_scene_player(game: GameState, player_id: str) -> dict[str, Any]:
@@ -530,6 +573,19 @@ def _blackjack_value(card_id: str) -> int:
 
 def _cards_blackjack_value(cards: list[str]) -> int:
     return sum(_blackjack_value(card_id) for card_id in cards)
+
+
+def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str]) -> int:
+    cards = [card_id for card_id in [figure_card_id, *hand_cards] if isinstance(card_id, str) and card_id]
+    total = sum(_blackjack_value(card_id) for card_id in cards)
+    aces = sum(1 for card_id in cards if _rank(card_id) == "A")
+
+    # Count aces as 1 instead of 11 when that produces the best non-busting total.
+    while total > 21 and aces > 0:
+        total -= 10
+        aces -= 1
+
+    return total
 
 
 def _rank(card_id: str) -> str:

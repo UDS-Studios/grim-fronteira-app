@@ -6,6 +6,11 @@ import TableZone from "../components/TableZone";
 import PlayerSummaryCard from "../components/PlayerSummaryCard";
 import { getGame, gfAction } from "../api/gf";
 import type { ActionResponse, View } from "../api/types";
+import {
+  getSceneHandTotal,
+  getSceneOutcome,
+  type SceneOutcome,
+} from "./player_table/sceneResolution";
 
 type MarshalTableViewProps = {
   resp: ActionResponse;
@@ -37,6 +42,22 @@ type SceneState = {
     card_id?: string | null;
     value?: number | null;
     revealed?: boolean;
+  };
+  players?: Record<string, {
+    figure_card_id?: string | null;
+    figure_value?: number | null;
+    hand_value?: number | null;
+    standing?: boolean;
+    busted?: boolean;
+    resolved?: boolean;
+    wounds_gained?: number;
+    reward_gained?: boolean;
+    result?: string | null;
+  }>;
+  resolution?: {
+    completed?: boolean;
+    winners?: string[];
+    losers?: string[];
   };
 };
 
@@ -78,21 +99,38 @@ function PlayerLane({
   pstate,
   figureCardId,
   playedCards,
+  total,
+  stateLabel,
+  laneState,
+  outcome,
 }: {
   playerId: string;
   pstate: LobbyPlayerState;
   figureCardId?: string | null;
   playedCards: string[];
+  total: number | null;
+  stateLabel?: string | null;
+  laneState: "waiting" | "active" | "done";
+  outcome?: SceneOutcome | null;
 }) {
   const displayName = pstate.chosen_name ?? playerId;
 
   return (
     <div
       style={{
-        border: "1px solid var(--border-muted)",
+        border:
+          laneState === "active"
+            ? "2px solid var(--border-strong)"
+            : "1px solid var(--border-muted)",
         borderRadius: 12,
         padding: 12,
-        background: "var(--surface-strong)",
+        background:
+          laneState === "active"
+            ? "color-mix(in srgb, var(--surface-hover) 78%, transparent)"
+            : laneState === "done"
+              ? "color-mix(in srgb, var(--surface-muted) 84%, transparent)"
+              : "var(--surface-strong)",
+        opacity: laneState === "done" ? 0.85 : 1,
         display: "grid",
         gridTemplateColumns: "110px 1fr",
         gap: 14,
@@ -131,7 +169,38 @@ function PlayerLane({
           minHeight: 96,
         }}
       >
-        <div style={{ fontWeight: 700 }}>Played Cards</div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>Played Cards</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {stateLabel ? (
+              <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.8 }}>
+                {stateLabel}
+              </div>
+            ) : null}
+            <div style={{ fontSize: 13, fontWeight: 800 }}>Total: {total ?? "-"}</div>
+          </div>
+        </div>
+
+        {outcome ? (
+          <div
+            style={{
+            fontWeight: 900,
+            color: outcome.color,
+            fontSize: 22,
+            lineHeight: 1,
+            }}
+          >
+            {outcome.label}
+          </div>
+        ) : null}
 
         {playedCards.length === 0 ? (
           <div
@@ -229,6 +298,7 @@ export default function MarshalTableView({
   const playersOrder: string[] = meta.players_order ?? [];
   const marshalId = meta.marshal_id ?? "";
   const scene: SceneState = meta.scene ?? {};
+  const scenePlayers = scene.players ?? {};
   const lobby = meta.lobby ?? {};
   const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
 
@@ -278,6 +348,59 @@ export default function MarshalTableView({
   const difficultyCardId = scene.difficulty?.card_id ?? null;
   const azzardoCardId =
     scene.azzardo?.revealed && scene.azzardo?.card_id ? scene.azzardo.card_id : null;
+  const sceneResolved = scene.status === "resolved" || !!scene.resolution?.completed;
+  const effectiveDifficultyValue =
+    sceneResolved && scene.difficulty?.value != null
+      ? scene.difficulty.value + (scene.azzardo?.value ?? 0)
+      : scene.difficulty?.value ?? null;
+  const activeParticipantId =
+    scene.status === "active"
+      ? participantIds.find((pid) => {
+          const pstate = scenePlayers?.[pid] ?? {};
+          return !pstate.standing && !pstate.busted && !pstate.resolved;
+        }) ?? null
+      : null;
+
+  function getParticipantTotal(pid: string): number | null {
+    if (!participantIds.includes(pid)) return null;
+    return getSceneHandTotal({
+      figureCardId: getPlayerFigureCardId(pid),
+      playedCards: getPlayerSceneHand(pid),
+      backendHandValue: scenePlayers?.[pid]?.hand_value,
+    });
+  }
+
+  function getParticipantLaneState(pid: string): "waiting" | "active" | "done" {
+    const pstate = scenePlayers?.[pid] ?? {};
+    if (sceneResolved || pstate.resolved || pstate.standing || pstate.busted) return "done";
+    if (scene.status === "active" && pid === activeParticipantId) return "active";
+    return "waiting";
+  }
+
+  function getParticipantStateLabel(pid: string): string | null {
+    const pstate = scenePlayers?.[pid] ?? {};
+    if (sceneResolved) return "Resolved";
+    if (pstate.busted) return "Busted";
+    if (pstate.standing) return "Stayed";
+    if (scene.status === "active" && pid === activeParticipantId) return "Acting now";
+    if (scene.status === "active" && participantIds.includes(pid)) return "Waiting";
+    return null;
+  }
+
+  function getParticipantOutcome(pid: string): SceneOutcome | null {
+    if (!sceneResolved) return null;
+    const backendResult = scenePlayers?.[pid]?.result;
+    if (backendResult === "success") {
+      return { key: "success", label: "Success!", color: "#2f8f3e" };
+    }
+    if (backendResult === "failure") {
+      return { key: "failure", label: "Failure!", color: "#6f1d1b" };
+    }
+    if (backendResult === "bust") {
+      return { key: "wound", label: "Wound!!", color: "#d11f1f" };
+    }
+    return getSceneOutcome(getParticipantTotal(pid), effectiveDifficultyValue);
+  }
 
   const difficultyValueLabel =
     scene.difficulty?.value == null
@@ -292,10 +415,13 @@ export default function MarshalTableView({
     difficultyCardId === "BJ" ||
     difficultyCardId === "RJ" ||
     difficultyCardId?.toUpperCase().includes("JOKER") === true;
+  const isAceDifficulty =
+    difficultyCardId != null &&
+    difficultyCardId.trim().toUpperCase().charAt(0) === "A";
   const isFigureDifficulty =
     difficultyCardId != null &&
     ["J", "Q", "K"].includes(difficultyCardId.trim().toUpperCase().charAt(0));
-  const azzardoBlockedByDifficulty = isJokerDifficulty || isFigureDifficulty;
+  const azzardoBlockedByDifficulty = isJokerDifficulty || isAceDifficulty || isFigureDifficulty;
 
   const canDeckClick =
     isEditable &&
@@ -423,6 +549,10 @@ export default function MarshalTableView({
       return "Joker drawn. No azzardo allowed. Start scene.";
     }
 
+    if (scene.status === "setup" && isAceDifficulty) {
+      return "Ace drawn. Difficulty is 21. No azzardo allowed. Start scene.";
+    }
+
     if (scene.status === "setup" && isFigureDifficulty) {
       return "Figure drawn. No azzardo allowed. Start scene.";
     }
@@ -452,6 +582,10 @@ export default function MarshalTableView({
     }
 
     if (scene.status === "active") {
+      if (activeParticipantId) {
+        const activeName = lobbyPlayers?.[activeParticipantId]?.chosen_name ?? activeParticipantId;
+        return `Scene active. ${activeName} is acting.`;
+      }
       return "Scene active. Setup is locked.";
     }
 
@@ -574,6 +708,8 @@ export default function MarshalTableView({
                     ? azzardoBlockedByDifficulty
                       ? isJokerDifficulty
                         ? "Joker difficulty: no azzardo allowed"
+                        : isAceDifficulty
+                          ? "Ace difficulty: total is 21, no azzardo allowed"
                         : "Figure difficulty: no azzardo allowed"
                       : "No more deck clicks allowed for this scene"
                     : !hasDifficulty
@@ -802,6 +938,10 @@ export default function MarshalTableView({
                       pstate={lobbyPlayers[pid] ?? {}}
                       figureCardId={getPlayerFigureCardId(pid)}
                       playedCards={getPlayerSceneHand(pid)}
+                      total={getParticipantTotal(pid)}
+                      stateLabel={getParticipantStateLabel(pid)}
+                      laneState={getParticipantLaneState(pid)}
+                      outcome={getParticipantOutcome(pid)}
                     />
                   ))
                 )}

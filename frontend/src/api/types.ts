@@ -1,4 +1,4 @@
-export type View = "public" | "debug";
+export type View = "public" | "player" | "debug";
 
 export type ErrorPayload = {
   code: string;

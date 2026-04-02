@@ -152,26 +152,63 @@ def test_scene_draw_azzardo_and_skip_paths():
     }
 
 
+def test_scene_ace_difficulty_blocks_azzardo():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["AH"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, difficulty = scene_roll_difficulty(game, actor_id="host1")
+
+    assert difficulty["value"] == 21
+
+    try:
+        scene_draw_azzardo(game, actor_id="host1")
+    except ValueError as exc:
+        assert "not allowed" in str(exc)
+    else:
+        raise AssertionError("scene_draw_azzardo should fail when difficulty is already 21")
+
+
 def test_scene_player_draw_and_stand():
     game = _ready_table_game()
-    game = _with_draw_order(game, ["4H", "8D"])
+    game = _with_draw_order(game, ["4H", "8D", "2H"])
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
     game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
     game = scene_skip_azzardo(game, actor_id="host1")
     game = scene_start(game, actor_id="host1")
 
-    game = scene_draw_card(game, player_id="p1")
-
     assert game.zones["scene.hand.p1"] == ["8D"]
     assert game.meta["scene"]["players"]["p1"]["hand_value"] == 18
+
+    game = scene_draw_card(game, player_id="p1")
+
+    assert game.zones["scene.hand.p1"] == ["8D", "2H"]
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 20
     assert game.meta["scene"]["players"]["p1"]["busted"] is False
 
     game = scene_stand(game, player_id="p1")
-    assert game.meta["scene"]["players"]["p1"]["standing"] is True
+    assert game.meta["scene"]["players"]["p1"]["resolved"] is True
+
+
+def test_scene_start_deals_initiative_and_reorders_participants():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "2H", "AH"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+
+    game = scene_start(game, actor_id="host1")
+
+    scene = game.meta["scene"]
+    assert scene["participants"] == ["p2", "p1"]
+    assert game.zones["scene.hand.p1"] == ["2H"]
+    assert game.zones["scene.hand.p2"] == ["AH"]
+    assert scene["players"]["p1"]["hand_value"] == 12
+    assert scene["players"]["p2"]["hand_value"] == 21
 
 
 def test_scene_start_allows_implicit_azzardo_skip():
     game = _ready_table_game()
+    game = _with_draw_order(game, ["5H", "8D"])
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
     game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
 
@@ -179,11 +216,12 @@ def test_scene_start_allows_implicit_azzardo_skip():
 
     assert game.meta["scene"]["status"] == "active"
     assert game.meta["scene"]["azzardo"]["status"] == "unavailable"
+    assert game.zones["scene.hand.p1"] == ["8D"]
 
 
 def test_scene_resolve_blocks_until_all_participants_done():
     game = _ready_table_game()
-    game = _with_draw_order(game, ["4H"])
+    game = _with_draw_order(game, ["4H", "2H", "3H"])
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
     game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
     game = scene_skip_azzardo(game, actor_id="host1")
@@ -200,8 +238,8 @@ def test_scene_resolve_blocks_until_all_participants_done():
 
 def test_scene_resolve_reveals_azzardo_and_grants_rewards():
     game = _ready_table_game()
-    success_card = _first_available(game, ["10H", "10D", "10C", "10S", "AH", "AD", "AC", "AS"])
-    game = _with_draw_order(game, ["4H", "6C", "8D", success_card, "2H"])
+    success_card = _first_available(game, ["AH", "AD", "AC", "AS"])
+    game = _with_draw_order(game, ["4H", "6C", "8D", "2H", success_card, "3H"])
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
     game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
     game = scene_draw_azzardo(game, actor_id="host1")
@@ -216,11 +254,9 @@ def test_scene_resolve_reveals_azzardo_and_grants_rewards():
     assert hidden_player["zones"]["scene.azzardo"] == []
 
     game = scene_start(game, actor_id="host1")
-    game = scene_draw_card(game, player_id="p1")
-    game = scene_stand(game, player_id="p1")
     game = scene_draw_card(game, player_id="p2")
     game = scene_stand(game, player_id="p2")
-    game = scene_resolve(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
 
     scene = game.meta["scene"]
     assert scene["status"] == "resolved"
@@ -244,19 +280,70 @@ def test_scene_resolve_reveals_azzardo_and_grants_rewards():
     assert revealed_player["meta"]["scene"]["azzardo"]["value"] == 6
 
 
+def test_scene_auto_resolves_after_last_participant_finishes():
+    game = _ready_table_game()
+    success_card = _first_available(game, ["AH", "AD", "AC", "AS"])
+    game = _with_draw_order(game, ["4H", "6C", "8D", "2H", success_card])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    game = scene_draw_card(game, player_id="p2")
+    game = scene_stand(game, player_id="p2")
+    game = scene_stand(game, player_id="p1")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "resolved"
+    assert scene["azzardo"]["revealed"] is True
+    assert scene["resolution"]["completed"] is True
+    assert scene["players"]["p1"]["result"] == "failure"
+    assert scene["players"]["p2"]["result"] == "success"
+
+
+def test_scene_equal_to_difficulty_is_success_when_not_busted():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "2H", "3C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    game = scene_draw_card(game, player_id="p1")
+    game = scene_stand(game, player_id="p1")
+    scene = game.meta["scene"]
+
+    assert scene["status"] == "resolved"
+    assert scene["players"]["p1"]["hand_value"] == 15
+    assert scene["players"]["p1"]["result"] == "success"
+
+
+def test_scene_drawn_ace_uses_best_value_below_or_equal_21():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "9C", "AH"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    assert game.zones["scene.hand.p1"] == ["9C"]
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 19
+
+    game = scene_draw_card(game, player_id="p1")
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 20
+    assert game.meta["scene"]["players"]["p1"]["busted"] is False
+
+
 def test_scene_set_participants_allows_second_scene_after_resolve():
     game = _ready_table_game()
-    game = _with_draw_order(game, ["4H", "8D"])
+    game = _with_draw_order(game, ["4H", "8D", "2H"])
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
     game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
     game = scene_skip_azzardo(game, actor_id="host1")
     game = scene_start(game, actor_id="host1")
     game = scene_draw_card(game, player_id="p1")
     game = scene_stand(game, player_id="p1")
-    game = scene_resolve(game, actor_id="host1")
 
     assert game.meta["scene"]["status"] == "resolved"
-    assert game.zones["scene.hand.p1"] == ["8D"]
+    assert game.zones["scene.hand.p1"] == ["8D", "2H"]
 
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p2"])
 

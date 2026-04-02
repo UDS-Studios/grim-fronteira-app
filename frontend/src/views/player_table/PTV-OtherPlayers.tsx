@@ -10,6 +10,14 @@ export type PTVOtherPlayersEntry = {
   vengeanceCount: number;
   rewardCount: number;
   inScene?: boolean;
+  scenePlayedCards?: string[];
+  sceneTotal?: number | null;
+  sceneState?: "waiting" | "active" | "done";
+  sceneStateLabel?: string | null;
+  sceneOutcome?: {
+    label: string;
+    color: string;
+  } | null;
 };
 
 export type PTVOtherPlayersProps = {
@@ -180,6 +188,84 @@ function OtherPlayerMini({
       >
         <b>Rewards:</b> {player.rewardCount}
       </div>
+
+      {player.inScene ? (
+        <div
+          style={{
+            border:
+              player.sceneState === "active"
+                ? "2px solid var(--border-strong)"
+                : "1px solid var(--border-muted)",
+            borderRadius: 12 * scale,
+            padding: 10 * scale,
+            background:
+              player.sceneState === "active"
+                ? "color-mix(in srgb, var(--surface-hover) 72%, transparent)"
+                : player.sceneState === "done"
+                  ? "color-mix(in srgb, var(--surface-muted) 82%, transparent)"
+                  : "var(--surface-bg)",
+            opacity: player.sceneState === "done" ? 0.82 : 1,
+            display: "grid",
+            gap: 8 * scale,
+            alignContent: "start",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8 * scale,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ fontSize: 12 * scale, fontWeight: 800 }}>Scene Lane</div>
+            {player.sceneStateLabel ? (
+              <div style={{ fontSize: 11 * scale, fontWeight: 700, opacity: 0.8 }}>
+                {player.sceneStateLabel}
+              </div>
+            ) : null}
+          </div>
+
+          {player.sceneOutcome ? (
+            <div
+              style={{
+                fontWeight: 900,
+                color: player.sceneOutcome.color,
+                fontSize: 14 * scale,
+                lineHeight: 1,
+              }}
+            >
+              {player.sceneOutcome.label}
+            </div>
+          ) : null}
+
+          <div style={{ fontSize: 12 * scale, fontWeight: 700 }}>
+            Total: {player.sceneTotal ?? "-"}
+          </div>
+
+          {player.scenePlayedCards && player.scenePlayedCards.length > 0 ? (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6 * scale,
+                alignItems: "flex-start",
+              }}
+            >
+              {player.scenePlayedCards.map((cardId, idx) => (
+                <CardImg
+                  key={`${player.playerId}:${cardId}:${idx}`}
+                  cardId={cardId}
+                  width={44 * scale}
+                />
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11 * scale, opacity: 0.65 }}>— no cards yet —</div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

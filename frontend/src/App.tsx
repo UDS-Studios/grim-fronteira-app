@@ -136,7 +136,6 @@ export default function App() {
                 newGame({
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
-                  seed: 42,
                   view,
                 })
               )
