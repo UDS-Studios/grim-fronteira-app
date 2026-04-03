@@ -5,7 +5,10 @@ export type PTVPlayerBoardProps = {
   displayName: string;
   summaryText?: string | null;
   figureCardId?: string | null;
+  figureRotated?: boolean;
+  figureDead?: boolean;
   scumCardIds: string[];
+  revealedScumCardId?: string | null;
   vengeanceCardIds: string[];
   rewardCardIds: string[];
   powerLabel: string;
@@ -57,6 +60,7 @@ function useResponsiveScale(minWidth: number, maxScale: number, minScale = 1) {
 
 function FixedWidthFaceDownStack({
   cardIds,
+  revealedTopCardId,
   title,
   scale = 1,
   interactive = false,
@@ -64,6 +68,7 @@ function FixedWidthFaceDownStack({
   onClick,
 }: {
   cardIds: string[];
+  revealedTopCardId?: string | null;
   title: string;
   scale?: number;
   interactive?: boolean;
@@ -155,7 +160,11 @@ function FixedWidthFaceDownStack({
                   left,
                 }}
               >
-                <CardImg cardId="BACK" faceDown width={cardWidth} />
+                {revealedTopCardId && idx === shownCount - 1 ? (
+                  <CardImg cardId={revealedTopCardId} width={cardWidth} />
+                ) : (
+                  <CardImg cardId="BACK" faceDown width={cardWidth} />
+                )}
               </div>
             ))
           )}
@@ -307,7 +316,10 @@ export default function PTVPlayerBoard({
   displayName,
   summaryText,
   figureCardId,
+  figureRotated = false,
+  figureDead = false,
   scumCardIds,
+  revealedScumCardId,
   vengeanceCardIds,
   rewardCardIds,
   powerLabel,
@@ -398,6 +410,7 @@ export default function PTVPlayerBoard({
               >
                 <FixedWidthFaceDownStack
                   cardIds={scumCardIds}
+                  revealedTopCardId={revealedScumCardId}
                   title="SCUM"
                   scale={scale}
                   interactive={typeof onClickScum === "function"}
@@ -415,7 +428,12 @@ export default function PTVPlayerBoard({
                 }}
               >
                 {figureCardId ? (
-                  <CardImg cardId={figureCardId} width={figureCardWidth} />
+                  <CardImg
+                    cardId={figureCardId}
+                    width={figureCardWidth}
+                    rotationDeg={figureRotated ? 90 : 0}
+                    deadVariant={figureDead}
+                  />
                 ) : (
                   <div
                     style={{

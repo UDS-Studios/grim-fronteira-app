@@ -11,9 +11,13 @@ type PlayerSummaryCardProps = {
   playerId: string;
   pstate: LobbyPlayerState;
   figureCardId?: string | null;
+  figureDead?: boolean;
   scumCount: number;
   vengeanceCount: number;
   rewardCount: number;
+  woundsCount?: number;
+  figureRotated?: boolean;
+  footerNote?: string | null;
   selected?: boolean;
   scale?: number;
 };
@@ -22,9 +26,13 @@ export default function PlayerSummaryCard({
   playerId,
   pstate,
   figureCardId,
+  figureDead = false,
   scumCount,
   vengeanceCount,
   rewardCount,
+  woundsCount = 0,
+  figureRotated = false,
+  footerNote = null,
   selected = false,
   scale = 1,
 }: PlayerSummaryCardProps) {
@@ -52,7 +60,12 @@ export default function PlayerSummaryCard({
       <div style={{ display: "flex", gap: 10 * scale, alignItems: "flex-start" }}>
         <div style={{ minWidth: 70 * scale }}>
           {figureCardId ? (
-            <CardImg cardId={figureCardId} width={64 * scale} />
+            <CardImg
+              cardId={figureCardId}
+              width={64 * scale}
+              rotationDeg={figureRotated ? 90 : 0}
+              deadVariant={figureDead}
+            />
           ) : (
             <div style={{ opacity: 0.6, fontSize: 14 * scale }}>No figure</div>
           )}
@@ -69,7 +82,20 @@ export default function PlayerSummaryCard({
         <div><b>Scum:</b> {scumCount}</div>
         <div><b>Vengeance:</b> {vengeanceCount}</div>
         <div><b>Rewards:</b> {rewardCount}</div>
+        <div><b>Wounds:</b> {woundsCount}</div>
       </div>
+
+      {footerNote ? (
+        <div
+          style={{
+            fontSize: 13 * scale,
+            fontWeight: 700,
+            color: "#2f5d7a",
+          }}
+        >
+          {footerNote}
+        </div>
+      ) : null}
     </div>
   );
 }

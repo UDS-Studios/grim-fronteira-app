@@ -43,6 +43,11 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
     scene["status"] = scene_in.get("status", scene["status"])
     scene["participants"] = [pid for pid in scene_in.get("participants", []) if isinstance(pid, str)]
     scene["dark_mode"] = bool(scene_in.get("dark_mode", scene["dark_mode"]))
+    scene["bonus_assignments"] = {
+        pid: bonus
+        for pid, bonus in dict(scene_in.get("bonus_assignments") or {}).items()
+        if isinstance(pid, str) and bonus in {"scum", "vengeance"}
+    }
     scene["difficulty"] = {
         "rule_id": difficulty_in.get("rule_id"),
         "base": difficulty_in.get("base"),
@@ -73,6 +78,7 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
     for pid in infer_player_ids(game):
         pdata = dict(players.get(pid) or {})
         pdata["reward_points"] = int(rp.get(pid, 0))
+        pdata["wounds"] = int(pdata.get("wounds", 0) or 0)
         players[pid] = pdata
     meta["players"] = players
 

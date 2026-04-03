@@ -20,6 +20,12 @@ type MarshalTableViewProps = {
   onBackHome: () => void;
 };
 
+function formatModifierTotal(modifierTotal: number): string {
+  if (modifierTotal > 0) return `+${modifierTotal}`;
+  if (modifierTotal < 0) return `${modifierTotal}`;
+  return "";
+}
+
 type LobbyPlayerState = {
   chosen_name?: string | null;
   character_label?: string | null;
@@ -27,10 +33,16 @@ type LobbyPlayerState = {
   summary_text?: string | null;
 };
 
+type MetaPlayerState = {
+  reward_points?: number;
+  wounds?: number;
+};
+
 type SceneState = {
-  status?: "idle" | "setup" | "active" | "resolved";
+  status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved";
   participants?: string[];
   dark_mode?: boolean;
+  bonus_assignments?: Record<string, "scum" | "vengeance">;
   difficulty?: {
     rule_id?: string | null;
     base?: number | null;
@@ -47,9 +59,13 @@ type SceneState = {
     figure_card_id?: string | null;
     figure_value?: number | null;
     hand_value?: number | null;
+    scum_mod_cards?: string[];
+    vengeance_mod_cards?: string[];
+    modifier_total?: number;
     standing?: boolean;
     busted?: boolean;
     resolved?: boolean;
+    acknowledged?: boolean;
     wounds_gained?: number;
     reward_gained?: boolean;
     result?: string | null;
@@ -100,18 +116,34 @@ function PlayerLane({
   figureCardId,
   playedCards,
   total,
+  woundsCount,
+  figureRotated,
+  figureDead,
+  scumModCardIds,
+  vengeanceModCardIds,
+  modifierTotal,
   stateLabel,
   laneState,
   outcome,
+  canForceAcknowledge,
+  onForceAcknowledge,
 }: {
   playerId: string;
   pstate: LobbyPlayerState;
   figureCardId?: string | null;
   playedCards: string[];
   total: number | null;
+  woundsCount: number;
+  figureRotated: boolean;
+  figureDead: boolean;
+  scumModCardIds: string[];
+  vengeanceModCardIds: string[];
+  modifierTotal: number;
   stateLabel?: string | null;
   laneState: "waiting" | "active" | "done";
   outcome?: SceneOutcome | null;
+  canForceAcknowledge: boolean;
+  onForceAcknowledge: () => void;
 }) {
   const displayName = pstate.chosen_name ?? playerId;
 
@@ -132,7 +164,7 @@ function PlayerLane({
               : "var(--surface-strong)",
         opacity: laneState === "done" ? 0.85 : 1,
         display: "grid",
-        gridTemplateColumns: "110px 1fr",
+        gridTemplateColumns: "114px minmax(0, 1fr) auto auto",
         gap: 14,
         alignItems: "start",
       }}
@@ -145,7 +177,12 @@ function PlayerLane({
         }}
       >
         {figureCardId ? (
-          <CardImg cardId={figureCardId} width={90} />
+          <CardImg
+            cardId={figureCardId}
+            width={94}
+            rotationDeg={figureRotated ? 90 : 0}
+            deadVariant={figureDead}
+          />
         ) : (
           <div style={{ opacity: 0.6 }}>No figure</div>
         )}
@@ -186,6 +223,25 @@ function PlayerLane({
               </div>
             ) : null}
             <div style={{ fontSize: 13, fontWeight: 800 }}>Total: {total ?? "-"}</div>
+            <div style={{ fontSize: 13, fontWeight: 800 }}>Wounds: {woundsCount}</div>
+            {canForceAcknowledge ? (
+              <button
+                type="button"
+                onClick={onForceAcknowledge}
+                style={{
+                  border: "1px solid var(--border-muted)",
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  background: "var(--surface-strong)",
+                  color: "inherit",
+                  cursor: "pointer",
+                  fontWeight: 800,
+                }}
+                title="Force acknowledge this participant"
+              >
+                Force Acknowledge
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -226,11 +282,149 @@ function PlayerLane({
               <CardImg
                 key={`${playerId}:${cardId}:${idx}`}
                 cardId={cardId}
-                width={70}
+                width={78}
               />
             ))}
           </div>
         )}
+      </div>
+
+      <div
+        style={{
+          border: "1px solid var(--border-muted)",
+          borderRadius: 12,
+          padding: "14px 16px",
+          background: "color-mix(in srgb, var(--surface-muted) 92%, transparent)",
+          display: "grid",
+          gridTemplateColumns: "88px 88px 88px",
+          gap: 14,
+          alignItems: "start",
+          justifyItems: "center",
+          minWidth: 324,
+          minHeight: 144,
+        }}
+      >
+        {(["SCUM", "VENGEANCE", "MODS"] as const).map((label, idx) => (
+          <div
+            key={label}
+            style={{
+              display: "grid",
+              gap: 6,
+              justifyItems: "center",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "LavaArabic, serif",
+                fontSize: 13,
+                lineHeight: 1,
+                letterSpacing: "0.05em",
+                textAlign: "center",
+              }}
+            >
+              {label}
+            </div>
+            {idx === 0 ? (
+              scumModCardIds.length > 0 ? (
+                <CardImg cardId={scumModCardIds[scumModCardIds.length - 1]} width={88} />
+              ) : (
+                <div
+                  style={{
+                    width: 88,
+                    height: 120,
+                    border: "2px dashed color-mix(in srgb, var(--border-muted) 82%, transparent)",
+                    borderRadius: 12,
+                    background:
+                      "color-mix(in srgb, var(--surface-strong) 70%, transparent)",
+                    opacity: 0.6,
+                  }}
+                />
+              )
+            ) : idx === 1 ? (
+              vengeanceModCardIds.length > 0 ? (
+                <CardImg
+                  cardId={vengeanceModCardIds[vengeanceModCardIds.length - 1]}
+                  width={88}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 88,
+                    height: 120,
+                    border: "2px dashed color-mix(in srgb, var(--border-muted) 82%, transparent)",
+                    borderRadius: 12,
+                    background:
+                      "color-mix(in srgb, var(--surface-strong) 70%, transparent)",
+                    opacity: 0.6,
+                  }}
+                />
+              )
+            ) : (
+              <div
+                style={{
+                  width: 88,
+                  height: 120,
+                  border: "2px dashed color-mix(in srgb, var(--border-muted) 82%, transparent)",
+                  borderRadius: 12,
+                  background:
+                    "color-mix(in srgb, var(--surface-strong) 70%, transparent)",
+                  opacity: 0.6,
+                  display: "grid",
+                  placeItems: "center",
+                  fontFamily: "LavaArabic, serif",
+                  fontSize: "2.2rem",
+                  lineHeight: 1,
+                  color:
+                    modifierTotal < 0
+                      ? "#d11f1f"
+                      : modifierTotal > 0
+                        ? "#1ea84f"
+                        : "inherit",
+                }}
+              >
+                {formatModifierTotal(modifierTotal)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          border: "1px solid var(--border-muted)",
+          borderRadius: 12,
+          padding: "12px 16px",
+          background: "color-mix(in srgb, var(--surface-muted) 92%, transparent)",
+          display: "grid",
+          gridTemplateRows: "auto 1fr",
+          justifyItems: "center",
+          alignItems: "center",
+          minWidth: 96,
+          minHeight: 144,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "LavaArabic, serif",
+            fontSize: 12,
+            lineHeight: 1,
+            letterSpacing: "0.06em",
+            textAlign: "center",
+          }}
+        >
+          TOTAL
+        </div>
+        <div
+          style={{
+            fontFamily: "LavaArabic, serif",
+            fontSize: "2.4rem",
+            lineHeight: 1,
+            whiteSpace: "nowrap",
+            opacity: 0.58,
+          }}
+        >
+          {total ?? "-"}
+        </div>
       </div>
     </div>
   );
@@ -269,7 +463,7 @@ function SelectablePlayerCard({
       }}
       title={
         disabled
-          ? "Scene setup is locked"
+          ? "Unavailable"
           : selected
             ? "Selected for scene"
             : "Click to select for scene"
@@ -289,6 +483,7 @@ export default function MarshalTableView({
 }: MarshalTableViewProps) {
   const deckScale = 1.6;
   const playersRailScale = 1.6;
+  const [pendingBonusType, setPendingBonusType] = useState<"scum" | "vengeance" | null>(null);
   const ds = (value: number) => value * deckScale;
   const state = (resp.state as any) ?? {};
   const meta = state.meta ?? {};
@@ -299,6 +494,7 @@ export default function MarshalTableView({
   const marshalId = meta.marshal_id ?? "";
   const scene: SceneState = meta.scene ?? {};
   const scenePlayers = scene.players ?? {};
+  const metaPlayers: Record<string, MetaPlayerState> = meta.players ?? {};
   const lobby = meta.lobby ?? {};
   const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
 
@@ -321,6 +517,18 @@ export default function MarshalTableView({
     return zones[`scene.hand.${pid}`] ?? [];
   }
 
+  function getPlayerScumModCards(pid: string): string[] {
+    return scenePlayers?.[pid]?.scum_mod_cards ?? [];
+  }
+
+  function getPlayerVengeanceModCards(pid: string): string[] {
+    return scenePlayers?.[pid]?.vengeance_mod_cards ?? [];
+  }
+
+  function getPlayerModifierTotal(pid: string): number {
+    return scenePlayers?.[pid]?.modifier_total ?? 0;
+  }
+
   function getPlayerScumCount(pid: string): number {
     return (zones[`players.${pid}.scum`] ?? []).length;
   }
@@ -331,6 +539,28 @@ export default function MarshalTableView({
 
   function getPlayerRewardCount(pid: string): number {
     return (zones[`players.${pid}.rewards`] ?? []).length;
+  }
+
+  function getAssignedBonusType(pid: string): "scum" | "vengeance" | null {
+    return scene.bonus_assignments?.[pid] ?? null;
+  }
+
+  function getPersistentWounds(pid: string): number {
+    return metaPlayers?.[pid]?.wounds ?? 0;
+  }
+
+  function getDisplayedWounds(pid: string): number {
+    const persistentWounds = getPersistentWounds(pid);
+    const sceneBusted = !!scenePlayers?.[pid]?.busted;
+    return persistentWounds + (sceneBusted && !sceneResolved ? 1 : 0);
+  }
+
+  function getIsDead(pid: string): boolean {
+    return getDisplayedWounds(pid) >= 2;
+  }
+
+  function getFigureRotated(pid: string): boolean {
+    return getDisplayedWounds(pid) > 0;
   }
 
   const backendParticipantIds: string[] = Array.isArray(scene.participants)
@@ -344,6 +574,8 @@ export default function MarshalTableView({
   const hasDifficulty = scene.difficulty?.card_id != null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
   const hasAzzardo = azzardoStatus !== "unavailable";
+  const canOpenNewScene = scene.status === "resolved";
+  const canAssignBonus = scene.status === "resolved";
 
   const difficultyCardId = scene.difficulty?.card_id ?? null;
   const azzardoCardId =
@@ -379,6 +611,9 @@ export default function MarshalTableView({
 
   function getParticipantStateLabel(pid: string): string | null {
     const pstate = scenePlayers?.[pid] ?? {};
+    if (scene.status === "awaiting_ack") {
+      return pstate.acknowledged ? "Acknowledged" : "Awaiting acknowledgment";
+    }
     if (sceneResolved) return "Resolved";
     if (pstate.busted) return "Busted";
     if (pstate.standing) return "Stayed";
@@ -390,8 +625,15 @@ export default function MarshalTableView({
   function getParticipantOutcome(pid: string): SceneOutcome | null {
     if (!sceneResolved) return null;
     const backendResult = scenePlayers?.[pid]?.result;
+    const total = getParticipantTotal(pid);
     if (backendResult === "success") {
-      return { key: "success", label: "Success!", color: "#2f8f3e" };
+      return (
+        getSceneOutcome(total, effectiveDifficultyValue) ?? {
+          key: "success",
+          label: "Success!",
+          color: "#2f8f3e",
+        }
+      );
     }
     if (backendResult === "failure") {
       return { key: "failure", label: "Failure!", color: "#6f1d1b" };
@@ -399,7 +641,7 @@ export default function MarshalTableView({
     if (backendResult === "bust") {
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
-    return getSceneOutcome(getParticipantTotal(pid), effectiveDifficultyValue);
+    return getSceneOutcome(total, effectiveDifficultyValue);
   }
 
   const difficultyValueLabel =
@@ -488,6 +730,51 @@ export default function MarshalTableView({
         })
       );
     }
+  }
+
+  async function handleForceAcknowledge(pid: string) {
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_force_acknowledge_resolution",
+        params: {
+          actor_id: currentActorId,
+          player_id: pid,
+        },
+        view,
+      })
+    );
+  }
+
+  async function handleNewScene() {
+    setPendingBonusType(null);
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_new",
+        params: {
+          actor_id: currentActorId,
+        },
+        view,
+      })
+    );
+  }
+
+  async function handleAssignBonus(pid: string) {
+    if (!pendingBonusType) return;
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_assign_bonus_card",
+        params: {
+          actor_id: currentActorId,
+          player_id: pid,
+          bonus_type: pendingBonusType,
+        },
+        view,
+      })
+    );
+    setPendingBonusType(null);
   }
 
   async function handleAzzardoUndo() {
@@ -589,8 +876,16 @@ export default function MarshalTableView({
       return "Scene active. Setup is locked.";
     }
 
+    if (scene.status === "awaiting_ack") {
+      const remaining = participantIds.filter((pid) => !scenePlayers?.[pid]?.acknowledged);
+      return `Scene resolved. Waiting for acknowledgments from ${remaining.length} participant${remaining.length === 1 ? "" : "s"}.`;
+    }
+
     if (scene.status === "resolved") {
-      return "Scene resolved.";
+      if (pendingBonusType) {
+        return `Scene closed. Click a player to assign one bonus ${pendingBonusType} card, or click the same assign button again to cancel.`;
+      }
+      return "Scene closed. You can assign one bonus Scum or Vengeance card per player, or click New Scene to prepare the next one.";
     }
 
     return "Waiting for backend scene state.";
@@ -685,6 +980,71 @@ export default function MarshalTableView({
             alignContent: "start",
         }}
       >
+          {canOpenNewScene ? (
+            <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+              <TableZone title="Next Scene">
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <ActionButton
+                    label="New Scene"
+                    onClick={handleNewScene}
+                    title="Prepare a new scene"
+                  />
+
+                  <div
+                    style={{
+                      border: "1px solid var(--border-muted)",
+                      borderRadius: ds(12),
+                      padding: ds(10),
+                      background: "var(--surface-strong)",
+                      display: "grid",
+                      gap: ds(8),
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 800,
+                        textAlign: "center",
+                      }}
+                    >
+                      Assign
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: ds(8),
+                      }}
+                    >
+                      <ActionButton
+                        label="Vengeance"
+                        onClick={() =>
+                          setPendingBonusType((prev) =>
+                            prev === "vengeance" ? null : "vengeance"
+                          )
+                        }
+                        disabled={!canAssignBonus}
+                        title="Assign one bonus Vengeance card"
+                      />
+                      <ActionButton
+                        label="Scum"
+                        onClick={() =>
+                          setPendingBonusType((prev) => (prev === "scum" ? null : "scum"))
+                        }
+                        disabled={!canAssignBonus}
+                        title="Assign one bonus Scum card"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </TableZone>
+            </ResponsiveScaleBox>
+          ) : null}
+
           <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
             <TableZone title="Deck">
               <button
@@ -803,21 +1163,24 @@ export default function MarshalTableView({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 360px) 1fr",
-                gap: 18,
-                alignItems: "stretch",
+                gridTemplateColumns: "max-content max-content minmax(320px, 1fr)",
+                gap: 14,
+                alignItems: "center",
+                justifyContent: "start",
               }}
             >
               <div
                 style={{
                   border: "1px solid var(--border-muted)",
                   borderRadius: 14,
-                  padding: 16,
+                  padding: "14px 16px",
                   background: "var(--surface-muted)",
                   display: "grid",
                   gap: 12,
                   alignContent: "center",
                   justifyItems: "center",
+                  justifySelf: "start",
+                  minHeight: 212,
                 }}
               >
                 <div
@@ -844,7 +1207,7 @@ export default function MarshalTableView({
                   {difficultyCardId ? (
                     <CardImg
                       cardId={difficultyCardId}
-                      width={90}
+                      width={ds(86)}
                       title="Difficulty card"
                     />
                   ) : (
@@ -870,12 +1233,12 @@ export default function MarshalTableView({
                       }
                     >
                       {azzardoCardId ? (
-                        <CardImg cardId={azzardoCardId} width={90} title="Azzardo" />
+                        <CardImg cardId={azzardoCardId} width={ds(86)} title="Azzardo" />
                       ) : (
                         <CardImg
                           cardId="BACK"
                           faceDown
-                          width={90}
+                          width={ds(86)}
                           title="Azzardo"
                         />
                       )}
@@ -899,9 +1262,53 @@ export default function MarshalTableView({
 
               <div
                 style={{
+                  border: "1px solid var(--border-muted)",
+                  borderRadius: 14,
+                  padding: "16px 20px",
+                  background: "var(--surface-muted)",
+                  display: "grid",
+                  gridTemplateRows: "auto 1fr",
+                  justifyItems: "center",
+                  alignItems: "center",
+                  minWidth: 116,
+                  justifySelf: "start",
+                  minHeight: 212,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: "LavaArabic, serif",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    letterSpacing: "0.06em",
+                    textAlign: "center",
+                  }}
+                >
+                  TOTAL
+                </div>
+                <div
+                  style={{
+                    fontFamily: "LavaArabic, serif",
+                    fontSize: "3rem",
+                    lineHeight: 1,
+                    whiteSpace: "nowrap",
+                    opacity: 0.58,
+                    color:
+                      effectiveDifficultyValue != null && effectiveDifficultyValue > 21
+                        ? "#d11f1f"
+                        : "inherit",
+                  }}
+                >
+                  {effectiveDifficultyValue ?? "-"}
+                </div>
+              </div>
+
+              <div
+                style={{
                   display: "grid",
                   gap: 10,
                   alignContent: "start",
+                  minWidth: 0,
                 }}
               >
                 <div><b>difficulty value:</b> {difficultyValueLabel}</div>
@@ -939,9 +1346,19 @@ export default function MarshalTableView({
                       figureCardId={getPlayerFigureCardId(pid)}
                       playedCards={getPlayerSceneHand(pid)}
                       total={getParticipantTotal(pid)}
+                      woundsCount={getDisplayedWounds(pid)}
+                      figureRotated={getFigureRotated(pid)}
+                      figureDead={getIsDead(pid)}
+                      scumModCardIds={getPlayerScumModCards(pid)}
+                      vengeanceModCardIds={getPlayerVengeanceModCards(pid)}
+                      modifierTotal={getPlayerModifierTotal(pid)}
                       stateLabel={getParticipantStateLabel(pid)}
                       laneState={getParticipantLaneState(pid)}
                       outcome={getParticipantOutcome(pid)}
+                      canForceAcknowledge={
+                        scene.status === "awaiting_ack" && !scenePlayers?.[pid]?.acknowledged
+                      }
+                      onForceAcknowledge={() => handleForceAcknowledge(pid)}
                     />
                   ))
                 )}
@@ -972,13 +1389,20 @@ export default function MarshalTableView({
                 >
                   {sortedNonMarshalPlayers.map((pid) => {
                     const selected = participantIds.includes(pid);
+                    const assignedBonusType = getAssignedBonusType(pid);
+                    const targetingBonus = pendingBonusType !== null;
+                    const dead = getIsDead(pid);
+                    const canTargetForBonus =
+                      targetingBonus && canAssignBonus && assignedBonusType == null && !dead;
 
                     return (
                       <SelectablePlayerCard
                         key={pid}
-                        selected={selected}
-                        disabled={isLocked}
-                        onToggle={() => toggleParticipant(pid)}
+                        selected={targetingBonus ? false : selected}
+                        disabled={targetingBonus ? !canTargetForBonus : isLocked || dead}
+                        onToggle={() =>
+                          targetingBonus ? handleAssignBonus(pid) : toggleParticipant(pid)
+                        }
                       >
                         <PlayerSummaryCard
                           playerId={pid}
@@ -987,7 +1411,19 @@ export default function MarshalTableView({
                           scumCount={getPlayerScumCount(pid)}
                           vengeanceCount={getPlayerVengeanceCount(pid)}
                           rewardCount={getPlayerRewardCount(pid)}
-                          selected={selected}
+                          woundsCount={getDisplayedWounds(pid)}
+                          figureRotated={getFigureRotated(pid)}
+                          figureDead={dead}
+                          footerNote={
+                            dead
+                              ? "DEAD"
+                              : assignedBonusType
+                              ? `Assigned: ${assignedBonusType === "scum" ? "SCUM" : "VENGEANCE"}`
+                              : targetingBonus
+                                ? `Click to assign ${pendingBonusType?.toUpperCase()}`
+                                : null
+                          }
+                          selected={targetingBonus ? canTargetForBonus : selected}
                           scale={playersRailScale}
                         />
                       </SelectablePlayerCard>

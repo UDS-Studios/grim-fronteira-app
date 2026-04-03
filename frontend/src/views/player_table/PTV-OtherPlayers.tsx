@@ -6,6 +6,10 @@ export type PTVOtherPlayersEntry = {
   playerId: string;
   displayName: string;
   figureCardId?: string | null;
+  busted?: boolean;
+  wounded?: boolean;
+  woundsCount?: number;
+  dead?: boolean;
   scumCount: number;
   vengeanceCount: number;
   rewardCount: number;
@@ -22,6 +26,10 @@ export type PTVOtherPlayersEntry = {
 
 export type PTVOtherPlayersProps = {
   players: PTVOtherPlayersEntry[];
+  sceneTargetingActive?: boolean;
+  selectableTargetPlayerIds?: string[];
+  selectedTargetPlayerId?: string | null;
+  onSelectSceneTarget?: (playerId: string) => void;
 };
 
 function MiniFaceDownStack({
@@ -93,9 +101,15 @@ function MiniFaceDownStack({
 function OtherPlayerMini({
   player,
   scale = 1,
+  targetable = false,
+  selected = false,
+  onSelectTarget,
 }: {
   player: PTVOtherPlayersEntry;
   scale?: number;
+  targetable?: boolean;
+  selected?: boolean;
+  onSelectTarget?: (() => void) | undefined;
 }) {
   return (
     <div
@@ -140,7 +154,34 @@ function OtherPlayerMini({
           }}
         >
           {player.figureCardId ? (
-            <CardImg cardId={player.figureCardId} width={64 * scale} />
+            <button
+              type="button"
+              onClick={targetable ? onSelectTarget : undefined}
+              disabled={!targetable}
+              title={targetable ? `Target ${player.displayName} with Scum` : undefined}
+              style={{
+                border: selected
+                  ? `2px solid var(--border-strong)`
+                  : targetable
+                    ? `1px solid var(--border-strong)`
+                    : "none",
+                borderRadius: 12 * scale,
+                padding: 0,
+                background: targetable
+                  ? "color-mix(in srgb, var(--surface-hover) 70%, transparent)"
+                  : "transparent",
+                cursor: targetable ? "pointer" : "default",
+                boxShadow: selected ? `0 0 0 ${2 * scale}px rgba(139,90,43,0.18)` : "none",
+                opacity: !targetable && player.busted ? 0.6 : 1,
+              }}
+            >
+              <CardImg
+                cardId={player.figureCardId}
+                width={64 * scale}
+                rotationDeg={player.wounded ? 90 : 0}
+                deadVariant={player.dead}
+              />
+            </button>
           ) : (
             <div
               style={{
@@ -168,6 +209,18 @@ function OtherPlayerMini({
               }}
             >
               In scene
+            </div>
+          ) : null}
+          {(player.woundsCount ?? 0) > 0 ? (
+            <div
+              style={{
+                fontSize: 11 * scale,
+                fontWeight: 700,
+                color: "#8b1e1e",
+                opacity: 0.9,
+              }}
+            >
+              Wounds: {player.woundsCount}
             </div>
           ) : null}
         </div>
@@ -272,8 +325,13 @@ function OtherPlayerMini({
 
 export default function PTVOtherPlayers({
   players,
+  sceneTargetingActive = false,
+  selectableTargetPlayerIds = [],
+  selectedTargetPlayerId = null,
+  onSelectSceneTarget,
 }: PTVOtherPlayersProps) {
   const scale = 1.6;
+  const selectableTargets = new Set(selectableTargetPlayerIds);
 
   return (
     <ResponsiveScaleBox baseWidth={480} minScale={0.5} maxScale={1}>
@@ -287,11 +345,33 @@ export default function PTVOtherPlayers({
             gap: 12 * scale,
           }}
         >
+          {sceneTargetingActive ? (
+            <div
+              style={{
+                border: "1px solid var(--border-muted)",
+                borderRadius: 10 * scale,
+                padding: 10 * scale,
+                background: "color-mix(in srgb, var(--surface-hover) 66%, transparent)",
+                fontSize: 12 * scale,
+                fontWeight: 700,
+                textAlign: "center",
+              }}
+            >
+              Scum targeting active. Click an in-scene figure to apply the modifier.
+            </div>
+          ) : null}
           {players.map((player) => (
             <OtherPlayerMini
               key={player.playerId}
               player={player}
               scale={scale}
+              targetable={selectableTargets.has(player.playerId)}
+              selected={selectedTargetPlayerId === player.playerId}
+              onSelectTarget={
+                selectableTargets.has(player.playerId) && onSelectSceneTarget
+                  ? () => onSelectSceneTarget(player.playerId)
+                  : undefined
+              }
             />
           ))}
         </div>

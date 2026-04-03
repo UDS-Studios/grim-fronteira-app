@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
@@ -27,20 +28,29 @@ type LobbyPlayerState = {
   summary_text?: string | null;
 };
 
+type MetaPlayerState = {
+  reward_points?: number;
+  wounds?: number;
+};
+
 type ScenePlayerState = {
   figure_card_id?: string | null;
   figure_value?: number | null;
   hand_value?: number | null;
+  scum_mod_cards?: string[];
+  vengeance_mod_cards?: string[];
+  modifier_total?: number;
   standing?: boolean;
   busted?: boolean;
   resolved?: boolean;
+  acknowledged?: boolean;
   wounds_gained?: number;
   reward_gained?: boolean;
   result?: string | null;
 };
 
 type SceneState = {
-  status?: "idle" | "setup" | "active" | "resolved";
+  status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved";
   participants?: string[];
   dark_mode?: boolean;
   difficulty?: {
@@ -82,28 +92,50 @@ function getPowerFromCardId(cardId?: string | null): string {
   }
 }
 
+function formatModifierTotal(modifierTotal: number): string {
+  if (modifierTotal > 0) return `+${modifierTotal}`;
+  if (modifierTotal < 0) return `${modifierTotal}`;
+  return "";
+}
+
 function CurrentPlayerSceneRow({
   inScene,
   figureCardId,
   playedCards,
   displayName,
   total,
+  woundsCount,
+  figureRotated,
+  figureDead,
+  scumModCardIds,
+  vengeanceModCardIds,
+  modifierTotal,
   stateLabel,
   outcome,
   laneState,
   canStay,
+  canAcknowledge,
   onStay,
+  onAcknowledge,
 }: {
   inScene: boolean;
   figureCardId?: string | null;
   playedCards: string[];
   displayName: string;
   total: number | null;
+  woundsCount: number;
+  figureRotated: boolean;
+  figureDead: boolean;
+  scumModCardIds: string[];
+  vengeanceModCardIds: string[];
+  modifierTotal: number;
   stateLabel?: string | null;
   outcome?: SceneOutcome | null;
   laneState: "waiting" | "active" | "done";
   canStay: boolean;
+  canAcknowledge: boolean;
   onStay: () => void;
+  onAcknowledge: () => void;
 }) {
   return (
     <TableZone title="Scene Participation">
@@ -133,7 +165,7 @@ function CurrentPlayerSceneRow({
                   : "var(--surface-strong)",
             opacity: laneState === "done" ? 0.85 : 1,
             display: "grid",
-            gridTemplateColumns: "96px 1fr",
+            gridTemplateColumns: "108px minmax(0, 1fr) auto auto",
             gap: 14,
             alignItems: "start",
           }}
@@ -146,7 +178,12 @@ function CurrentPlayerSceneRow({
             }}
           >
             {figureCardId ? (
-              <CardImg cardId={figureCardId} width={82} />
+              <CardImg
+                cardId={figureCardId}
+                width={94}
+                rotationDeg={figureRotated ? 90 : 0}
+                deadVariant={figureDead}
+              />
             ) : (
               <div style={{ opacity: 0.6 }}>No figure</div>
             )}
@@ -197,6 +234,8 @@ function CurrentPlayerSceneRow({
 
                 <div style={{ fontSize: 13, fontWeight: 800 }}>Total: {total ?? "-"}</div>
 
+                <div style={{ fontSize: 13, fontWeight: 800 }}>Wounds: {woundsCount}</div>
+
                 {canStay ? (
                   <button
                     type="button"
@@ -213,6 +252,25 @@ function CurrentPlayerSceneRow({
                     title="Stay"
                   >
                     Stay
+                  </button>
+                ) : null}
+
+                {canAcknowledge ? (
+                  <button
+                    type="button"
+                    onClick={onAcknowledge}
+                    style={{
+                      border: "1px solid var(--border-muted)",
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      background: "var(--surface-strong)",
+                      color: "var(--text-primary)",
+                      cursor: "pointer",
+                      fontWeight: 800,
+                    }}
+                    title="Acknowledge resolved scene"
+                  >
+                    Acknowledge
                   </button>
                 ) : null}
               </div>
@@ -251,10 +309,148 @@ function CurrentPlayerSceneRow({
                 }}
               >
                 {playedCards.map((cardId, idx) => (
-                  <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={70} />
+                  <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={78} />
                 ))}
               </div>
             )}
+          </div>
+
+          <div
+            style={{
+              border: "1px solid var(--border-muted)",
+              borderRadius: 12,
+              padding: "14px 16px",
+              background: "color-mix(in srgb, var(--surface-muted) 92%, transparent)",
+              display: "grid",
+              gridTemplateColumns: "88px 88px 88px",
+              gap: 14,
+              alignItems: "start",
+              justifyItems: "center",
+              minWidth: 324,
+              minHeight: 144,
+            }}
+          >
+            {(["SCUM", "VENGEANCE", "MODS"] as const).map((label, idx) => (
+              <div
+                key={label}
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  justifyItems: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: "LavaArabic, serif",
+                    fontSize: 13,
+                    lineHeight: 1,
+                    letterSpacing: "0.05em",
+                    textAlign: "center",
+                  }}
+                >
+                  {label}
+                </div>
+                {idx === 0 ? (
+                  scumModCardIds.length > 0 ? (
+                    <CardImg cardId={scumModCardIds[scumModCardIds.length - 1]} width={88} />
+                  ) : (
+                    <div
+                      style={{
+                        width: 88,
+                        height: 120,
+                        border: "2px dashed color-mix(in srgb, var(--border-muted) 82%, transparent)",
+                        borderRadius: 12,
+                        background:
+                          "color-mix(in srgb, var(--surface-strong) 70%, transparent)",
+                        opacity: 0.6,
+                      }}
+                    />
+                  )
+                ) : idx === 1 ? (
+                  vengeanceModCardIds.length > 0 ? (
+                    <CardImg
+                      cardId={vengeanceModCardIds[vengeanceModCardIds.length - 1]}
+                      width={88}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 88,
+                        height: 120,
+                        border: "2px dashed color-mix(in srgb, var(--border-muted) 82%, transparent)",
+                        borderRadius: 12,
+                        background:
+                          "color-mix(in srgb, var(--surface-strong) 70%, transparent)",
+                        opacity: 0.6,
+                      }}
+                    />
+                  )
+                ) : (
+                  <div
+                    style={{
+                      width: 88,
+                      height: 120,
+                      border: "2px dashed color-mix(in srgb, var(--border-muted) 82%, transparent)",
+                      borderRadius: 12,
+                      background:
+                        "color-mix(in srgb, var(--surface-strong) 70%, transparent)",
+                      opacity: 0.6,
+                      display: "grid",
+                      placeItems: "center",
+                      fontFamily: "LavaArabic, serif",
+                      fontSize: "2.2rem",
+                      lineHeight: 1,
+                      color:
+                        modifierTotal < 0
+                          ? "#d11f1f"
+                          : modifierTotal > 0
+                            ? "#1ea84f"
+                            : "inherit",
+                    }}
+                  >
+                    {formatModifierTotal(modifierTotal)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              border: "1px solid var(--border-muted)",
+              borderRadius: 12,
+              padding: "12px 16px",
+              background: "color-mix(in srgb, var(--surface-muted) 92%, transparent)",
+              display: "grid",
+              gridTemplateRows: "auto 1fr",
+              justifyItems: "center",
+              alignItems: "center",
+              minWidth: 96,
+              minHeight: 144,
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "LavaArabic, serif",
+                fontSize: 12,
+                lineHeight: 1,
+                letterSpacing: "0.06em",
+                textAlign: "center",
+              }}
+            >
+              TOTAL
+            </div>
+            <div
+              style={{
+                fontFamily: "LavaArabic, serif",
+                fontSize: "2.4rem",
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+                opacity: 0.58,
+              }}
+            >
+              {total ?? "-"}
+            </div>
           </div>
         </div>
       )}
@@ -271,6 +467,8 @@ export default function PlayerTableView({
 }: PlayerTableViewProps) {
   const deckScale = 1.6;
   const ds = (value: number) => value * deckScale;
+  const [scumTargetingActive, setScumTargetingActive] = useState(false);
+  const [selectedScumTargetId, setSelectedScumTargetId] = useState<string | null>(null);
   const state = (resp.state as any) ?? {};
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
@@ -278,6 +476,7 @@ export default function PlayerTableView({
 
   const scene: SceneState = meta.scene ?? {};
   const scenePlayers: Record<string, ScenePlayerState> = scene.players ?? {};
+  const metaPlayers: Record<string, MetaPlayerState> = meta.players ?? {};
   const lobby = meta.lobby ?? {};
   const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
   const marshalId: string = meta.marshal_id ?? "";
@@ -372,6 +571,36 @@ export default function PlayerTableView({
     });
   }
 
+  function getParticipantScumModCards(pid: string): string[] {
+    return scenePlayers?.[pid]?.scum_mod_cards ?? [];
+  }
+
+  function getParticipantVengeanceModCards(pid: string): string[] {
+    return scenePlayers?.[pid]?.vengeance_mod_cards ?? [];
+  }
+
+  function getParticipantModifierTotal(pid: string): number {
+    return scenePlayers?.[pid]?.modifier_total ?? 0;
+  }
+
+  function getPersistentWounds(pid: string): number {
+    return metaPlayers?.[pid]?.wounds ?? 0;
+  }
+
+  function getDisplayedWounds(pid: string): number {
+    const persistentWounds = getPersistentWounds(pid);
+    const sceneBusted = !!scenePlayers?.[pid]?.busted;
+    return persistentWounds + (sceneBusted && !sceneResolved ? 1 : 0);
+  }
+
+  function getIsDead(pid: string): boolean {
+    return getDisplayedWounds(pid) >= 2;
+  }
+
+  function getFigureRotated(pid: string): boolean {
+    return getDisplayedWounds(pid) > 0;
+  }
+
   function getParticipantLaneState(pid: string): "waiting" | "active" | "done" {
     const pstate = scenePlayers?.[pid] ?? {};
     if (sceneResolved || pstate.resolved || pstate.standing || pstate.busted) return "done";
@@ -381,6 +610,9 @@ export default function PlayerTableView({
 
   function getParticipantStateLabel(pid: string): string | null {
     const pstate = scenePlayers?.[pid] ?? {};
+    if (scene.status === "awaiting_ack") {
+      return scenePlayers?.[pid]?.acknowledged ? "Acknowledged" : "Awaiting acknowledgment";
+    }
     if (sceneResolved) return "Resolved";
     if (pstate.busted) return "Busted";
     if (pstate.standing) return "Stayed";
@@ -392,8 +624,15 @@ export default function PlayerTableView({
   function getParticipantOutcome(pid: string): SceneOutcome | null {
     if (!sceneResolved) return null;
     const backendResult = scenePlayers?.[pid]?.result;
+    const total = getParticipantTotal(pid);
     if (backendResult === "success") {
-      return { key: "success", label: "Success!", color: "#2f8f3e" };
+      return (
+        getSceneOutcome(total, effectiveDifficultyValue) ?? {
+          key: "success",
+          label: "Success!",
+          color: "#2f8f3e",
+        }
+      );
     }
     if (backendResult === "failure") {
       return { key: "failure", label: "Failure!", color: "#6f1d1b" };
@@ -401,7 +640,7 @@ export default function PlayerTableView({
     if (backendResult === "bust") {
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
-    return getSceneOutcome(getParticipantTotal(pid), effectiveDifficultyValue);
+    return getSceneOutcome(total, effectiveDifficultyValue);
   }
 
   const participantOrderLookup = new Map(participantIds.map((pid, idx) => [pid, idx]));
@@ -412,6 +651,10 @@ export default function PlayerTableView({
       playerId: pid,
       displayName: lobbyPlayers?.[pid]?.chosen_name ?? pid,
       figureCardId: getPlayerFigureCardId(pid),
+      busted: !!scenePlayers?.[pid]?.busted,
+      wounded: getFigureRotated(pid),
+      woundsCount: getDisplayedWounds(pid),
+      dead: getIsDead(pid),
       scumCount: getPlayerScumCards(pid).length,
       vengeanceCount: getPlayerVengeanceCards(pid).length,
       rewardCount: getPlayerRewardCards(pid).length,
@@ -488,8 +731,15 @@ export default function PlayerTableView({
       return "Scene active.";
     }
 
+    if (scene.status === "awaiting_ack") {
+      if (currentPlayerState.acknowledged) {
+        return "Waiting for the other participants to acknowledge the scene.";
+      }
+      return "Scene resolved. You can still play Scum or Vengeance before you acknowledge.";
+    }
+
     if (scene.status === "resolved") {
-      return "Scene resolved.";
+      return "Scene closed. Waiting for the Marshal to start a new scene.";
     }
 
     return "Waiting for backend scene state.";
@@ -525,6 +775,41 @@ export default function PlayerTableView({
     );
   }
 
+  async function handleAcknowledgeResolution() {
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_acknowledge_resolution",
+        params: {
+          player_id: currentActorId,
+        },
+        view,
+      })
+    );
+  }
+
+  const canPlayScum =
+    currentPlayerInScene &&
+    ((scene.status === "active" &&
+      isCurrentViewerActive &&
+      !currentPlayerState.standing &&
+      !currentPlayerState.busted &&
+      !sceneResolved) ||
+      (scene.status === "awaiting_ack" && !currentPlayerState.acknowledged)) &&
+    currentPlayerScumCards.length > 0;
+
+  const canPlayVengeance =
+    currentPlayerInScene &&
+    ((scene.status === "active" &&
+      isCurrentViewerActive &&
+      !currentPlayerState.standing &&
+      !currentPlayerState.busted &&
+      !sceneResolved) ||
+      (scene.status === "awaiting_ack" &&
+        !currentPlayerState.acknowledged &&
+        !currentPlayerState.busted)) &&
+    currentPlayerVengeanceCards.length > 0;
+
   const canDrawFromDeck =
     scene.status === "active" &&
     isCurrentViewerActive &&
@@ -540,12 +825,68 @@ export default function PlayerTableView({
     !currentPlayerState.busted &&
     !sceneResolved;
 
+  const canAcknowledge =
+    currentPlayerInScene &&
+    scene.status === "awaiting_ack" &&
+    !!currentPlayerState.resolved &&
+    !currentPlayerState.acknowledged;
+
   const deckTooltip =
     scene.status !== "active"
       ? "Scene not active"
       : canDrawFromDeck
         ? "Draw a card"
         : "Waiting for another participant";
+
+  useEffect(() => {
+    if (!canPlayScum && scumTargetingActive) {
+      setScumTargetingActive(false);
+      setSelectedScumTargetId(null);
+    }
+  }, [canPlayScum, scumTargetingActive]);
+
+  async function handleToggleScumTargeting() {
+    if (!canPlayScum) return;
+    setScumTargetingActive((prev) => !prev);
+    setSelectedScumTargetId(null);
+  }
+
+  async function handlePlayVengeance() {
+    if (!canPlayVengeance) return;
+    setScumTargetingActive(false);
+    setSelectedScumTargetId(null);
+
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_play_vengeance",
+        params: {
+          player_id: currentActorId,
+        },
+        view,
+      })
+    );
+  }
+
+  async function handleSelectScumTarget(targetPlayerId: string) {
+    if (!canPlayScum || !scumTargetingActive) return;
+    setSelectedScumTargetId(targetPlayerId);
+
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_play_scum",
+        params: {
+          player_id: currentActorId,
+          target_player_id: targetPlayerId,
+        },
+        view,
+      })
+    );
+
+    setScumTargetingActive(false);
+    setSelectedScumTargetId(null);
+  }
 
   return (
     <div
@@ -725,21 +1066,24 @@ export default function PlayerTableView({
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 360px) 1fr",
-                        gap: 18,
-                        alignItems: "stretch",
+                        gridTemplateColumns: "max-content max-content minmax(320px, 1fr)",
+                        gap: 14,
+                        alignItems: "center",
+                        justifyContent: "start",
                       }}
                     >
                       <div
                         style={{
                           border: "1px solid var(--border-muted)",
                           borderRadius: 14,
-                          padding: 16,
+                          padding: "14px 16px",
                           background: "var(--surface-muted)",
                           display: "grid",
                           gap: 12,
                           alignContent: "center",
                           justifyItems: "center",
+                          justifySelf: "start",
+                          minHeight: 212,
                         }}
                       >
                         <div
@@ -764,11 +1108,11 @@ export default function PlayerTableView({
                           </div>
 
                           {difficultyCardId ? (
-                            <CardImg
-                              cardId={difficultyCardId}
-                              width={90}
-                              title="Difficulty card"
-                            />
+                              <CardImg
+                                cardId={difficultyCardId}
+                                width={ds(86)}
+                                title="Difficulty card"
+                              />
                           ) : (
                             <div style={{ opacity: 0.6 }}>— no card —</div>
                           )}
@@ -777,14 +1121,14 @@ export default function PlayerTableView({
                             azzardoCardId ? (
                               <CardImg
                                 cardId={azzardoCardId}
-                                width={90}
+                                width={ds(86)}
                                 title="Azzardo"
                               />
                             ) : (
                               <CardImg
                                 cardId="BACK"
                                 faceDown
-                                width={90}
+                                width={ds(86)}
                                 title="Azzardo"
                               />
                             )
@@ -798,9 +1142,53 @@ export default function PlayerTableView({
 
                       <div
                         style={{
+                          border: "1px solid var(--border-muted)",
+                          borderRadius: 14,
+                          padding: "16px 20px",
+                          background: "var(--surface-muted)",
+                          display: "grid",
+                          gridTemplateRows: "auto 1fr",
+                          justifyItems: "center",
+                          alignItems: "center",
+                          minWidth: 116,
+                          justifySelf: "start",
+                          minHeight: 212,
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontFamily: "LavaArabic, serif",
+                            fontSize: 14,
+                            lineHeight: 1,
+                            letterSpacing: "0.06em",
+                            textAlign: "center",
+                          }}
+                        >
+                          TOTAL
+                        </div>
+                        <div
+                          style={{
+                            fontFamily: "LavaArabic, serif",
+                            fontSize: "3rem",
+                            lineHeight: 1,
+                            whiteSpace: "nowrap",
+                            opacity: 0.58,
+                            color:
+                              effectiveDifficultyValue != null && effectiveDifficultyValue > 21
+                                ? "#d11f1f"
+                                : "inherit",
+                          }}
+                        >
+                          {effectiveDifficultyValue ?? "-"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
                           display: "grid",
                           gap: 10,
                           alignContent: "start",
+                          minWidth: 0,
                         }}
                       >
                         <div><b>difficulty value:</b> {difficultyValueLabel}</div>
@@ -823,11 +1211,19 @@ export default function PlayerTableView({
                     playedCards={getPlayerSceneHand(currentActorId)}
                     displayName={currentPlayerDisplayName}
                     total={getParticipantTotal(currentActorId)}
+                    woundsCount={getDisplayedWounds(currentActorId)}
+                    figureRotated={getFigureRotated(currentActorId)}
+                    figureDead={getIsDead(currentActorId)}
+                    scumModCardIds={getParticipantScumModCards(currentActorId)}
+                    vengeanceModCardIds={getParticipantVengeanceModCards(currentActorId)}
+                    modifierTotal={getParticipantModifierTotal(currentActorId)}
                     stateLabel={getParticipantStateLabel(currentActorId)}
                     outcome={getParticipantOutcome(currentActorId)}
                     laneState={getParticipantLaneState(currentActorId)}
                     canStay={canStay}
+                    canAcknowledge={canAcknowledge}
                     onStay={handleSceneStay}
+                    onAcknowledge={handleAcknowledgeResolution}
                   />
                 </div>
               </div>
@@ -842,7 +1238,19 @@ export default function PlayerTableView({
                   gridRow: "1 / span 2",
                 }}
               >
-                <PTVOtherPlayers players={otherPlayers} />
+                <PTVOtherPlayers
+                  players={otherPlayers}
+                  sceneTargetingActive={scumTargetingActive}
+                  selectableTargetPlayerIds={
+                    scumTargetingActive
+                      ? otherPlayers
+                          .filter((player) => player.inScene && !player.busted)
+                          .map((player) => player.playerId)
+                      : []
+                  }
+                  selectedTargetPlayerId={selectedScumTargetId}
+                  onSelectSceneTarget={handleSelectScumTarget}
+                />
               </div>
 
               <div
@@ -865,11 +1273,20 @@ export default function PlayerTableView({
                     displayName={currentPlayerDisplayName}
                     summaryText={currentPlayerSummaryText}
                     figureCardId={currentPlayerFigureCardId}
+                    figureRotated={getFigureRotated(currentActorId)}
+                    figureDead={getIsDead(currentActorId)}
                     scumCardIds={currentPlayerScumCards}
+                    revealedScumCardId={
+                      scumTargetingActive && currentPlayerScumCards.length > 0
+                        ? currentPlayerScumCards[currentPlayerScumCards.length - 1]
+                        : null
+                    }
                     vengeanceCardIds={currentPlayerVengeanceCards}
                     rewardCardIds={currentPlayerRewardCards}
                     powerLabel={getPowerFromCardId(currentPlayerFigureCardId)}
                     inScene={currentPlayerInScene}
+                    onClickScum={canPlayScum ? handleToggleScumTargeting : undefined}
+                    onClickVengeance={canPlayVengeance ? handlePlayVengeance : undefined}
                     powerDisabled
                   />
                 </div>

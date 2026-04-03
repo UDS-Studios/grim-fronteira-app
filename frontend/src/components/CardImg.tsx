@@ -5,6 +5,8 @@ type CardImgProps = {
   faceDown?: boolean;
   width?: number | string;
   title?: string;
+  rotationDeg?: number;
+  deadVariant?: boolean;
 };
 
 export default function CardImg({
@@ -12,15 +14,20 @@ export default function CardImg({
   faceDown = false,
   width = 86,
   title,
+  rotationDeg = 0,
+  deadVariant = false,
 }: CardImgProps) {
   const [hover, setHover] = useState(false);
 
   const src = faceDown
     ? "/assets/cards/back/back.jpg"
-    : `/assets/cards/front/${cardId}.jpg`;
+    : deadVariant
+      ? `/assets/cards/dead/dead${cardId}.jpg`
+      : `/assets/cards/front/${cardId}.jpg`;
 
   return (
     <div
+      key={`${src}:${rotationDeg}:${deadVariant ? "dead" : "alive"}`}
       style={{
         position: "relative",
         zIndex: hover ? 10 : 1,
@@ -28,6 +35,8 @@ export default function CardImg({
         margin: -10,
         overflow: "visible",
         display: "inline-flex",
+        transform: `rotate(${rotationDeg}deg)`,
+        transformOrigin: "center center",
       }}
     >
       <img

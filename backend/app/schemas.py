@@ -41,9 +41,15 @@ class ActionRequest(BaseModel):
         "gf.scene_remove_azzardo",
         "gf.scene_skip_azzardo",
         "gf.scene_start",
+        "gf.scene_new",
         "gf.scene_resolve",
         "gf.scene_draw_card",
         "gf.scene_stand",
+        "gf.scene_play_scum",
+        "gf.scene_play_vengeance",
+        "gf.scene_acknowledge_resolution",
+        "gf.scene_force_acknowledge_resolution",
+        "gf.scene_assign_bonus_card",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)
     view: Literal["public", "player", "debug"] = "debug"

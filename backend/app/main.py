@@ -29,9 +29,15 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_remove_azzardo,
     scene_skip_azzardo,
     scene_start,
+    scene_new,
     scene_resolve,
     scene_draw_card,
     scene_stand,
+    scene_play_scum,
+    scene_play_vengeance,
+    scene_acknowledge_resolution,
+    scene_force_acknowledge_resolution,
+    scene_assign_bonus_card,
 )
 
 from backend.engine.rules.grim_fronteira.lobby import (
@@ -515,6 +521,93 @@ def action(req: ActionRequest) -> ActionResponse:
         game = scene_stand(game, player_id=player_id)
         mutated = True
         result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.scene_play_scum":
+        params = req.params
+        player_id = params.get("player_id")
+        target_player_id = params.get("target_player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(target_player_id, str):
+            raise HTTPException(status_code=400, detail="params.target_player_id must be a string")
+
+        game, scum_result = scene_play_scum(
+            game,
+            player_id=player_id,
+            target_player_id=target_player_id,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **scum_result}
+
+    elif req.action == "gf.scene_play_vengeance":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game, vengeance_result = scene_play_vengeance(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, **vengeance_result}
+
+    elif req.action == "gf.scene_acknowledge_resolution":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_acknowledge_resolution(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.scene_force_acknowledge_resolution":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_force_acknowledge_resolution(game, actor_id=actor_id, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id, "player_id": player_id}
+
+    elif req.action == "gf.scene_assign_bonus_card":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+        bonus_type = params.get("bonus_type")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(bonus_type, str):
+            raise HTTPException(status_code=400, detail="params.bonus_type must be a string")
+
+        game, bonus_result = scene_assign_bonus_card(
+            game,
+            actor_id=actor_id,
+            player_id=player_id,
+            bonus_type=bonus_type,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **bonus_result}
+
+    elif req.action == "gf.scene_new":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_new(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id}
 
     elif req.action == "gf.scene_resolve":
         params = req.params

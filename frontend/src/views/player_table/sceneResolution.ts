@@ -60,6 +60,9 @@ export function getSceneOutcome(total: number | null, difficulty: number | null)
   if (total > 21) {
     return { key: "wound", label: "Wound!!", color: "#d11f1f" };
   }
+  if (total === 21) {
+    return { key: "success", label: "Critical Success!!", color: "#1ea84f" };
+  }
   if (total >= difficulty) {
     return { key: "success", label: "Success!", color: "#2f8f3e" };
   }
