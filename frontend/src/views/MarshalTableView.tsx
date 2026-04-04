@@ -69,6 +69,8 @@ type SceneState = {
     wounds_gained?: number;
     reward_gained?: boolean;
     result?: string | null;
+    recovery_action?: "healed" | "skipped" | null;
+    reward_discard_started?: boolean;
   }>;
   resolution?: {
     completed?: boolean;
@@ -127,6 +129,10 @@ function PlayerLane({
   outcome,
   canForceAcknowledge,
   onForceAcknowledge,
+  mustHealOrSkip,
+  mustDiscardRewards,
+  onForceSkipHeal,
+  onForceDiscardRewards,
 }: {
   playerId: string;
   pstate: LobbyPlayerState;
@@ -144,24 +150,42 @@ function PlayerLane({
   outcome?: SceneOutcome | null;
   canForceAcknowledge: boolean;
   onForceAcknowledge: () => void;
+  mustHealOrSkip: boolean;
+  mustDiscardRewards: boolean;
+  onForceSkipHeal: () => void;
+  onForceDiscardRewards: () => void;
 }) {
   const displayName = pstate.chosen_name ?? playerId;
+  const requirementTint =
+    mustHealOrSkip && mustDiscardRewards
+      ? "color-mix(in srgb, #7b3fc6 18%, var(--surface-strong))"
+      : mustDiscardRewards
+        ? "color-mix(in srgb, #d11f1f 14%, var(--surface-strong))"
+        : mustHealOrSkip
+          ? "color-mix(in srgb, #d17a1f 16%, var(--surface-strong))"
+          : laneState === "active"
+            ? "color-mix(in srgb, var(--surface-hover) 78%, transparent)"
+            : laneState === "done"
+              ? "color-mix(in srgb, var(--surface-muted) 84%, transparent)"
+              : "var(--surface-strong)";
+  const requirementBorder =
+    mustHealOrSkip && mustDiscardRewards
+      ? "2px solid #7b3fc6"
+      : mustDiscardRewards
+        ? "2px solid #b42318"
+        : mustHealOrSkip
+          ? "2px solid #c26a18"
+          : laneState === "active"
+            ? "2px solid var(--border-strong)"
+            : "1px solid var(--border-muted)";
 
   return (
     <div
       style={{
-        border:
-          laneState === "active"
-            ? "2px solid var(--border-strong)"
-            : "1px solid var(--border-muted)",
+        border: requirementBorder,
         borderRadius: 12,
         padding: 12,
-        background:
-          laneState === "active"
-            ? "color-mix(in srgb, var(--surface-hover) 78%, transparent)"
-            : laneState === "done"
-              ? "color-mix(in srgb, var(--surface-muted) 84%, transparent)"
-              : "var(--surface-strong)",
+        background: requirementTint,
         opacity: laneState === "done" ? 0.85 : 1,
         display: "grid",
         gridTemplateColumns: "114px minmax(0, 1fr) auto auto",
@@ -248,13 +272,72 @@ function PlayerLane({
         {outcome ? (
           <div
             style={{
-            fontWeight: 900,
-            color: outcome.color,
-            fontSize: 22,
-            lineHeight: 1,
+              fontWeight: 900,
+              color: outcome.color,
+              fontSize: 22,
+              lineHeight: 1,
             }}
           >
             {outcome.label}
+          </div>
+        ) : null}
+
+        {mustHealOrSkip || mustDiscardRewards ? (
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            {mustHealOrSkip ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#d11f1f",
+                    fontWeight: 900,
+                  }}
+                >
+                  Must heal or skip
+                </div>
+                <ActionButton
+                  label="Force Skip"
+                  onClick={onForceSkipHeal}
+                  title="Force this participant to skip healing"
+                />
+              </div>
+            ) : null}
+
+            {mustDiscardRewards ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    color: "#d11f1f",
+                    fontWeight: 900,
+                  }}
+                >
+                  Must discard rewards
+                </div>
+                <ActionButton
+                  label="Force Discard"
+                  onClick={onForceDiscardRewards}
+                  title="Automatically discard rewards until this participant reaches 20 or less"
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -541,6 +624,10 @@ export default function MarshalTableView({
     return (zones[`players.${pid}.rewards`] ?? []).length;
   }
 
+  function getPlayerRewardPoints(pid: string): number {
+    return metaPlayers?.[pid]?.reward_points ?? 0;
+  }
+
   function getAssignedBonusType(pid: string): "scum" | "vengeance" | null {
     return scene.bonus_assignments?.[pid] ?? null;
   }
@@ -551,8 +638,9 @@ export default function MarshalTableView({
 
   function getDisplayedWounds(pid: string): number {
     const persistentWounds = getPersistentWounds(pid);
-    const sceneBusted = !!scenePlayers?.[pid]?.busted;
-    return persistentWounds + (sceneBusted && !sceneResolved ? 1 : 0);
+    const pendingWounds =
+      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : !!scenePlayers?.[pid]?.busted ? 1 : 0;
+    return persistentWounds + pendingWounds;
   }
 
   function getIsDead(pid: string): boolean {
@@ -625,6 +713,7 @@ export default function MarshalTableView({
   function getParticipantOutcome(pid: string): SceneOutcome | null {
     if (!sceneResolved) return null;
     const backendResult = scenePlayers?.[pid]?.result;
+    const recoveryAction = scenePlayers?.[pid]?.recovery_action;
     const total = getParticipantTotal(pid);
     const marshalBusted = effectiveDifficultyValue != null && effectiveDifficultyValue > 21;
     if (backendResult === "success") {
@@ -642,6 +731,9 @@ export default function MarshalTableView({
     if (backendResult === "bust") {
       if (marshalBusted) {
         return { key: "failure", label: "Failure!", color: "#6f1d1b" };
+      }
+      if (recoveryAction === "healed") {
+        return { key: "success", label: "Healed!", color: "#2f8f3e" };
       }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
@@ -674,6 +766,28 @@ export default function MarshalTableView({
     (!hasDifficulty || (!hasAzzardo && !azzardoBlockedByDifficulty));
 
   const canStartScene = !isLocked && hasDifficulty && participantIds.length > 0;
+
+  function getParticipantPostSceneRequirements(pid: string): {
+    mustHealOrSkip: boolean;
+    mustDiscardRewards: boolean;
+  } {
+    const wounds = getDisplayedWounds(pid);
+    const rewardPoints = getPlayerRewardPoints(pid);
+    const recoveryAction = scenePlayers?.[pid]?.recovery_action;
+    const rewardDiscardStarted = !!scenePlayers?.[pid]?.reward_discard_started;
+
+    return {
+      mustHealOrSkip: wounds === 1 && rewardPoints > 11 && recoveryAction == null,
+      mustDiscardRewards: rewardPoints > 21 || (rewardDiscardStarted && rewardPoints > 20),
+    };
+  }
+
+  const hasBlockedParticipantForNewScene =
+    canOpenNewScene &&
+    participantIds.some((pid) => {
+      const requirements = getParticipantPostSceneRequirements(pid);
+      return requirements.mustHealOrSkip || requirements.mustDiscardRewards;
+    });
 
   const sortedNonMarshalPlayers = useMemo(() => {
     return [...nonMarshalPlayers].sort((a, b) => {
@@ -741,6 +855,34 @@ export default function MarshalTableView({
       gfAction({
         game_id: resp.game_id,
         action: "gf.scene_force_acknowledge_resolution",
+        params: {
+          actor_id: currentActorId,
+          player_id: pid,
+        },
+        view,
+      })
+    );
+  }
+
+  async function handleForceSkipHeal(pid: string) {
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_force_skip_heal",
+        params: {
+          actor_id: currentActorId,
+          player_id: pid,
+        },
+        view,
+      })
+    );
+  }
+
+  async function handleForceDiscardRewards(pid: string) {
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_force_discard_rewards",
         params: {
           actor_id: currentActorId,
           player_id: pid,
@@ -888,6 +1030,9 @@ export default function MarshalTableView({
     }
 
     if (scene.status === "resolved") {
+      if (hasBlockedParticipantForNewScene) {
+        return "Scene closed. Resolve participant heal/skip or reward discard requirements before opening a new scene.";
+      }
       if (pendingBonusType) {
         return `Scene closed. Click a player to assign one bonus ${pendingBonusType} card, or click the same assign button again to cancel.`;
       }
@@ -998,7 +1143,12 @@ export default function MarshalTableView({
                   <ActionButton
                     label="New Scene"
                     onClick={handleNewScene}
-                    title="Prepare a new scene"
+                    disabled={hasBlockedParticipantForNewScene}
+                    title={
+                      hasBlockedParticipantForNewScene
+                        ? "Resolve participant heal/skip or reward discard requirements first"
+                        : "Prepare a new scene"
+                    }
                   />
 
                   <div
@@ -1365,27 +1515,39 @@ export default function MarshalTableView({
                   <div style={{ opacity: 0.6 }}>— empty scene —</div>
                 ) : (
                   participantIds.map((pid) => (
-                    <PlayerLane
-                      key={pid}
-                      playerId={pid}
-                      pstate={lobbyPlayers[pid] ?? {}}
-                      figureCardId={getPlayerFigureCardId(pid)}
-                      playedCards={getPlayerSceneHand(pid)}
-                      total={getParticipantTotal(pid)}
-                      woundsCount={getDisplayedWounds(pid)}
-                      figureRotated={getFigureRotated(pid)}
-                      figureDead={getIsDead(pid)}
-                      scumModCardIds={getPlayerScumModCards(pid)}
-                      vengeanceModCardIds={getPlayerVengeanceModCards(pid)}
-                      modifierTotal={getPlayerModifierTotal(pid)}
-                      stateLabel={getParticipantStateLabel(pid)}
-                      laneState={getParticipantLaneState(pid)}
-                      outcome={getParticipantOutcome(pid)}
-                      canForceAcknowledge={
-                        scene.status === "awaiting_ack" && !scenePlayers?.[pid]?.acknowledged
-                      }
-                      onForceAcknowledge={() => handleForceAcknowledge(pid)}
-                    />
+                    (() => {
+                      const requirements = getParticipantPostSceneRequirements(pid);
+
+                      return (
+                        <PlayerLane
+                          key={pid}
+                          playerId={pid}
+                          pstate={lobbyPlayers[pid] ?? {}}
+                          figureCardId={getPlayerFigureCardId(pid)}
+                          playedCards={getPlayerSceneHand(pid)}
+                          total={getParticipantTotal(pid)}
+                          woundsCount={getDisplayedWounds(pid)}
+                          figureRotated={getFigureRotated(pid)}
+                          figureDead={getIsDead(pid)}
+                          scumModCardIds={getPlayerScumModCards(pid)}
+                          vengeanceModCardIds={getPlayerVengeanceModCards(pid)}
+                          modifierTotal={getPlayerModifierTotal(pid)}
+                          stateLabel={getParticipantStateLabel(pid)}
+                          laneState={getParticipantLaneState(pid)}
+                          outcome={getParticipantOutcome(pid)}
+                          canForceAcknowledge={
+                            scene.status === "awaiting_ack" && !scenePlayers?.[pid]?.acknowledged
+                          }
+                          onForceAcknowledge={() => handleForceAcknowledge(pid)}
+                          mustHealOrSkip={scene.status === "resolved" && requirements.mustHealOrSkip}
+                          mustDiscardRewards={
+                            scene.status === "resolved" && requirements.mustDiscardRewards
+                          }
+                          onForceSkipHeal={() => handleForceSkipHeal(pid)}
+                          onForceDiscardRewards={() => handleForceDiscardRewards(pid)}
+                        />
+                      );
+                    })()
                   ))
                 )}
               </div>

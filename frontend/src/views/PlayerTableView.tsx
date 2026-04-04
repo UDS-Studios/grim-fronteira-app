@@ -47,6 +47,8 @@ type ScenePlayerState = {
   wounds_gained?: number;
   reward_gained?: boolean;
   result?: string | null;
+  recovery_action?: "healed" | "skipped" | null;
+  reward_discard_started?: boolean;
 };
 
 type SceneState = {
@@ -96,6 +98,14 @@ function formatModifierTotal(modifierTotal: number): string {
   if (modifierTotal > 0) return `+${modifierTotal}`;
   if (modifierTotal < 0) return `${modifierTotal}`;
   return "";
+}
+
+function getRewardCardPoints(cardId: string): number {
+  const rank = cardId === "RJ" || cardId === "BJ" ? cardId : cardId.slice(0, -1).toUpperCase();
+  if (rank === "RJ" || rank === "BJ") return 0;
+  if (rank === "A") return 11;
+  if (rank === "J" || rank === "Q" || rank === "K") return 10;
+  return Number(rank);
 }
 
 function CurrentPlayerSceneRow({
@@ -469,6 +479,8 @@ export default function PlayerTableView({
   const ds = (value: number) => value * deckScale;
   const [scumTargetingActive, setScumTargetingActive] = useState(false);
   const [selectedScumTargetId, setSelectedScumTargetId] = useState<string | null>(null);
+  const [rewardSelectionMode, setRewardSelectionMode] = useState<"heal" | "discard" | null>(null);
+  const [selectedRewardCardKeys, setSelectedRewardCardKeys] = useState<string[]>([]);
   const state = (resp.state as any) ?? {};
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
@@ -521,6 +533,10 @@ export default function PlayerTableView({
     return zones[`players.${pid}.rewards`] ?? [];
   }
 
+  function getPlayerRewardPoints(pid: string): number {
+    return metaPlayers?.[pid]?.reward_points ?? 0;
+  }
+
   const currentPlayerDisplayName =
     lobbyPlayers?.[currentActorId]?.chosen_name ?? currentActorId;
   const currentPlayerFigureCardId = getPlayerFigureCardId(currentActorId);
@@ -561,6 +577,26 @@ export default function PlayerTableView({
 
   const isCurrentViewerActive = currentActorId === activeParticipantId;
   const currentPlayerState = scenePlayers?.[currentActorId] ?? {};
+  const currentPlayerRewardPoints = getPlayerRewardPoints(currentActorId);
+  const currentPlayerPostSceneWounds = getDisplayedWounds(currentActorId);
+  const currentPlayerNeedsHealOrSkip =
+    scene.status === "resolved" &&
+    currentPlayerPostSceneWounds === 1 &&
+    currentPlayerRewardPoints > 11 &&
+    currentPlayerState.recovery_action == null;
+  const currentPlayerNeedsDiscardRewards =
+    scene.status === "resolved" &&
+    (currentPlayerRewardPoints > 21 ||
+      (!!currentPlayerState.reward_discard_started && currentPlayerRewardPoints > 20));
+  const healSelectionActive = rewardSelectionMode === "heal";
+  const discardSelectionActive = rewardSelectionMode === "discard";
+  const selectedRewardPoints = selectedRewardCardKeys.reduce((sum, key) => {
+    const [cardId] = key.split(":");
+    return sum + getRewardCardPoints(cardId);
+  }, 0);
+  const canConfirmHeal = currentPlayerNeedsHealOrSkip && healSelectionActive && selectedRewardPoints >= 11;
+  const canConfirmDiscard =
+    currentPlayerNeedsDiscardRewards && discardSelectionActive && selectedRewardCardKeys.length === 1;
 
   function getParticipantTotal(pid: string): number | null {
     if (!participantIds.includes(pid)) return null;
@@ -589,8 +625,9 @@ export default function PlayerTableView({
 
   function getDisplayedWounds(pid: string): number {
     const persistentWounds = getPersistentWounds(pid);
-    const sceneBusted = !!scenePlayers?.[pid]?.busted;
-    return persistentWounds + (sceneBusted && !sceneResolved ? 1 : 0);
+    const pendingWounds =
+      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : !!scenePlayers?.[pid]?.busted ? 1 : 0;
+    return persistentWounds + pendingWounds;
   }
 
   function getIsDead(pid: string): boolean {
@@ -624,6 +661,7 @@ export default function PlayerTableView({
   function getParticipantOutcome(pid: string): SceneOutcome | null {
     if (!sceneResolved) return null;
     const backendResult = scenePlayers?.[pid]?.result;
+    const recoveryAction = scenePlayers?.[pid]?.recovery_action;
     const marshalBusted = effectiveDifficultyValue != null && effectiveDifficultyValue > 21;
     if (backendResult === "success") {
       return { key: "success", label: "Success!", color: "#2f8f3e" };
@@ -634,6 +672,9 @@ export default function PlayerTableView({
     if (backendResult === "bust") {
       if (marshalBusted) {
         return { key: "failure", label: "Failure!", color: "#6f1d1b" };
+      }
+      if (recoveryAction === "healed") {
+        return { key: "success", label: "Healed!", color: "#2f8f3e" };
       }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
@@ -738,6 +779,12 @@ export default function PlayerTableView({
     }
 
     if (scene.status === "resolved") {
+      if (currentPlayerNeedsDiscardRewards) {
+        return "You must discard rewards until you reach 20 points or less before the Marshal can open the next scene.";
+      }
+      if (currentPlayerNeedsHealOrSkip) {
+        return "You must heal or skip before the Marshal can open the next scene.";
+      }
       return "Scene closed. Waiting for the Marshal to start a new scene.";
     }
 
@@ -784,6 +831,86 @@ export default function PlayerTableView({
         },
         view,
       })
+    );
+  }
+
+  async function handleSkipHeal() {
+    if (!currentPlayerNeedsHealOrSkip) return;
+
+    setRewardSelectionMode(null);
+    setSelectedRewardCardKeys([]);
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_skip_heal",
+        params: {
+          player_id: currentActorId,
+        },
+        view,
+      })
+    );
+  }
+
+  async function handleConfirmHeal() {
+    if (!canConfirmHeal) return;
+
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_heal_wound",
+        params: {
+          player_id: currentActorId,
+          reward_card_ids: selectedRewardCardKeys.map((key) => key.split(":")[0]),
+        },
+        view,
+      })
+    );
+
+    setRewardSelectionMode(null);
+    setSelectedRewardCardKeys([]);
+  }
+
+  function handleToggleHealSelection() {
+    if (!currentPlayerNeedsHealOrSkip) return;
+    setRewardSelectionMode((prev) => (prev === "heal" ? null : "heal"));
+    setSelectedRewardCardKeys([]);
+  }
+
+  async function handleConfirmDiscardReward() {
+    if (!canConfirmDiscard) return;
+
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_discard_reward",
+        params: {
+          player_id: currentActorId,
+          reward_card_id: selectedRewardCardKeys[0].split(":")[0],
+        },
+        view,
+      })
+    );
+
+    setRewardSelectionMode(null);
+    setSelectedRewardCardKeys([]);
+  }
+
+  function handleToggleDiscardSelection() {
+    if (!currentPlayerNeedsDiscardRewards) return;
+    setRewardSelectionMode((prev) => (prev === "discard" ? null : "discard"));
+    setSelectedRewardCardKeys([]);
+  }
+
+  function handleToggleRewardCard(cardId: string, index: number) {
+    if (rewardSelectionMode === null) return;
+    const key = `${cardId}:${index}`;
+    if (rewardSelectionMode === "discard") {
+      setSelectedRewardCardKeys((prev) => (prev[0] === key ? [] : [key]));
+      return;
+    }
+    if (!currentPlayerNeedsHealOrSkip) return;
+    setSelectedRewardCardKeys((prev) =>
+      prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key]
     );
   }
 
@@ -845,6 +972,17 @@ export default function PlayerTableView({
       setSelectedScumTargetId(null);
     }
   }, [canPlayScum, scumTargetingActive]);
+
+  useEffect(() => {
+    if (!currentPlayerNeedsHealOrSkip && rewardSelectionMode === "heal") {
+      setRewardSelectionMode(null);
+      setSelectedRewardCardKeys([]);
+    }
+    if (!currentPlayerNeedsDiscardRewards && rewardSelectionMode === "discard") {
+      setRewardSelectionMode(null);
+      setSelectedRewardCardKeys([]);
+    }
+  }, [currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode]);
 
   async function handleToggleScumTargeting() {
     if (!canPlayScum) return;
@@ -1268,10 +1406,160 @@ export default function PlayerTableView({
                     }
                     vengeanceCardIds={currentPlayerVengeanceCards}
                     rewardCardIds={currentPlayerRewardCards}
+                    selectedRewardCardIds={selectedRewardCardKeys}
+                    rewardSelectionEnabled={rewardSelectionMode !== null}
+                    rewardSelectionLocked={
+                      rewardSelectionMode === "heal"
+                        ? !currentPlayerNeedsHealOrSkip
+                        : rewardSelectionMode === "discard"
+                          ? !currentPlayerNeedsDiscardRewards
+                          : true
+                    }
+                    rewardSelectionTotal={selectedRewardPoints}
+                    rewardSelectionHint={
+                      rewardSelectionMode === "heal"
+                        ? canConfirmHeal
+                          ? "Ready to heal"
+                          : "Select reward cards worth at least 11"
+                        : rewardSelectionMode === "discard"
+                          ? "Select one reward card to discard"
+                        : null
+                    }
+                    mustHealOrSkip={currentPlayerNeedsHealOrSkip}
+                    mustDiscardRewards={currentPlayerNeedsDiscardRewards}
                     powerLabel={getPowerFromCardId(currentPlayerFigureCardId)}
                     inScene={currentPlayerInScene}
                     onClickScum={canPlayScum ? handleToggleScumTargeting : undefined}
                     onClickVengeance={canPlayVengeance ? handlePlayVengeance : undefined}
+                    onClickRewardCard={rewardSelectionMode ? handleToggleRewardCard : undefined}
+                    rewardActions={
+                      currentPlayerNeedsHealOrSkip || currentPlayerNeedsDiscardRewards ? (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          {currentPlayerNeedsHealOrSkip ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={handleToggleHealSelection}
+                                style={{
+                                  border: "1px solid var(--border-muted)",
+                                  borderRadius: 10,
+                                  padding: "8px 12px",
+                                  background: healSelectionActive
+                                    ? "color-mix(in srgb, var(--surface-hover) 80%, transparent)"
+                                    : "var(--surface-strong)",
+                                  color: "inherit",
+                                  cursor: "pointer",
+                                  fontWeight: 800,
+                                }}
+                              >
+                                HEAL
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={handleSkipHeal}
+                                style={{
+                                  border: "1px solid var(--border-muted)",
+                                  borderRadius: 10,
+                                  padding: "8px 12px",
+                                  background: "var(--surface-strong)",
+                                  color: "inherit",
+                                  cursor: "pointer",
+                                  fontWeight: 800,
+                                }}
+                              >
+                                SKIP
+                              </button>
+
+                              {healSelectionActive ? (
+                                <button
+                                  type="button"
+                                  onClick={handleConfirmHeal}
+                                  disabled={!canConfirmHeal}
+                                  style={{
+                                    border: "1px solid var(--border-muted)",
+                                    borderRadius: 10,
+                                    padding: "8px 12px",
+                                    background: canConfirmHeal
+                                      ? "var(--surface-strong)"
+                                      : "var(--surface-muted)",
+                                    color: "inherit",
+                                    cursor: canConfirmHeal ? "pointer" : "not-allowed",
+                                    fontWeight: 800,
+                                    opacity: canConfirmHeal ? 1 : 0.65,
+                                  }}
+                                >
+                                  Confirm Heal
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+
+                          {currentPlayerNeedsDiscardRewards ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={handleToggleDiscardSelection}
+                                style={{
+                                  border: "1px solid var(--border-muted)",
+                                  borderRadius: 10,
+                                  padding: "8px 12px",
+                                  background: discardSelectionActive
+                                    ? "color-mix(in srgb, var(--surface-hover) 80%, transparent)"
+                                    : "var(--surface-strong)",
+                                  color: "inherit",
+                                  cursor: "pointer",
+                                  fontWeight: 800,
+                                }}
+                              >
+                                Discard Rewards
+                              </button>
+
+                              {discardSelectionActive ? (
+                                <button
+                                  type="button"
+                                  onClick={handleConfirmDiscardReward}
+                                  disabled={!canConfirmDiscard}
+                                  style={{
+                                    border: "1px solid var(--border-muted)",
+                                    borderRadius: 10,
+                                    padding: "8px 12px",
+                                    background: canConfirmDiscard
+                                      ? "var(--surface-strong)"
+                                      : "var(--surface-muted)",
+                                    color: "inherit",
+                                    cursor: canConfirmDiscard ? "pointer" : "not-allowed",
+                                    fontWeight: 800,
+                                    opacity: canConfirmDiscard ? 1 : 0.65,
+                                  }}
+                                >
+                                  Confirm Discard
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null
+                    }
                     powerDisabled
                   />
                 </div>

@@ -22,6 +22,11 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_play_vengeance,
     scene_acknowledge_resolution,
     scene_force_acknowledge_resolution,
+    scene_skip_heal,
+    scene_force_skip_heal,
+    scene_heal_wound,
+    scene_discard_reward,
+    scene_force_discard_rewards,
     scene_assign_bonus_card,
     scene_new,
     scene_resolve,
@@ -728,6 +733,177 @@ def test_scene_new_reopens_setup_after_all_acknowledged():
     assert "scene.difficulty" not in game.zones
     assert "scene.hand.p1" not in game.zones
     assert len(game.zones["players.p1.rewards"]) == 1
+
+
+def test_scene_new_is_blocked_when_player_must_heal_or_skip():
+    game = _ready_table_game()
+    game.meta.setdefault("players", {})
+    game.meta["players"]["p1"] = {"wounds": 1}
+    game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
+    game.meta["scene"] = {
+        "status": "resolved",
+        "participants": ["p1"],
+        "players": {
+            "p1": {
+                "resolved": True,
+                "acknowledged": True,
+                "wounds_gained": 0,
+                "reward_gained": False,
+            }
+        },
+    }
+
+    try:
+        scene_new(game, actor_id="host1")
+    except ValueError as exc:
+        assert "heal/skip" in str(exc)
+    else:
+        raise AssertionError("Expected scene_new to be blocked by pending heal/skip")
+
+
+def test_scene_skip_heal_clears_heal_gate_for_new_scene():
+    game = _ready_table_game()
+    game.meta.setdefault("players", {})
+    game.meta["players"]["p1"] = {"wounds": 1}
+    game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
+    game.meta["scene"] = {
+        "status": "resolved",
+        "participants": ["p1"],
+        "players": {
+            "p1": {
+                "resolved": True,
+                "acknowledged": True,
+                "wounds_gained": 0,
+                "reward_gained": False,
+            }
+        },
+    }
+
+    game = scene_skip_heal(game, player_id="p1")
+
+    assert game.meta["scene"]["players"]["p1"]["recovery_action"] == "skipped"
+
+    game = scene_new(game, actor_id="host1")
+
+    assert game.meta["scene"]["status"] == "setup"
+    assert game.meta["players"]["p1"]["wounds"] == 1
+
+
+def test_scene_force_skip_heal_sets_skip_state():
+    game = _ready_table_game()
+    game.meta.setdefault("players", {})
+    game.meta["players"]["p1"] = {"wounds": 1}
+    game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
+    game.meta["scene"] = {
+        "status": "resolved",
+        "participants": ["p1"],
+        "players": {
+            "p1": {
+                "resolved": True,
+                "acknowledged": True,
+                "wounds_gained": 0,
+                "reward_gained": False,
+            }
+        },
+    }
+
+    game = scene_force_skip_heal(game, actor_id="host1", player_id="p1")
+
+    assert game.meta["scene"]["players"]["p1"]["recovery_action"] == "skipped"
+
+
+def test_scene_heal_wound_spends_rewards_and_removes_pending_scene_wound():
+    game = _ready_table_game()
+    game.meta.setdefault("players", {})
+    game.meta["players"]["p1"] = {"wounds": 0}
+    game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
+    game.meta["scene"] = {
+        "status": "resolved",
+        "participants": ["p1"],
+        "players": {
+            "p1": {
+                "resolved": True,
+                "acknowledged": True,
+                "wounds_gained": 1,
+                "reward_gained": False,
+            }
+        },
+    }
+
+    game, result = scene_heal_wound(game, player_id="p1", reward_card_ids=["6H", "5D"])
+
+    assert result["reward_points_spent"] == 11
+    assert game.meta["scene"]["players"]["p1"]["recovery_action"] == "healed"
+    assert game.meta["scene"]["players"]["p1"]["wounds_gained"] == 0
+    assert game.zones["players.p1.rewards"] == ["2C"]
+    assert game.deck.discard_pile[-2:] == ["6H", "5D"]
+
+    game = scene_new(game, actor_id="host1")
+
+    assert game.meta["players"]["p1"].get("wounds", 0) == 0
+
+
+def test_scene_discard_reward_must_continue_until_twenty_or_less():
+    game = _ready_table_game()
+    game.zones["players.p1.rewards"] = ["10H", "AH", "2C"]
+    game.meta["scene"] = {
+        "status": "resolved",
+        "participants": ["p1"],
+        "players": {
+            "p1": {
+                "resolved": True,
+                "acknowledged": True,
+                "wounds_gained": 0,
+                "reward_gained": False,
+                "reward_discard_started": False,
+            }
+        },
+    }
+
+    game, result = scene_discard_reward(game, player_id="p1", reward_card_id="2C")
+
+    assert result["remaining_reward_points"] == 21
+    assert game.meta["scene"]["players"]["p1"]["reward_discard_started"] is True
+
+    try:
+        scene_new(game, actor_id="host1")
+    except ValueError as exc:
+        assert "reward discard" in str(exc) or "heal/skip" in str(exc)
+    else:
+        raise AssertionError("Expected scene_new to stay blocked at 21 reward points")
+
+    game, result = scene_discard_reward(game, player_id="p1", reward_card_id="10H")
+
+    assert result["remaining_reward_points"] == 11
+    assert game.meta["scene"]["players"]["p1"]["reward_discard_started"] is False
+
+    game = scene_new(game, actor_id="host1")
+
+    assert game.meta["scene"]["status"] == "setup"
+
+
+def test_scene_force_discard_rewards_discards_highest_point_rewards_until_twenty_or_less():
+    game = _ready_table_game()
+    game.zones["players.p1.rewards"] = ["10H", "AH", "2C"]
+    game.meta["scene"] = {
+        "status": "resolved",
+        "participants": ["p1"],
+        "players": {
+            "p1": {
+                "resolved": True,
+                "acknowledged": True,
+                "wounds_gained": 0,
+                "reward_gained": False,
+                "reward_discard_started": False,
+            }
+        },
+    }
+
+    game, result = scene_force_discard_rewards(game, actor_id="host1", player_id="p1")
+
+    assert result["discarded_reward_card_ids"] == ["AH", "2C"]
+    assert result["remaining_reward_points"] == 10
+    assert game.zones["players.p1.rewards"] == ["10H"]
 
 
 def test_bust_applies_exactly_one_persistent_wound_on_new_scene():

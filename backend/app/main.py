@@ -37,6 +37,11 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_play_vengeance,
     scene_acknowledge_resolution,
     scene_force_acknowledge_resolution,
+    scene_skip_heal,
+    scene_force_skip_heal,
+    scene_heal_wound,
+    scene_discard_reward,
+    scene_force_discard_rewards,
     scene_assign_bonus_card,
 )
 
@@ -575,6 +580,77 @@ def action(req: ActionRequest) -> ActionResponse:
         game = scene_force_acknowledge_resolution(game, actor_id=actor_id, player_id=player_id)
         mutated = True
         result = {"ok": True, "action": req.action, "actor_id": actor_id, "player_id": player_id}
+
+    elif req.action == "gf.scene_skip_heal":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_skip_heal(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.scene_heal_wound":
+        params = req.params
+        player_id = params.get("player_id")
+        reward_card_ids = params.get("reward_card_ids")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(reward_card_ids, list) or not all(isinstance(card_id, str) for card_id in reward_card_ids):
+            raise HTTPException(status_code=400, detail="params.reward_card_ids must be a list of strings")
+
+        game, heal_result = scene_heal_wound(game, player_id=player_id, reward_card_ids=reward_card_ids)
+        mutated = True
+        result = {"ok": True, "action": req.action, **heal_result}
+
+    elif req.action == "gf.scene_force_skip_heal":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_force_skip_heal(game, actor_id=actor_id, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id, "player_id": player_id}
+
+    elif req.action == "gf.scene_discard_reward":
+        params = req.params
+        player_id = params.get("player_id")
+        reward_card_id = params.get("reward_card_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(reward_card_id, str):
+            raise HTTPException(status_code=400, detail="params.reward_card_id must be a string")
+
+        game, discard_result = scene_discard_reward(game, player_id=player_id, reward_card_id=reward_card_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, **discard_result}
+
+    elif req.action == "gf.scene_force_discard_rewards":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game, discard_result = scene_force_discard_rewards(
+            game,
+            actor_id=actor_id,
+            player_id=player_id,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **discard_result}
 
     elif req.action == "gf.scene_assign_bonus_card":
         params = req.params

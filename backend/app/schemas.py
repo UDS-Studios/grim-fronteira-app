@@ -49,6 +49,11 @@ class ActionRequest(BaseModel):
         "gf.scene_play_vengeance",
         "gf.scene_acknowledge_resolution",
         "gf.scene_force_acknowledge_resolution",
+        "gf.scene_skip_heal",
+        "gf.scene_force_skip_heal",
+        "gf.scene_heal_wound",
+        "gf.scene_discard_reward",
+        "gf.scene_force_discard_rewards",
         "gf.scene_assign_bonus_card",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)

@@ -11,12 +11,21 @@ export type PTVPlayerBoardProps = {
   revealedScumCardId?: string | null;
   vengeanceCardIds: string[];
   rewardCardIds: string[];
+  selectedRewardCardIds?: string[];
+  rewardSelectionEnabled?: boolean;
+  rewardSelectionLocked?: boolean;
+  rewardSelectionTotal?: number;
+  rewardSelectionHint?: string | null;
+  mustHealOrSkip?: boolean;
+  mustDiscardRewards?: boolean;
   powerLabel: string;
   inScene?: boolean;
   powerDisabled?: boolean;
   onClickScum?: () => void;
   onClickVengeance?: () => void;
   onClickPower?: () => void;
+  onClickRewardCard?: (cardId: string, index: number) => void;
+  rewardActions?: React.ReactNode;
 };
 
 type PowerArtKey =
@@ -176,9 +185,17 @@ function FixedWidthFaceDownStack({
 
 function AdaptiveRewardsRow({
   cardIds,
+  selectedCardKeys = new Set<string>(),
+  selectable = false,
+  selectionLocked = false,
+  onClickCard,
   scale = 1,
 }: {
   cardIds: string[];
+  selectedCardKeys?: Set<string>;
+  selectable?: boolean;
+  selectionLocked?: boolean;
+  onClickCard?: (cardId: string, index: number) => void;
   scale?: number;
 }) {
   const cardWidth = 88 * scale;
@@ -247,7 +264,25 @@ function AdaptiveRewardsRow({
               left: idx * step,
             }}
           >
-            <CardImg cardId={cardId} width={cardWidth} />
+            <button
+              type="button"
+              onClick={selectable && !selectionLocked ? () => onClickCard?.(cardId, idx) : undefined}
+              disabled={!selectable || selectionLocked}
+              title={selectable ? "Select reward card" : cardId}
+              style={{
+                border: selectedCardKeys.has(`${cardId}:${idx}`)
+                  ? `${Math.max(2, Math.round(3 * scale))}px solid #d11f1f`
+                  : "none",
+                borderRadius: 12 * scale,
+                background: "transparent",
+                padding: 0,
+                cursor: selectable && !selectionLocked ? "pointer" : "default",
+                opacity: selectionLocked ? 0.7 : 1,
+                transform: selectedCardKeys.has(`${cardId}:${idx}`) ? `translateY(${-6 * scale}px)` : "none",
+              }}
+            >
+              <CardImg cardId={cardId} width={cardWidth} />
+            </button>
           </div>
         ))}
       </div>
@@ -322,12 +357,21 @@ export default function PTVPlayerBoard({
   revealedScumCardId,
   vengeanceCardIds,
   rewardCardIds,
+  selectedRewardCardIds = [],
+  rewardSelectionEnabled = false,
+  rewardSelectionLocked = false,
+  rewardSelectionTotal = 0,
+  rewardSelectionHint = null,
+  mustHealOrSkip = false,
+  mustDiscardRewards = false,
   powerLabel,
   inScene = false,
   powerDisabled = true,
   onClickScum,
   onClickVengeance,
   onClickPower,
+  onClickRewardCard,
+  rewardActions,
 }: PTVPlayerBoardProps) {
   const { ref, scale } = useResponsiveScale(780, 1.4, 0.7);
   const s = (value: number) => value * scale;
@@ -335,6 +379,23 @@ export default function PTVPlayerBoard({
   const summaryLines = splitSummaryText(summaryText, displayName);
   const figureCardWidth = s(150);
   const figureCardHeight = s(217);
+  const selectedRewardCardKeys = new Set(selectedRewardCardIds);
+  const boardBackground =
+    mustHealOrSkip && mustDiscardRewards
+      ? "color-mix(in srgb, #7b3fc6 18%, var(--surface-strong))"
+      : mustDiscardRewards
+        ? "color-mix(in srgb, #d11f1f 14%, var(--surface-strong))"
+        : mustHealOrSkip
+          ? "color-mix(in srgb, #d17a1f 16%, var(--surface-strong))"
+          : "var(--surface-strong)";
+  const boardBorder =
+    mustHealOrSkip && mustDiscardRewards
+      ? "2px solid #7b3fc6"
+      : mustDiscardRewards
+        ? "2px solid #b42318"
+        : mustHealOrSkip
+          ? "2px solid #c26a18"
+          : "1px solid var(--border-strong)";
 
   return (
     <div
@@ -349,9 +410,9 @@ export default function PTVPlayerBoard({
         style={{
           width: "100%",
           maxWidth: 1092,
-          border: "1px solid var(--border-strong)",
+          border: boardBorder,
           borderRadius: s(18),
-          background: "var(--surface-strong)",
+          background: boardBackground,
           overflow: "hidden",
           boxShadow: inScene ? "0 0 0 2px rgba(139,90,43,0.18)" : "none",
         }}
@@ -598,7 +659,37 @@ export default function PTVPlayerBoard({
             REWARDS
           </div>
 
-          <AdaptiveRewardsRow cardIds={rewardCardIds} scale={scale} />
+          {rewardActions ? (
+            <div
+              style={{
+                display: "grid",
+                gap: s(8),
+              }}
+            >
+              {rewardActions}
+              {rewardSelectionEnabled ? (
+                <div
+                  style={{
+                    fontSize: s(13),
+                    color: rewardSelectionTotal >= 11 ? "#1ea84f" : "var(--text-muted)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Selected points: {rewardSelectionTotal}
+                  {rewardSelectionHint ? ` • ${rewardSelectionHint}` : ""}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <AdaptiveRewardsRow
+            cardIds={rewardCardIds}
+            selectedCardKeys={selectedRewardCardKeys}
+            selectable={rewardSelectionEnabled}
+            selectionLocked={rewardSelectionLocked}
+            onClickCard={onClickRewardCard}
+            scale={scale}
+          />
         </div>
       </div>
     </div>

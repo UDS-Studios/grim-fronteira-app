@@ -8,6 +8,7 @@ from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_di
 from backend.engine.state.game_state import GameState
 from backend.engine.state.validators import validate_unique_cards
 from backend.engine.state.zone_ops import claim_from_in_play
+from backend.engine.rules.grim_fronteira.reward_points import reward_card_points
 
 
 SCENE_STATUS_IDLE = "idle"
@@ -495,6 +496,8 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
         pstate["acknowledged"] = False
         pstate["wounds_gained"] = 0
         pstate["reward_gained"] = False
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
 
         if marshal_busted:
             if pstate.get("busted"):
@@ -614,6 +617,58 @@ def _acknowledge_scene_player(game: GameState, *, player_id: str) -> GameState:
     return game
 
 
+def _get_persistent_wounds(game: GameState, player_id: str) -> int:
+    pdata = dict(((game.meta or {}).get("players") or {}).get(player_id) or {})
+    return int(pdata.get("wounds", 0) or 0)
+
+
+def _get_post_scene_wounds(game: GameState, player_id: str) -> int:
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pending_wounds = int(pstate.get("wounds_gained", 0) or 0) if scene["status"] == SCENE_STATUS_RESOLVED else 0
+    return _get_persistent_wounds(game, player_id) + pending_wounds
+
+
+def _must_heal_or_skip(game: GameState, player_id: str) -> bool:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        return False
+    if player_id not in scene["participants"]:
+        return False
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if pstate.get("recovery_action") in {"healed", "skipped"}:
+        return False
+
+    post_scene_wounds = _get_post_scene_wounds(game, player_id)
+    reward_points = sum(reward_card_points(card_id) for card_id in list(game.zones.get(f"players.{player_id}.rewards", [])))
+    return post_scene_wounds == 1 and reward_points > 11
+
+
+def _must_discard_rewards(game: GameState, player_id: str) -> bool:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        return False
+    if player_id not in scene["participants"]:
+        return False
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    reward_points = sum(reward_card_points(card_id) for card_id in list(game.zones.get(f"players.{player_id}.rewards", [])))
+    threshold = 20 if pstate.get("reward_discard_started") else 21
+    return reward_points > threshold
+
+
+def _has_pending_post_scene_requirements(game: GameState) -> bool:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        return False
+
+    for player_id in scene["participants"]:
+        if _must_heal_or_skip(game, player_id) or _must_discard_rewards(game, player_id):
+            return True
+    return False
+
+
 def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements: bool) -> GameState:
     scene = _scene(game)
     effective_difficulty = int(scene["difficulty"]["value"])
@@ -634,6 +689,8 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
         pstate["resolved"] = True
         pstate["wounds_gained"] = 0 if marshal_busted else 1 if busted else 0
         pstate["reward_gained"] = (not busted) if marshal_busted else (not busted and hand_value >= effective_difficulty)
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
         if reset_acknowledgements:
             pstate["acknowledged"] = False
 
@@ -683,6 +740,8 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_RESOLVED:
         raise ValueError("A new scene can only be started after the previous one is fully acknowledged.")
+    if _has_pending_post_scene_requirements(game):
+        raise ValueError("All required heal/skip and reward discard decisions must be resolved before starting a new scene.")
 
     game = _finalize_resolved_scene(game)
     if _all_non_marshal_players_dead(game):
@@ -700,6 +759,206 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
     scene = default_scene_state()
     scene["status"] = SCENE_STATUS_SETUP
     return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones))
+
+
+def scene_skip_heal(game: GameState, *, player_id: str) -> GameState:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        raise ValueError("Healing choices are only available after the scene is fully acknowledged.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can choose to heal or skip.")
+    if not _must_heal_or_skip(game, player_id):
+        raise ValueError("Player does not currently need to heal or skip.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    pstate["recovery_action"] = "skipped"
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game
+
+
+def scene_force_skip_heal(game: GameState, *, actor_id: str, player_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+    return scene_skip_heal(game, player_id=player_id)
+
+
+def scene_heal_wound(game: GameState, *, player_id: str, reward_card_ids: list[str]) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        raise ValueError("Healing is only available after the scene is fully acknowledged.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can heal wounds.")
+    if not _must_heal_or_skip(game, player_id):
+        raise ValueError("Player does not currently need to heal or skip.")
+    if not reward_card_ids or not all(isinstance(card_id, str) and card_id for card_id in reward_card_ids):
+        raise ValueError("reward_card_ids must contain at least one reward card id.")
+
+    reward_zone_name = f"players.{player_id}.rewards"
+    reward_zone_cards = list(game.zones.get(reward_zone_name, []))
+    if not reward_zone_cards:
+        raise ValueError("Player has no reward cards available to spend on healing.")
+
+    selected_card_ids = reward_card_ids.copy()
+    zone_counts: dict[str, int] = {}
+    for card_id in reward_zone_cards:
+        zone_counts[card_id] = zone_counts.get(card_id, 0) + 1
+
+    for card_id in selected_card_ids:
+        available = zone_counts.get(card_id, 0)
+        if available <= 0:
+            raise ValueError("Selected reward cards must all belong to the player.")
+        zone_counts[card_id] = available - 1
+
+    total_points = sum(reward_card_points(card_id) for card_id in selected_card_ids)
+    if total_points < 11:
+        raise ValueError("Selected reward cards must sum to at least 11 points to heal.")
+
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    remaining_to_remove = selected_card_ids.copy()
+    updated_reward_zone: list[CardID] = []
+    for card_id in reward_zone_cards:
+        if card_id in remaining_to_remove:
+            remaining_to_remove.remove(card_id)
+            continue
+        updated_reward_zone.append(card_id)
+    zones[reward_zone_name] = updated_reward_zone
+
+    deck = game.deck
+    if deck is None:
+        raise ValueError("GameState has no deck.")
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile,
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile + selected_card_ids,
+        removed=deck.removed,
+    )
+    game = GameState(deck=new_deck, zones=zones, meta=game.meta)
+
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pending_wounds = int(pstate.get("wounds_gained", 0) or 0)
+    if pending_wounds > 0:
+        pstate["wounds_gained"] = pending_wounds - 1
+    else:
+        meta = dict(game.meta or {})
+        players = dict(meta.get("players") or {})
+        pdata = dict(players.get(player_id) or {})
+        pdata["wounds"] = max(0, int(pdata.get("wounds", 0) or 0) - 1)
+        players[player_id] = pdata
+        meta["players"] = players
+        game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+        scene = _scene(game)
+        pstate = dict(scene["players"].get(player_id) or {})
+
+    pstate["recovery_action"] = "healed"
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "reward_card_ids": selected_card_ids,
+        "reward_points_spent": total_points,
+    }
+
+
+def scene_discard_reward(game: GameState, *, player_id: str, reward_card_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        raise ValueError("Reward discard is only available after the scene is fully acknowledged.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can discard reward cards.")
+    if not _must_discard_rewards(game, player_id):
+        raise ValueError("Player does not currently need to discard reward cards.")
+
+    reward_zone_name = f"players.{player_id}.rewards"
+    reward_zone_cards = list(game.zones.get(reward_zone_name, []))
+    if reward_card_id not in reward_zone_cards:
+        raise ValueError("Selected reward card must belong to the player.")
+
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    updated_reward_zone = list(reward_zone_cards)
+    updated_reward_zone.remove(reward_card_id)
+    zones[reward_zone_name] = updated_reward_zone
+
+    deck = game.deck
+    if deck is None:
+        raise ValueError("GameState has no deck.")
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile,
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile + [reward_card_id],
+        removed=deck.removed,
+    )
+    game = GameState(deck=new_deck, zones=zones, meta=game.meta)
+
+    remaining_points = sum(reward_card_points(card_id) for card_id in updated_reward_zone)
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pstate["reward_discard_started"] = remaining_points > 20
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "reward_card_id": reward_card_id,
+        "remaining_reward_points": remaining_points,
+    }
+
+
+def scene_force_discard_rewards(game: GameState, *, actor_id: str, player_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    discarded_reward_card_ids: list[str] = []
+
+    while _must_discard_rewards(game, player_id):
+        reward_zone_cards = list(game.zones.get(f"players.{player_id}.rewards", []))
+        if not reward_zone_cards:
+            raise ValueError("Player has no reward cards available to discard.")
+
+        indexed_cards = list(enumerate(reward_zone_cards))
+        indexed_cards.sort(
+            key=lambda entry: (
+                -reward_card_points(entry[1]),
+                -entry[0],
+            )
+        )
+        chosen_reward_card_id = indexed_cards[0][1]
+        game, _discard_result = scene_discard_reward(
+            game,
+            player_id=player_id,
+            reward_card_id=chosen_reward_card_id,
+        )
+        discarded_reward_card_ids.append(chosen_reward_card_id)
+
+    remaining_reward_points = sum(
+        reward_card_points(card_id)
+        for card_id in list(game.zones.get(f"players.{player_id}.rewards", []))
+    )
+
+    return game, {
+        "player_id": player_id,
+        "discarded_reward_card_ids": discarded_reward_card_ids,
+        "remaining_reward_points": remaining_reward_points,
+    }
 
 
 def scene_assign_bonus_card(
@@ -762,6 +1021,8 @@ def _default_scene_player(game: GameState, player_id: str) -> dict[str, Any]:
         "wounds_gained": 0,
         "reward_gained": False,
         "result": None,
+        "recovery_action": None,
+        "reward_discard_started": False,
     }
 
 
@@ -884,6 +1145,10 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             "wounds_gained": int(pdata.get("wounds_gained", 0) or 0),
             "reward_gained": bool(pdata.get("reward_gained", False)),
             "result": pdata.get("result"),
+            "recovery_action": pdata.get("recovery_action")
+            if pdata.get("recovery_action") in {"healed", "skipped"}
+            else None,
+            "reward_discard_started": bool(pdata.get("reward_discard_started", False)),
         }
 
     return scene
