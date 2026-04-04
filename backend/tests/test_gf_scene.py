@@ -178,6 +178,58 @@ def test_scene_ace_difficulty_blocks_azzardo():
         raise AssertionError("scene_draw_azzardo should fail when difficulty is already 21")
 
 
+def test_scene_red_joker_difficulty_gives_each_player_one_scum():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["RJ", "5H", "6C"])
+    discard_cards = ["7C", "9D"]
+    deck = game.deck
+    assert deck is not None
+    game = GameState(
+        deck=DeckState(
+            version=deck.version,
+            schema=deck.schema,
+            created_utc=deck.created_utc,
+            notes=deck.notes,
+            settings=deck.settings,
+            draw_pile=[card for card in deck.draw_pile if card not in discard_cards],
+            in_play=deck.in_play,
+            discard_pile=discard_cards,
+            removed=deck.removed,
+        ),
+        zones=game.zones,
+        meta=game.meta,
+    )
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+
+    game, difficulty = scene_roll_difficulty(game, actor_id="host1")
+
+    assert difficulty["card_id"] == "RJ"
+    assert difficulty["effects"] == []
+    assert game.zones["scene.difficulty"] == ["RJ"]
+    assert game.zones["players.p1.scum"] == ["5H"]
+    assert game.zones["players.p2.scum"] == ["6C"]
+    assert game.zones["players.p1.vengeance"] == []
+    assert game.zones["players.p2.vengeance"] == []
+    assert game.deck is not None
+    assert game.deck.discard_pile == discard_cards
+
+
+def test_scene_black_joker_difficulty_gives_each_player_one_vengeance():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["BJ", "5H", "6C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+
+    game, difficulty = scene_roll_difficulty(game, actor_id="host1")
+
+    assert difficulty["card_id"] == "BJ"
+    assert difficulty["effects"] == ["DARK_MODE"]
+    assert game.zones["scene.difficulty"] == ["BJ"]
+    assert game.zones["players.p1.vengeance"] == ["5H"]
+    assert game.zones["players.p2.vengeance"] == ["6C"]
+    assert game.zones["players.p1.scum"] == []
+    assert game.zones["players.p2.scum"] == []
+
+
 def test_scene_player_draw_and_stand():
     game = _ready_table_game()
     game = _with_draw_order(game, ["4H", "8D", "2H"])
@@ -197,6 +249,109 @@ def test_scene_player_draw_and_stand():
 
     game = scene_stand(game, player_id="p1")
     assert game.meta["scene"]["players"]["p1"]["resolved"] is True
+
+
+def test_scene_player_draw_red_joker_counts_zero_and_grants_scum_to_drawer():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "8D", "RJ", "5H"])
+    discard_cards = ["7C", "9D"]
+    deck = game.deck
+    assert deck is not None
+    game = GameState(
+        deck=DeckState(
+            version=deck.version,
+            schema=deck.schema,
+            created_utc=deck.created_utc,
+            notes=deck.notes,
+            settings=deck.settings,
+            draw_pile=[card for card in deck.draw_pile if card not in discard_cards],
+            in_play=deck.in_play,
+            discard_pile=discard_cards,
+            removed=deck.removed,
+        ),
+        zones=game.zones,
+        meta=game.meta,
+    )
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 18
+
+    game = scene_draw_card(game, player_id="p1")
+
+    assert game.zones["scene.hand.p1"] == ["8D", "RJ"]
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 18
+    assert game.meta["scene"]["players"]["p1"]["busted"] is False
+    assert game.zones["players.p1.scum"] == ["5H"]
+    assert game.zones["players.p1.vengeance"] == []
+    assert game.zones["players.p2.scum"] == []
+    assert game.zones["players.p2.vengeance"] == []
+    assert game.deck is not None
+    assert game.deck.discard_pile == discard_cards
+
+
+def test_scene_player_draw_black_joker_counts_zero_and_grants_vengeance_to_drawer():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "8D", "BJ", "6C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 18
+
+    game = scene_draw_card(game, player_id="p1")
+
+    assert game.zones["scene.hand.p1"] == ["8D", "BJ"]
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 18
+    assert game.meta["scene"]["players"]["p1"]["busted"] is False
+    assert game.zones["players.p1.vengeance"] == ["6C"]
+    assert game.zones["players.p1.scum"] == []
+    assert game.zones["players.p2.scum"] == []
+    assert game.zones["players.p2.vengeance"] == []
+
+
+def test_scene_new_reshuffles_discard_after_cleanup_when_joker_is_in_discard():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["5H", "RJ", "8D", "2H"])
+    discard_cards = ["7C", "9D"]
+    deck = game.deck
+    assert deck is not None
+    game = GameState(
+        deck=DeckState(
+            version=deck.version,
+            schema=deck.schema,
+            created_utc=deck.created_utc,
+            notes=deck.notes,
+            settings=deck.settings,
+            draw_pile=[card for card in deck.draw_pile if card not in discard_cards],
+            in_play=deck.in_play,
+            discard_pile=discard_cards,
+            removed=deck.removed,
+        ),
+        zones=game.zones,
+        meta=game.meta,
+    )
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+    game = scene_draw_card(game, player_id="p1")
+    game = scene_stand(game, player_id="p1")
+
+    assert game.meta["scene"]["status"] == "awaiting_ack"
+    assert game.deck is not None
+    assert game.deck.discard_pile == discard_cards
+
+    game = scene_acknowledge_resolution(game, player_id="p1")
+    game = scene_new(game, actor_id="host1")
+
+    assert game.deck.discard_pile == []
+    assert "7C" in game.deck.draw_pile
+    assert "9D" in game.deck.draw_pile
+    assert "RJ" in game.deck.draw_pile
 
 
 def test_scene_start_deals_initiative_and_reorders_participants():
@@ -327,6 +482,29 @@ def test_scene_equal_to_difficulty_is_success_when_not_busted():
     assert scene["players"]["p1"]["result"] == "success"
 
 
+def test_scene_marshal_bust_makes_all_non_busted_players_succeed():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["10H", "KD", "9C", "8D", "2H"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    game = scene_draw_card(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "awaiting_ack"
+    assert scene["azzardo"]["revealed"] is True
+    assert scene["players"]["p1"]["busted"] is True
+    assert scene["players"]["p1"]["result"] == "bust"
+    assert scene["players"]["p1"]["wounds_gained"] == 0
+    assert scene["players"]["p1"]["reward_gained"] is False
+    assert scene["players"]["p2"]["busted"] is False
+    assert scene["players"]["p2"]["result"] == "success"
+    assert scene["players"]["p2"]["reward_gained"] is True
+
+
 def test_scene_play_scum_spends_card_and_reduces_target_total():
     game = _ready_table_game()
     game = _with_draw_order(game, ["4H", "9H", "2C"])
@@ -336,6 +514,28 @@ def test_scene_play_scum_spends_card_and_reduces_target_total():
     game = scene_start(game, actor_id="host1")
 
     assert game.meta["scene"]["participants"][0] == "p1"
+    assert game.meta["scene"]["players"]["p2"]["hand_value"] == 12
+
+    game, result = scene_play_scum(game, player_id="p1", target_player_id="p2")
+
+    assert result["modifier"] == -2
+    assert result["target_total"] == 10
+    assert game.meta["scene"]["players"]["p2"]["hand_value"] == 10
+    assert game.meta["scene"]["players"]["p2"]["modifier_total"] == -2
+    assert game.meta["scene"]["players"]["p2"]["scum_mod_cards"] == ["7S"]
+    assert game.zones["players.p1.scum"] == []
+    assert game.zones["scene.mod.scum.p2"] == ["7S"]
+
+
+def test_scene_play_scum_allows_offscene_player_to_target_scene_participant():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["9H", "2C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p2"])
+    game.zones["players.p1.scum"] = ["7S"]
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    assert game.meta["scene"]["participants"] == ["p2"]
     assert game.meta["scene"]["players"]["p2"]["hand_value"] == 12
 
     game, result = scene_play_scum(game, player_id="p1", target_player_id="p2")
@@ -548,6 +748,26 @@ def test_bust_applies_exactly_one_persistent_wound_on_new_scene():
     assert game.meta["players"]["p1"]["wounds"] == 1
 
 
+def test_marshal_bust_prevents_persistent_wound_for_busted_player():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["10H", "KD", "9C", "8D", "2H"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+    game = scene_draw_card(game, player_id="p1")
+
+    assert game.meta["scene"]["status"] == "awaiting_ack"
+    assert game.meta["players"]["p1"].get("wounds", 0) == 0
+
+    game = scene_acknowledge_resolution(game, player_id="p1")
+    game = scene_acknowledge_resolution(game, player_id="p2")
+    game = scene_new(game, actor_id="host1")
+
+    assert game.meta["players"]["p1"]["wounds"] == 0
+    assert len(game.zones["players.p2.rewards"]) == 1
+
+
 def test_dead_player_cannot_join_future_scene():
     game = _ready_table_game()
     game.meta.setdefault("players", {})
@@ -573,6 +793,31 @@ def test_dead_player_cannot_receive_marshal_bonus_card():
         assert "Dead characters cannot receive" in str(exc)
     else:
         raise AssertionError("Expected dead player to be blocked from Marshal bonus assignment")
+
+
+def test_scene_new_enters_victory_phase_when_all_players_are_dead():
+    game = _ready_table_game()
+    game.meta.setdefault("players", {})
+    game.meta["players"]["p1"] = {"wounds": 1}
+    game.meta["players"]["p2"] = {"wounds": 2}
+    game = _with_draw_order(game, ["4H", "9C", "5D"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+    game = scene_draw_card(game, player_id="p1")
+
+    assert game.meta["scene"]["status"] == "awaiting_ack"
+
+    game = scene_acknowledge_resolution(game, player_id="p1")
+    game = scene_new(game, actor_id="host1")
+
+    assert game.meta["phase"] == "victory"
+    assert game.meta["victory"] == {
+        "winner": "marshal",
+        "winner_label": "Marshal",
+        "reason": "All players are dead.",
+    }
 
 
 def test_scene_post_resolution_modifiers_recompute_results_and_clear_acks():

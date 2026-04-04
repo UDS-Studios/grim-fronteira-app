@@ -117,6 +117,11 @@ def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = 
 
     game = _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones, keep_hands=True))
     game, diff = marshal_roll_difficulty(game, seed=seed, zone_name=SCENE_DIFFICULTY_ZONE)
+    if diff.drawn_cards and diff.drawn_cards[0] in {"RJ", "BJ"}:
+        game = _grant_joker_bonus_cards(
+            game,
+            bonus_type="scum" if diff.drawn_cards[0] == "RJ" else "vengeance",
+        )
 
     scene = _scene(game)
     card_id = diff.drawn_cards[0] if diff.drawn_cards else None
@@ -136,6 +141,55 @@ def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = 
         "value": diff.value,
         "effects": [effect.kind for effect in diff.effects],
     }
+
+
+def _grant_joker_bonus_cards(game: GameState, *, bonus_type: str) -> GameState:
+    if bonus_type not in {"scum", "vengeance"}:
+        raise ValueError("bonus_type must be 'scum' or 'vengeance'.")
+
+    for player_id in _non_marshal_players(game):
+        if not _player_has_character(game, player_id) or _player_is_dead(game, player_id):
+            continue
+        zone_name = f"players.{player_id}.{'scum' if bonus_type == 'scum' else 'vengeance'}"
+        game, _card_id = _draw_to_zone(game, zone_name)
+
+    validate_unique_cards(game)
+    return game
+
+
+def _grant_player_joker_bonus_card(game: GameState, *, player_id: str, bonus_type: str) -> GameState:
+    if bonus_type not in {"scum", "vengeance"}:
+        raise ValueError("bonus_type must be 'scum' or 'vengeance'.")
+    if not _player_has_character(game, player_id) or _player_is_dead(game, player_id):
+        return game
+
+    zone_name = f"players.{player_id}.{'scum' if bonus_type == 'scum' else 'vengeance'}"
+    game, _card_id = _draw_to_zone(game, zone_name)
+    validate_unique_cards(game)
+    return game
+
+
+def _reshuffle_discard_into_draw(game: GameState, *, seed: int | None = None) -> GameState:
+    if game.deck is None:
+        raise ValueError("GameState has no deck.")
+    if not game.deck.discard_pile:
+        return game
+
+    merged_deck = DeckState(
+        version=game.deck.version,
+        schema=game.deck.schema,
+        created_utc=game.deck.created_utc,
+        notes=game.deck.notes,
+        settings=game.deck.settings,
+        draw_pile=game.deck.draw_pile + game.deck.discard_pile,
+        in_play=game.deck.in_play,
+        discard_pile=[],
+        removed=game.deck.removed,
+    )
+    game = GameState(deck=merged_deck, zones=game.zones, meta=game.meta)
+    game = GameState(deck=shuffle_deck(game.deck, seed=seed), zones=game.zones, meta=game.meta)
+    validate_unique_cards(game)
+    return game
 
 
 def scene_draw_azzardo(game: GameState, *, actor_id: str, seed: int | None = None) -> GameState:
@@ -259,7 +313,13 @@ def scene_draw_card(game: GameState, *, player_id: str) -> GameState:
         raise ValueError("Player is already busted.")
 
     zone_name = f"{SCENE_HAND_PREFIX}{player_id}"
-    game, _card_id = _draw_to_zone(game, zone_name)
+    game, drawn_card_id = _draw_to_zone(game, zone_name)
+    if drawn_card_id in {"RJ", "BJ"}:
+        game = _grant_player_joker_bonus_card(
+            game,
+            player_id=player_id,
+            bonus_type="scum" if drawn_card_id == "RJ" else "vengeance",
+        )
     scene = _scene(game)
     pstate = dict(scene["players"].get(player_id) or {})
 
@@ -300,21 +360,23 @@ def scene_play_scum(game: GameState, *, player_id: str, target_player_id: str) -
     scene = _scene(game)
     if scene["status"] not in {SCENE_STATUS_ACTIVE, SCENE_STATUS_AWAITING_ACK}:
         raise ValueError("Scum can only be played while the scene is active or awaiting acknowledgement.")
-    if player_id not in scene["participants"]:
-        raise ValueError("Only scene participants can play Scum.")
+    if player_id not in _non_marshal_players(game):
+        raise ValueError("Only registered non-marshal players can play Scum.")
+    if not _player_has_character(game, player_id):
+        raise ValueError("Player must have a character to play Scum.")
     if target_player_id not in scene["participants"]:
         raise ValueError("Scum target must be a scene participant.")
     if target_player_id == player_id:
         raise ValueError("Scum must target another participant.")
-    if scene["status"] == SCENE_STATUS_ACTIVE and _active_scene_player_id(scene) != player_id:
+    if scene["status"] == SCENE_STATUS_ACTIVE and player_id in scene["participants"] and _active_scene_player_id(scene) != player_id:
         raise ValueError("Only the active participant can play Scum.")
 
     pstate = dict(scene["players"].get(player_id) or {})
-    if scene["status"] == SCENE_STATUS_ACTIVE and pstate.get("standing"):
+    if scene["status"] == SCENE_STATUS_ACTIVE and player_id in scene["participants"] and pstate.get("standing"):
         raise ValueError("Player has already stood.")
-    if scene["status"] == SCENE_STATUS_ACTIVE and pstate.get("busted"):
+    if scene["status"] == SCENE_STATUS_ACTIVE and player_id in scene["participants"] and pstate.get("busted"):
         raise ValueError("Player is already busted.")
-    if scene["status"] == SCENE_STATUS_AWAITING_ACK and pstate.get("acknowledged"):
+    if scene["status"] == SCENE_STATUS_AWAITING_ACK and player_id in scene["participants"] and pstate.get("acknowledged"):
         raise ValueError("Player has already acknowledged the resolved scene.")
 
     target_state = dict(scene["players"].get(target_player_id) or {})
@@ -329,7 +391,8 @@ def scene_play_scum(game: GameState, *, player_id: str, target_player_id: str) -
         raise ValueError("Player has no Scum cards to play.")
 
     scum_card_id = scum_cards[-1]
-    modifier = -2 if _card_suit(scum_card_id) == _card_suit(pstate.get("figure_card_id")) else -1
+    source_figure_card_id = pstate.get("figure_card_id") or _player_character_card_id(game, player_id)
+    modifier = -2 if _card_suit(scum_card_id) == _card_suit(source_figure_card_id) else -1
 
     game = _move_zone_top_card_to_zone(game, scum_zone, f"{SCENE_SCUM_MOD_PREFIX}{target_player_id}")
     scene = _scene(game)
@@ -421,6 +484,7 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     effective_difficulty = int(scene["difficulty"]["value"])
     if azzardo["status"] == "drawn":
         effective_difficulty += int(azzardo["value"])
+    marshal_busted = effective_difficulty > 21
 
     winners: list[str] = []
     losers: list[str] = []
@@ -432,7 +496,16 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
         pstate["wounds_gained"] = 0
         pstate["reward_gained"] = False
 
-        if pstate.get("busted"):
+        if marshal_busted:
+            if pstate.get("busted"):
+                pstate["result"] = "bust"
+                pstate["wounds_gained"] = 0
+                losers.append(pid)
+            else:
+                pstate["result"] = "success"
+                pstate["reward_gained"] = True
+                winners.append(pid)
+        elif pstate.get("busted"):
             pstate["result"] = "bust"
             pstate["wounds_gained"] = 1
             losers.append(pid)
@@ -547,6 +620,7 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
     azzardo = dict(scene["azzardo"])
     if azzardo["status"] == "drawn":
         effective_difficulty += int(azzardo["value"])
+    marshal_busted = effective_difficulty > 21
 
     winners: list[str] = []
     losers: list[str] = []
@@ -558,12 +632,19 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
         busted = hand_value > 21
         pstate["busted"] = busted
         pstate["resolved"] = True
-        pstate["wounds_gained"] = 1 if busted else 0
-        pstate["reward_gained"] = not busted and hand_value >= effective_difficulty
+        pstate["wounds_gained"] = 0 if marshal_busted else 1 if busted else 0
+        pstate["reward_gained"] = (not busted) if marshal_busted else (not busted and hand_value >= effective_difficulty)
         if reset_acknowledgements:
             pstate["acknowledged"] = False
 
-        if busted:
+        if marshal_busted:
+            if busted:
+                pstate["result"] = "bust"
+                losers.append(pid)
+            else:
+                pstate["result"] = "success"
+                winners.append(pid)
+        elif busted:
             pstate["result"] = "bust"
             losers.append(pid)
         elif pstate["reward_gained"]:
@@ -604,6 +685,17 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
         raise ValueError("A new scene can only be started after the previous one is fully acknowledged.")
 
     game = _finalize_resolved_scene(game)
+    if _all_non_marshal_players_dead(game):
+        meta = dict(game.meta or {})
+        meta["phase"] = "victory"
+        meta["victory"] = {
+            "winner": "marshal",
+            "winner_label": "Marshal",
+            "reason": "All players are dead.",
+        }
+        validate_unique_cards(game)
+        return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
     game = _discard_scene_play_zones(game)
     scene = default_scene_state()
     scene["status"] = SCENE_STATUS_SETUP
@@ -917,6 +1009,8 @@ def _discard_scene_play_zones(game: GameState) -> GameState:
         game = _discard_zone_if_present(game, zone_name)
 
     game = _discard_scene_modifier_zones(game)
+    if any(card_id in {"RJ", "BJ"} for card_id in list((game.deck.discard_pile if game.deck else []))):
+        game = _reshuffle_discard_into_draw(game)
     return game
 
 
@@ -977,6 +1071,13 @@ def _player_has_character(game: GameState, player_id: str) -> bool:
     return isinstance(cards, list) and len(cards) == 1
 
 
+def _player_character_card_id(game: GameState, player_id: str) -> str | None:
+    cards = game.zones.get(f"players.{player_id}.character", [])
+    if isinstance(cards, list) and len(cards) == 1 and isinstance(cards[0], str):
+        return cards[0]
+    return None
+
+
 def _player_is_dead(game: GameState, player_id: str) -> bool:
     pdata = dict(((game.meta or {}).get("players") or {}).get(player_id) or {})
     return int(pdata.get("wounds", 0) or 0) >= 2
@@ -987,6 +1088,11 @@ def _non_marshal_players(game: GameState) -> list[str]:
     marshal_id = meta.get("marshal_id")
     order = meta.get("players_order") or []
     return [pid for pid in order if isinstance(pid, str) and pid != marshal_id]
+
+
+def _all_non_marshal_players_dead(game: GameState) -> bool:
+    player_ids = _non_marshal_players(game)
+    return bool(player_ids) and all(_player_is_dead(game, player_id) for player_id in player_ids)
 
 
 def _blackjack_value(card_id: str) -> int:
@@ -1004,7 +1110,7 @@ def _cards_blackjack_value(cards: list[str]) -> int:
 
 def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str]) -> int:
     cards = [card_id for card_id in [figure_card_id, *hand_cards] if isinstance(card_id, str) and card_id]
-    total = sum(_blackjack_value(card_id) for card_id in cards)
+    total = sum(_scene_card_value(card_id) for card_id in cards)
     aces = sum(1 for card_id in cards if _rank(card_id) == "A")
 
     # Count aces as 1 instead of 11 when that produces the best non-busting total.
@@ -1013,6 +1119,12 @@ def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str]) -> i
         aces -= 1
 
     return total
+
+
+def _scene_card_value(card_id: str) -> int:
+    if card_id in {"RJ", "BJ"}:
+        return 0
+    return _blackjack_value(card_id)
 
 
 def _rank(card_id: str) -> str:

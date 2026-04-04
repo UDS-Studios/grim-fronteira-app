@@ -624,27 +624,24 @@ export default function PlayerTableView({
   function getParticipantOutcome(pid: string): SceneOutcome | null {
     if (!sceneResolved) return null;
     const backendResult = scenePlayers?.[pid]?.result;
-    const total = getParticipantTotal(pid);
+    const marshalBusted = effectiveDifficultyValue != null && effectiveDifficultyValue > 21;
     if (backendResult === "success") {
-      return (
-        getSceneOutcome(total, effectiveDifficultyValue) ?? {
-          key: "success",
-          label: "Success!",
-          color: "#2f8f3e",
-        }
-      );
+      return { key: "success", label: "Success!", color: "#2f8f3e" };
     }
     if (backendResult === "failure") {
       return { key: "failure", label: "Failure!", color: "#6f1d1b" };
     }
     if (backendResult === "bust") {
+      if (marshalBusted) {
+        return { key: "failure", label: "Failure!", color: "#6f1d1b" };
+      }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
+    const total = getParticipantTotal(pid);
     return getSceneOutcome(total, effectiveDifficultyValue);
   }
 
   const participantOrderLookup = new Map(participantIds.map((pid, idx) => [pid, idx]));
-
   const otherPlayers = playersOrder
     .filter((pid) => pid !== currentActorId && pid !== marshalId)
     .map((pid) => ({
@@ -702,7 +699,9 @@ export default function PlayerTableView({
     }
 
     if (scene.status === "setup" && isJokerDifficulty) {
-      return "Joker drawn. No azzardo allowed.";
+      return difficultyCardId === "RJ"
+        ? "Red Joker drawn. No azzardo allowed. Each player receives 1 Scum."
+        : "Black Joker drawn. No azzardo allowed. Each player receives 1 Vengeance.";
     }
 
     if (scene.status === "setup" && isAceDifficulty) {
@@ -789,13 +788,15 @@ export default function PlayerTableView({
   }
 
   const canPlayScum =
-    currentPlayerInScene &&
     ((scene.status === "active" &&
-      isCurrentViewerActive &&
-      !currentPlayerState.standing &&
-      !currentPlayerState.busted &&
-      !sceneResolved) ||
-      (scene.status === "awaiting_ack" && !currentPlayerState.acknowledged)) &&
+      !sceneResolved &&
+      (currentPlayerInScene
+        ? isCurrentViewerActive &&
+          !currentPlayerState.standing &&
+          !currentPlayerState.busted
+        : true)) ||
+      (scene.status === "awaiting_ack" &&
+        (!currentPlayerInScene || !currentPlayerState.acknowledged))) &&
     currentPlayerScumCards.length > 0;
 
   const canPlayVengeance =
@@ -999,7 +1000,27 @@ export default function PlayerTableView({
                 }}
                 title={deckTooltip}
               >
-                <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                {deckCount > 0 ? (
+                  <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                ) : (
+                  <div
+                    style={{
+                      width: ds(86),
+                      height: ds(124),
+                      border: "2px dashed var(--border-muted)",
+                      borderRadius: ds(10),
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-muted)",
+                      fontSize: ds(12),
+                      background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    empty
+                  </div>
+                )}
                 <div style={{ fontSize: ds(16), textAlign: "left" }}>
                   <div>
                     <b>{deckCount}</b> cards
@@ -1046,7 +1067,6 @@ export default function PlayerTableView({
               style={{
                 display: "grid",
                 gridTemplateColumns: "minmax(0, 1fr) auto",
-                gridTemplateRows: "auto auto",
                 gap: 18,
                 alignItems: "start",
                 minWidth: "max-content",
@@ -1226,47 +1246,12 @@ export default function PlayerTableView({
                     onAcknowledge={handleAcknowledgeResolution}
                   />
                 </div>
-              </div>
 
-              <div
-                style={{
-                  minHeight: 0,
-                  display: "grid",
-                  alignContent: "start",
-                  width: "clamp(240px, 24vw, 461px)",
-                  gridColumn: 2,
-                  gridRow: "1 / span 2",
-                }}
-              >
-                <PTVOtherPlayers
-                  players={otherPlayers}
-                  sceneTargetingActive={scumTargetingActive}
-                  selectableTargetPlayerIds={
-                    scumTargetingActive
-                      ? otherPlayers
-                          .filter((player) => player.inScene && !player.busted)
-                          .map((player) => player.playerId)
-                      : []
-                  }
-                  selectedTargetPlayerId={selectedScumTargetId}
-                  onSelectSceneTarget={handleSelectScumTarget}
-                />
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridColumn: 1,
-                  gridRow: 2,
-                  minHeight: 0,
-                  justifyItems: "center",
-                  alignContent: "start",
-                }}
-              >
                 <div
                   style={{
+                    display: "grid",
+                    justifyItems: "center",
                     width: "100%",
-                    maxWidth: 1048,
                   }}
                 >
                   <PTVPlayerBoard
@@ -1290,6 +1275,29 @@ export default function PlayerTableView({
                     powerDisabled
                   />
                 </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  alignItems: "start",
+                  width: "clamp(240px, 24vw, 461px)",
+                }}
+              >
+                <PTVOtherPlayers
+                  players={otherPlayers}
+                  sceneTargetingActive={scumTargetingActive}
+                  selectableTargetPlayerIds={
+                    scumTargetingActive
+                      ? otherPlayers
+                          .filter((player) => player.inScene && !player.busted)
+                          .map((player) => player.playerId)
+                      : []
+                  }
+                  selectedTargetPlayerId={selectedScumTargetId}
+                  onSelectSceneTarget={handleSelectScumTarget}
+                />
               </div>
             </div>
           </div>

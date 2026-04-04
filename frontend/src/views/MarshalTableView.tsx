@@ -626,6 +626,7 @@ export default function MarshalTableView({
     if (!sceneResolved) return null;
     const backendResult = scenePlayers?.[pid]?.result;
     const total = getParticipantTotal(pid);
+    const marshalBusted = effectiveDifficultyValue != null && effectiveDifficultyValue > 21;
     if (backendResult === "success") {
       return (
         getSceneOutcome(total, effectiveDifficultyValue) ?? {
@@ -639,6 +640,9 @@ export default function MarshalTableView({
       return { key: "failure", label: "Failure!", color: "#6f1d1b" };
     }
     if (backendResult === "bust") {
+      if (marshalBusted) {
+        return { key: "failure", label: "Failure!", color: "#6f1d1b" };
+      }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
     return getSceneOutcome(total, effectiveDifficultyValue);
@@ -833,7 +837,9 @@ export default function MarshalTableView({
     }
 
     if (scene.status === "setup" && isJokerDifficulty) {
-      return "Joker drawn. No azzardo allowed. Start scene.";
+      return difficultyCardId === "RJ"
+        ? "Red Joker drawn. No azzardo allowed. Each player receives 1 Scum. Start scene."
+        : "Black Joker drawn. No azzardo allowed. Each player receives 1 Vengeance. Start scene.";
     }
 
     if (scene.status === "setup" && isAceDifficulty) {
@@ -1077,7 +1083,27 @@ export default function MarshalTableView({
                       : "Click to draw azzardo"
                 }
               >
-                <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                {deckCount > 0 ? (
+                  <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                ) : (
+                  <div
+                    style={{
+                      width: ds(86),
+                      height: ds(124),
+                      border: "2px dashed var(--border-muted)",
+                      borderRadius: ds(10),
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-muted)",
+                      fontSize: ds(12),
+                      background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    empty
+                  </div>
+                )}
                 <div style={{ fontSize: ds(16) }}>
                   <b>{deckCount}</b> cards
                 </div>

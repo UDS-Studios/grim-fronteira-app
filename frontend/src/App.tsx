@@ -8,6 +8,7 @@ import LobbyView from "./views/LobbyView";
 import HookSelectionView from "./views/HookSelectionView";
 import RegistrationClosedView from "./views/RegistrationClosedView";
 import TableRouterView from "./views/TableRouterView";
+import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
@@ -306,6 +307,19 @@ export default function App() {
                 view={view}
                 currentActorId={currentActorId}
                 run={run}
+                onBackHome={() => {
+                  setResp(null);
+                  setGameId("");
+                  setJoinGameId("");
+                  setScreen("home");
+                }}
+              />
+            )}
+
+            {resp && phase === "victory" && (
+              <VictoryView
+                winnerLabel={meta.victory?.winner_label ?? "Marshal"}
+                reason={meta.victory?.reason ?? null}
                 onBackHome={() => {
                   setResp(null);
                   setGameId("");
