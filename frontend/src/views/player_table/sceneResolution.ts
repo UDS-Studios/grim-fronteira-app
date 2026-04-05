@@ -55,6 +55,13 @@ export function getSceneHandTotal({
   );
 }
 
+export function getTwentyOneColor(total: number | null | undefined): string | undefined {
+  if (total == null) return undefined;
+  if (total > 21) return "#d11f1f";
+  if (total === 21) return "#1ea84f";
+  return undefined;
+}
+
 export function getSceneOutcome(total: number | null, difficulty: number | null): SceneOutcome | null {
   if (total == null || difficulty == null) return null;
   if (total > 21) {

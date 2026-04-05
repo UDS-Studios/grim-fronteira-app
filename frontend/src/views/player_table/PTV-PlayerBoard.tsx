@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import CardImg from "../../components/CardImg";
+import { getTwentyOneColor } from "./sceneResolution";
 
 export type PTVPlayerBoardProps = {
   displayName: string;
@@ -11,6 +12,7 @@ export type PTVPlayerBoardProps = {
   revealedScumCardId?: string | null;
   vengeanceCardIds: string[];
   rewardCardIds: string[];
+  rewardPoints?: number;
   selectedRewardCardIds?: string[];
   rewardSelectionEnabled?: boolean;
   rewardSelectionLocked?: boolean;
@@ -317,36 +319,6 @@ function normalizeSummaryText(
   return nextText.replace(/^\p{L}/u, (char) => char.toUpperCase());
 }
 
-function splitSummaryText(
-  summaryText?: string | null,
-  displayName?: string | null
-): string[] {
-  const normalized = normalizeSummaryText(summaryText, displayName);
-  if (!normalized) return [];
-
-  const words = normalized.split(/\s+/);
-  if (words.length <= 2) return [normalized];
-
-  let bestIndex = 1;
-  let bestDiff = Number.POSITIVE_INFINITY;
-
-  for (let idx = 1; idx < words.length; idx += 1) {
-    const left = words.slice(0, idx).join(" ");
-    const right = words.slice(idx).join(" ");
-    const diff = Math.abs(left.length - right.length);
-
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestIndex = idx;
-    }
-  }
-
-  return [
-    words.slice(0, bestIndex).join(" "),
-    words.slice(bestIndex).join(" "),
-  ];
-}
-
 export default function PTVPlayerBoard({
   displayName,
   summaryText,
@@ -357,6 +329,7 @@ export default function PTVPlayerBoard({
   revealedScumCardId,
   vengeanceCardIds,
   rewardCardIds,
+  rewardPoints = 0,
   selectedRewardCardIds = [],
   rewardSelectionEnabled = false,
   rewardSelectionLocked = false,
@@ -376,10 +349,11 @@ export default function PTVPlayerBoard({
   const { ref, scale } = useResponsiveScale(780, 1.4, 0.7);
   const s = (value: number) => value * scale;
   const powerArtSrc = getPowerArtSrc(powerLabel);
-  const summaryLines = splitSummaryText(summaryText, displayName);
+  const summaryTextDisplay = normalizeSummaryText(summaryText, displayName);
   const figureCardWidth = s(150);
   const figureCardHeight = s(217);
   const selectedRewardCardKeys = new Set(selectedRewardCardIds);
+  const rewardTotalColor = getTwentyOneColor(rewardPoints);
   const boardBackground =
     mustHealOrSkip && mustDiscardRewards
       ? "color-mix(in srgb, #7b3fc6 18%, var(--surface-strong))"
@@ -420,7 +394,7 @@ export default function PTVPlayerBoard({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `${s(500)}px ${s(240)}px`,
+            gridTemplateColumns: `${s(500)}px minmax(0, ${s(284)}px)`,
             columnGap: s(20),
             alignItems: "start",
             justifyContent: "space-between",
@@ -537,7 +511,9 @@ export default function PTVPlayerBoard({
 
           <div
             style={{
-              width: s(240),
+              width: "100%",
+              boxSizing: "border-box",
+              minWidth: 0,
               display: "grid",
               gap: s(18),
               alignContent: "start",
@@ -565,10 +541,21 @@ export default function PTVPlayerBoard({
                 lineHeight: 1.2,
                 opacity: 0.82,
                 fontSize: s(15),
+                minWidth: 0,
+                width: "100%",
               }}
             >
-              {summaryLines.length > 0 ? (
-                summaryLines.map((line, idx) => <div key={`${line}:${idx}`}>{line}</div>)
+              {summaryTextDisplay ? (
+                <div
+                  style={{
+                    minWidth: 0,
+                    whiteSpace: "normal",
+                    overflowWrap: "anywhere",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {summaryTextDisplay}
+                </div>
               ) : (
                 <div style={{ opacity: 0.5 }}>No description</div>
               )}
@@ -682,14 +669,62 @@ export default function PTVPlayerBoard({
             </div>
           ) : null}
 
-          <AdaptiveRewardsRow
-            cardIds={rewardCardIds}
-            selectedCardKeys={selectedRewardCardKeys}
-            selectable={rewardSelectionEnabled}
-            selectionLocked={rewardSelectionLocked}
-            onClickCard={onClickRewardCard}
-            scale={scale}
-          />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) auto",
+              gap: s(12),
+              alignItems: "start",
+            }}
+          >
+            <AdaptiveRewardsRow
+              cardIds={rewardCardIds}
+              selectedCardKeys={selectedRewardCardKeys}
+              selectable={rewardSelectionEnabled}
+              selectionLocked={rewardSelectionLocked}
+              onClickCard={onClickRewardCard}
+              scale={scale}
+            />
+
+            <div
+              style={{
+                border: "1px solid var(--border-muted)",
+                borderRadius: s(14),
+                padding: `${s(12)}px ${s(14)}px`,
+                background: "var(--surface-muted)",
+                display: "grid",
+                gridTemplateRows: "auto 1fr",
+                justifyItems: "center",
+                alignItems: "center",
+                minWidth: s(96),
+                minHeight: s(152),
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "LavaArabic, serif",
+                  fontSize: s(14),
+                  lineHeight: 1,
+                  letterSpacing: "0.06em",
+                  textAlign: "center",
+                }}
+              >
+                TOTAL
+              </div>
+              <div
+                style={{
+                  fontFamily: "LavaArabic, serif",
+                  fontSize: s(34),
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  opacity: 0.7,
+                  color: rewardTotalColor ?? "inherit",
+                }}
+              >
+                {rewardPoints}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

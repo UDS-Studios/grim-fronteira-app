@@ -10,6 +10,7 @@ import PTVOtherPlayers from "./player_table/PTV-OtherPlayers";
 import {
   getSceneHandTotal,
   getSceneOutcome,
+  getTwentyOneColor,
   type SceneOutcome,
 } from "./player_table/sceneResolution";
 
@@ -147,6 +148,8 @@ function CurrentPlayerSceneRow({
   onStay: () => void;
   onAcknowledge: () => void;
 }) {
+  const totalColor = getTwentyOneColor(total);
+
   return (
     <TableZone title="Scene Participation">
       {!inScene ? (
@@ -242,7 +245,9 @@ function CurrentPlayerSceneRow({
                   </div>
                 ) : null}
 
-                <div style={{ fontSize: 13, fontWeight: 800 }}>Total: {total ?? "-"}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: totalColor ?? "inherit" }}>
+                  Total: {total ?? "-"}
+                </div>
 
                 <div style={{ fontSize: 13, fontWeight: 800 }}>Wounds: {woundsCount}</div>
 
@@ -457,6 +462,7 @@ function CurrentPlayerSceneRow({
                 lineHeight: 1,
                 whiteSpace: "nowrap",
                 opacity: 0.58,
+                color: totalColor ?? "inherit",
               }}
             >
               {total ?? "-"}
@@ -559,6 +565,9 @@ export default function PlayerTableView({
     sceneResolved && scene.difficulty?.value != null
       ? scene.difficulty.value + (scene.azzardo?.value ?? 0)
       : scene.difficulty?.value ?? null;
+  const difficultyTotalColor = getTwentyOneColor(
+    scene.azzardo?.revealed ? effectiveDifficultyValue : scene.difficulty?.value ?? null
+  );
 
   const allParticipantsFinished =
     participantIds.length > 0 &&
@@ -718,6 +727,14 @@ export default function PlayerTableView({
       ? "-"
       : scene.azzardo?.revealed && scene.azzardo?.value != null
         ? `${scene.difficulty.value} + ${scene.azzardo.value}`
+        : azzardoStatus !== "unavailable"
+          ? `${scene.difficulty.value} + ?`
+          : `${scene.difficulty.value}`;
+  const totalBoxLabel =
+    scene.difficulty?.value == null
+      ? "-"
+      : scene.azzardo?.revealed && effectiveDifficultyValue != null
+        ? `${effectiveDifficultyValue}`
         : azzardoStatus !== "unavailable"
           ? `${scene.difficulty.value} + ?`
           : `${scene.difficulty.value}`;
@@ -1331,13 +1348,10 @@ export default function PlayerTableView({
                             lineHeight: 1,
                             whiteSpace: "nowrap",
                             opacity: 0.58,
-                            color:
-                              effectiveDifficultyValue != null && effectiveDifficultyValue > 21
-                                ? "#d11f1f"
-                                : "inherit",
+                            color: difficultyTotalColor ?? "inherit",
                           }}
                         >
-                          {effectiveDifficultyValue ?? "-"}
+                          {totalBoxLabel}
                         </div>
                       </div>
 
@@ -1406,6 +1420,7 @@ export default function PlayerTableView({
                     }
                     vengeanceCardIds={currentPlayerVengeanceCards}
                     rewardCardIds={currentPlayerRewardCards}
+                    rewardPoints={currentPlayerRewardPoints}
                     selectedRewardCardIds={selectedRewardCardKeys}
                     rewardSelectionEnabled={rewardSelectionMode !== null}
                     rewardSelectionLocked={

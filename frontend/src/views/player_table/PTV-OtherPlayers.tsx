@@ -1,6 +1,7 @@
 import CardImg from "../../components/CardImg";
 import ResponsiveScaleBox from "../../components/ResponsiveScaleBox";
 import TableZone from "../../components/TableZone";
+import { getTwentyOneColor } from "./sceneResolution";
 
 export type PTVOtherPlayersEntry = {
   playerId: string;
@@ -111,6 +112,8 @@ function OtherPlayerMini({
   selected?: boolean;
   onSelectTarget?: (() => void) | undefined;
 }) {
+  const totalColor = getTwentyOneColor(player.sceneTotal);
+
   return (
     <div
       style={{
@@ -293,7 +296,7 @@ function OtherPlayerMini({
             </div>
           ) : null}
 
-          <div style={{ fontSize: 12 * scale, fontWeight: 700 }}>
+          <div style={{ fontSize: 12 * scale, fontWeight: 700, color: totalColor ?? "inherit" }}>
             Total: {player.sceneTotal ?? "-"}
           </div>
 

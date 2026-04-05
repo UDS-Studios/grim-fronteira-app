@@ -9,6 +9,7 @@ import type { ActionResponse, View } from "../api/types";
 import {
   getSceneHandTotal,
   getSceneOutcome,
+  getTwentyOneColor,
   type SceneOutcome,
 } from "./player_table/sceneResolution";
 
@@ -155,6 +156,7 @@ function PlayerLane({
   onForceSkipHeal: () => void;
   onForceDiscardRewards: () => void;
 }) {
+  const totalColor = getTwentyOneColor(total);
   const displayName = pstate.chosen_name ?? playerId;
   const requirementTint =
     mustHealOrSkip && mustDiscardRewards
@@ -246,7 +248,9 @@ function PlayerLane({
                 {stateLabel}
               </div>
             ) : null}
-            <div style={{ fontSize: 13, fontWeight: 800 }}>Total: {total ?? "-"}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: totalColor ?? "inherit" }}>
+              Total: {total ?? "-"}
+            </div>
             <div style={{ fontSize: 13, fontWeight: 800 }}>Wounds: {woundsCount}</div>
             {canForceAcknowledge ? (
               <button
@@ -504,6 +508,7 @@ function PlayerLane({
             lineHeight: 1,
             whiteSpace: "nowrap",
             opacity: 0.58,
+            color: totalColor ?? "inherit",
           }}
         >
           {total ?? "-"}
@@ -673,6 +678,9 @@ export default function MarshalTableView({
     sceneResolved && scene.difficulty?.value != null
       ? scene.difficulty.value + (scene.azzardo?.value ?? 0)
       : scene.difficulty?.value ?? null;
+  const difficultyTotalColor = getTwentyOneColor(
+    scene.azzardo?.revealed ? effectiveDifficultyValue : scene.difficulty?.value ?? null
+  );
   const activeParticipantId =
     scene.status === "active"
       ? participantIds.find((pid) => {
@@ -745,6 +753,14 @@ export default function MarshalTableView({
       ? "-"
       : scene.azzardo?.revealed && scene.azzardo?.value != null
         ? `${scene.difficulty.value} + ${scene.azzardo.value}`
+        : hasAzzardo
+          ? `${scene.difficulty.value} + ?`
+          : `${scene.difficulty.value}`;
+  const totalBoxLabel =
+    scene.difficulty?.value == null
+      ? "-"
+      : scene.azzardo?.revealed && effectiveDifficultyValue != null
+        ? `${effectiveDifficultyValue}`
         : hasAzzardo
           ? `${scene.difficulty.value} + ?`
           : `${scene.difficulty.value}`;
@@ -1469,13 +1485,10 @@ export default function MarshalTableView({
                     lineHeight: 1,
                     whiteSpace: "nowrap",
                     opacity: 0.58,
-                    color:
-                      effectiveDifficultyValue != null && effectiveDifficultyValue > 21
-                        ? "#d11f1f"
-                        : "inherit",
+                    color: difficultyTotalColor ?? "inherit",
                   }}
                 >
-                  {effectiveDifficultyValue ?? "-"}
+                  {totalBoxLabel}
                 </div>
               </div>
 
