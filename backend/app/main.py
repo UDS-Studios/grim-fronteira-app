@@ -29,6 +29,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_remove_azzardo,
     scene_skip_azzardo,
     scene_start,
+    scene_close,
     scene_new,
     scene_resolve,
     scene_draw_card,
@@ -673,6 +674,17 @@ def action(req: ActionRequest) -> ActionResponse:
         )
         mutated = True
         result = {"ok": True, "action": req.action, **bonus_result}
+
+    elif req.action == "gf.scene_close":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_close(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id}
 
     elif req.action == "gf.scene_new":
         params = req.params

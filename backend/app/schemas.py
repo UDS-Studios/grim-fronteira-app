@@ -41,6 +41,7 @@ class ActionRequest(BaseModel):
         "gf.scene_remove_azzardo",
         "gf.scene_skip_azzardo",
         "gf.scene_start",
+        "gf.scene_close",
         "gf.scene_new",
         "gf.scene_resolve",
         "gf.scene_draw_card",

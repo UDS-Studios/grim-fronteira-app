@@ -55,10 +55,13 @@ export default function PlayerSummaryCard({
           : "var(--surface-strong)",
         display: "grid",
         gap: 8 * scale,
+        minWidth: 0,
+        width: "100%",
+        boxSizing: "border-box",
       }}
     >
-      <div style={{ display: "flex", gap: 10 * scale, alignItems: "flex-start" }}>
-        <div style={{ minWidth: 70 * scale }}>
+      <div style={{ display: "flex", gap: 10 * scale, alignItems: "flex-start", minWidth: 0 }}>
+        <div style={{ minWidth: 70 * scale, flexShrink: 0 }}>
           {figureCardId ? (
             <CardImg
               cardId={figureCardId}
@@ -71,18 +74,49 @@ export default function PlayerSummaryCard({
           )}
         </div>
 
-        <div style={{ display: "grid", gap: 4 * scale }}>
-          <div style={{ fontWeight: 800, fontSize: 16 * scale }}>{displayName}</div>
-          <div style={{ fontSize: 14 * scale, opacity: 0.9 }}>{label}</div>
-          {feature && <div style={{ fontSize: 13 * scale, opacity: 0.75 }}>{feature}</div>}
+        <div style={{ display: "grid", gap: 4 * scale, minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: 16 * scale,
+              minWidth: 0,
+              overflowWrap: "anywhere",
+            }}
+          >
+            {displayName}
+          </div>
+          <div style={{ fontSize: 14 * scale, opacity: 0.9, minWidth: 0, overflowWrap: "anywhere" }}>
+            {label}
+          </div>
+          {feature ? (
+            <div style={{ fontSize: 13 * scale, opacity: 0.75, minWidth: 0, overflowWrap: "anywhere" }}>
+              {feature}
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12 * scale, fontSize: 14 * scale }}>
-        <div><b>Scum:</b> {scumCount}</div>
-        <div><b>Vengeance:</b> {vengeanceCount}</div>
-        <div><b>Rewards:</b> {rewardCount}</div>
-        <div><b>Wounds:</b> {woundsCount}</div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: 8 * scale,
+          fontSize: 14 * scale,
+          minWidth: 0,
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <b>Scum:</b> {scumCount}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <b>Vengeance:</b> {vengeanceCount}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <b>Rewards:</b> {rewardCount}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <b>Wounds:</b> {woundsCount}
+        </div>
       </div>
 
       {footerNote ? (

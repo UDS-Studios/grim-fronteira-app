@@ -40,7 +40,7 @@ type MetaPlayerState = {
 };
 
 type SceneState = {
-  status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved";
+  status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved" | "closed";
   participants?: string[];
   dark_mode?: boolean;
   bonus_assignments?: Record<string, "scum" | "vengeance">;
@@ -667,13 +667,14 @@ export default function MarshalTableView({
   const hasDifficulty = scene.difficulty?.card_id != null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
   const hasAzzardo = azzardoStatus !== "unavailable";
-  const canOpenNewScene = scene.status === "resolved";
+  const canCloseScene = scene.status === "resolved";
+  const canOpenNewScene = scene.status === "closed";
   const canAssignBonus = scene.status === "resolved";
 
   const difficultyCardId = scene.difficulty?.card_id ?? null;
   const azzardoCardId =
     scene.azzardo?.revealed && scene.azzardo?.card_id ? scene.azzardo.card_id : null;
-  const sceneResolved = scene.status === "resolved" || !!scene.resolution?.completed;
+  const sceneResolved = scene.status === "resolved" || scene.status === "closed" || !!scene.resolution?.completed;
   const effectiveDifficultyValue =
     sceneResolved && scene.difficulty?.value != null
       ? scene.difficulty.value + (scene.azzardo?.value ?? 0)
@@ -725,6 +726,12 @@ export default function MarshalTableView({
     const total = getParticipantTotal(pid);
     const marshalBusted = effectiveDifficultyValue != null && effectiveDifficultyValue > 21;
     if (backendResult === "success") {
+      if (total === 21) {
+        return { key: "success", label: "Critical Success!!", color: "#1ea84f" };
+      }
+      if (marshalBusted) {
+        return { key: "success", label: "Success!", color: "#2f8f3e" };
+      }
       return (
         getSceneOutcome(total, effectiveDifficultyValue) ?? {
           key: "success",
@@ -799,7 +806,7 @@ export default function MarshalTableView({
   }
 
   const hasBlockedParticipantForNewScene =
-    canOpenNewScene &&
+    scene.status === "closed" &&
     participantIds.some((pid) => {
       const requirements = getParticipantPostSceneRequirements(pid);
       return requirements.mustHealOrSkip || requirements.mustDiscardRewards;
@@ -914,6 +921,20 @@ export default function MarshalTableView({
       gfAction({
         game_id: resp.game_id,
         action: "gf.scene_new",
+        params: {
+          actor_id: currentActorId,
+        },
+        view,
+      })
+    );
+  }
+
+  async function handleCloseScene() {
+    setPendingBonusType(null);
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_close",
         params: {
           actor_id: currentActorId,
         },
@@ -1046,13 +1067,17 @@ export default function MarshalTableView({
     }
 
     if (scene.status === "resolved") {
+      if (pendingBonusType) {
+        return `Scene resolved. Click a player to assign one bonus ${pendingBonusType} card, or click the same assign button again to cancel.`;
+      }
+      return "Scene resolved. You can assign one bonus Scum or Vengeance card per player, or click Close Scene to discard the cards in play and distribute rewards.";
+    }
+
+    if (scene.status === "closed") {
       if (hasBlockedParticipantForNewScene) {
         return "Scene closed. Resolve participant heal/skip or reward discard requirements before opening a new scene.";
       }
-      if (pendingBonusType) {
-        return `Scene closed. Click a player to assign one bonus ${pendingBonusType} card, or click the same assign button again to cancel.`;
-      }
-      return "Scene closed. You can assign one bonus Scum or Vengeance card per player, or click New Scene to prepare the next one.";
+      return "Scene closed. Click New Scene to prepare the next one.";
     }
 
     return "Waiting for backend scene state.";
@@ -1147,71 +1172,81 @@ export default function MarshalTableView({
             alignContent: "start",
         }}
       >
-          {canOpenNewScene ? (
+          {canCloseScene || canOpenNewScene ? (
             <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
-              <TableZone title="Next Scene">
+              <TableZone title={canCloseScene ? "Close Scene" : "Next Scene"}>
                 <div
                   style={{
                     display: "grid",
                     gap: 10,
                   }}
                 >
-                  <ActionButton
-                    label="New Scene"
-                    onClick={handleNewScene}
-                    disabled={hasBlockedParticipantForNewScene}
-                    title={
-                      hasBlockedParticipantForNewScene
-                        ? "Resolve participant heal/skip or reward discard requirements first"
-                        : "Prepare a new scene"
-                    }
-                  />
+                  {canCloseScene ? (
+                    <ActionButton
+                      label="Close Scene"
+                      onClick={handleCloseScene}
+                      title="Discard scene cards and distribute rewards"
+                    />
+                  ) : (
+                    <ActionButton
+                      label="New Scene"
+                      onClick={handleNewScene}
+                      disabled={hasBlockedParticipantForNewScene}
+                      title={
+                        hasBlockedParticipantForNewScene
+                          ? "Resolve participant heal/skip or reward discard requirements first"
+                          : "Prepare a new scene"
+                      }
+                    />
+                  )}
 
-                  <div
-                    style={{
-                      border: "1px solid var(--border-muted)",
-                      borderRadius: ds(12),
-                      padding: ds(10),
-                      background: "var(--surface-strong)",
-                      display: "grid",
-                      gap: ds(8),
-                    }}
-                  >
+                  {canAssignBonus ? (
                     <div
                       style={{
-                        fontWeight: 800,
-                        textAlign: "center",
-                      }}
-                    >
-                      Assign
-                    </div>
-                    <div
-                      style={{
+                        border: "1px solid var(--border-muted)",
+                        borderRadius: ds(12),
+                        padding: ds(10),
+                        background: "var(--surface-strong)",
                         display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
                         gap: ds(8),
                       }}
                     >
-                      <ActionButton
-                        label="Vengeance"
-                        onClick={() =>
-                          setPendingBonusType((prev) =>
-                            prev === "vengeance" ? null : "vengeance"
-                          )
-                        }
-                        disabled={!canAssignBonus}
-                        title="Assign one bonus Vengeance card"
-                      />
-                      <ActionButton
-                        label="Scum"
-                        onClick={() =>
-                          setPendingBonusType((prev) => (prev === "scum" ? null : "scum"))
-                        }
-                        disabled={!canAssignBonus}
-                        title="Assign one bonus Scum card"
-                      />
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          textAlign: "center",
+                        }}
+                      >
+                        Assign
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: ds(8),
+                        }}
+                      >
+                        <ActionButton
+                          label="Vengeance"
+                          onClick={() =>
+                            setPendingBonusType((prev) =>
+                              prev === "vengeance" ? null : "vengeance"
+                            )
+                          }
+                          disabled={!canAssignBonus}
+                          title="Assign one bonus Vengeance card"
+                        />
+                        <ActionButton
+                          label="Scum"
+                          onClick={() =>
+                            setPendingBonusType((prev) => (prev === "scum" ? null : "scum"))
+                          }
+                          disabled={!canAssignBonus}
+                          title="Assign one bonus Scum card"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
               </TableZone>
             </ResponsiveScaleBox>
@@ -1552,9 +1587,9 @@ export default function MarshalTableView({
                             scene.status === "awaiting_ack" && !scenePlayers?.[pid]?.acknowledged
                           }
                           onForceAcknowledge={() => handleForceAcknowledge(pid)}
-                          mustHealOrSkip={scene.status === "resolved" && requirements.mustHealOrSkip}
+                          mustHealOrSkip={scene.status === "closed" && requirements.mustHealOrSkip}
                           mustDiscardRewards={
-                            scene.status === "resolved" && requirements.mustDiscardRewards
+                            scene.status === "closed" && requirements.mustDiscardRewards
                           }
                           onForceSkipHeal={() => handleForceSkipHeal(pid)}
                           onForceDiscardRewards={() => handleForceDiscardRewards(pid)}

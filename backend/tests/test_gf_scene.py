@@ -16,6 +16,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_remove_azzardo,
     scene_skip_azzardo,
     scene_start,
+    scene_close,
     scene_draw_card,
     scene_stand,
     scene_play_scum,
@@ -256,6 +257,36 @@ def test_scene_player_draw_and_stand():
     assert game.meta["scene"]["players"]["p1"]["resolved"] is True
 
 
+def test_scene_start_red_joker_counts_zero_and_grants_scum_to_recipient():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "RJ", "5H"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    assert game.zones["scene.hand.p1"] == ["RJ"]
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 10
+    assert game.meta["scene"]["players"]["p1"]["busted"] is False
+    assert game.zones["players.p1.scum"] == ["5H"]
+    assert game.zones["players.p1.vengeance"] == []
+
+
+def test_scene_start_black_joker_counts_zero_and_grants_vengeance_to_recipient():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "BJ", "6C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    assert game.zones["scene.hand.p1"] == ["BJ"]
+    assert game.meta["scene"]["players"]["p1"]["hand_value"] == 10
+    assert game.meta["scene"]["players"]["p1"]["busted"] is False
+    assert game.zones["players.p1.vengeance"] == ["6C"]
+    assert game.zones["players.p1.scum"] == []
+
+
 def test_scene_player_draw_red_joker_counts_zero_and_grants_scum_to_drawer():
     game = _ready_table_game()
     game = _with_draw_order(game, ["4H", "8D", "RJ", "5H"])
@@ -346,11 +377,11 @@ def test_scene_new_reshuffles_discard_after_cleanup_when_joker_is_in_discard():
     game = scene_draw_card(game, player_id="p1")
     game = scene_stand(game, player_id="p1")
 
-    assert game.meta["scene"]["status"] == "awaiting_ack"
+    assert game.meta["scene"]["status"] == "resolved"
     assert game.deck is not None
     assert game.deck.discard_pile == discard_cards
 
-    game = scene_acknowledge_resolution(game, player_id="p1")
+    game = scene_close(game, actor_id="host1")
     game = scene_new(game, actor_id="host1")
 
     assert game.deck.discard_pile == []
@@ -429,7 +460,7 @@ def test_scene_resolve_reveals_azzardo_and_previews_rewards():
     game = scene_stand(game, player_id="p1")
 
     scene = game.meta["scene"]
-    assert scene["status"] == "awaiting_ack"
+    assert scene["status"] == "resolved"
     assert scene["azzardo"]["revealed"] is True
     assert scene["resolution"] == {
         "completed": True,
@@ -464,11 +495,27 @@ def test_scene_auto_resolves_after_last_participant_finishes():
     game = scene_stand(game, player_id="p1")
 
     scene = game.meta["scene"]
-    assert scene["status"] == "awaiting_ack"
+    assert scene["status"] == "resolved"
     assert scene["azzardo"]["revealed"] is True
     assert scene["resolution"]["completed"] is True
     assert scene["players"]["p1"]["result"] == "failure"
     assert scene["players"]["p2"]["result"] == "success"
+
+
+def test_scene_auto_acknowledges_when_no_post_resolution_actions_exist():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["4H", "2H", "3C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    game = scene_draw_card(game, player_id="p1")
+    game = scene_stand(game, player_id="p1")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "resolved"
+    assert scene["players"]["p1"]["acknowledged"] is True
+    assert scene["players"]["p1"]["result"] == "success"
 
 
 def test_scene_equal_to_difficulty_is_success_when_not_busted():
@@ -482,7 +529,7 @@ def test_scene_equal_to_difficulty_is_success_when_not_busted():
     game = scene_stand(game, player_id="p1")
     scene = game.meta["scene"]
 
-    assert scene["status"] == "awaiting_ack"
+    assert scene["status"] == "resolved"
     assert scene["players"]["p1"]["hand_value"] == 15
     assert scene["players"]["p1"]["result"] == "success"
 
@@ -499,7 +546,7 @@ def test_scene_marshal_bust_makes_all_non_busted_players_succeed():
     game = scene_stand(game, player_id="p2")
 
     scene = game.meta["scene"]
-    assert scene["status"] == "awaiting_ack"
+    assert scene["status"] == "resolved"
     assert scene["azzardo"]["revealed"] is True
     assert scene["players"]["p1"]["busted"] is True
     assert scene["players"]["p1"]["result"] == "bust"
@@ -601,12 +648,10 @@ def test_scene_set_participants_allows_second_scene_after_resolve():
     game = scene_draw_card(game, player_id="p1")
     game = scene_stand(game, player_id="p1")
 
-    assert game.meta["scene"]["status"] == "awaiting_ack"
+    assert game.meta["scene"]["status"] == "resolved"
     assert game.zones["scene.hand.p1"] == ["8D", "2H"]
 
-    game = scene_acknowledge_resolution(game, player_id="p1")
-    assert game.meta["scene"]["status"] == "resolved"
-
+    game = scene_close(game, actor_id="host1")
     game = scene_new(game, actor_id="host1")
 
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p2"])
@@ -661,14 +706,14 @@ def test_scene_bust_increments_persistent_wounds():
     game = scene_draw_card(game, player_id="p1")
 
     scene = game.meta["scene"]
-    assert scene["status"] == "awaiting_ack"
+    assert scene["status"] == "resolved"
     assert scene["players"]["p1"]["busted"] is True
     assert scene["players"]["p1"]["wounds_gained"] == 1
     assert scene["players"]["p1"]["result"] == "bust"
     assert game.meta["players"]["p1"].get("wounds", 0) == 0
 
 
-def test_scene_acknowledge_resolution_discards_scene_cards_after_last_ack():
+def test_scene_close_discards_scene_cards_after_last_ack():
     game = _ready_table_game()
     success_card = _first_available(game, ["AH", "AD", "AC", "AS"])
     game = _with_draw_order(game, ["4H", "6C", "8D", "2H", success_card])
@@ -706,6 +751,15 @@ def test_scene_acknowledge_resolution_discards_scene_cards_after_last_ack():
     assert game.zones["scene.hand.p2"] == ["2H"]
     assert game.zones["scene.mod.scum.p2"] == ["7S"]
 
+    game = scene_close(game, actor_id="host1")
+
+    assert game.meta["scene"]["status"] == "closed"
+    assert "scene.difficulty" not in game.zones
+    assert "scene.azzardo" not in game.zones
+    assert "scene.hand.p1" not in game.zones
+    assert "scene.hand.p2" not in game.zones
+    assert "scene.mod.scum.p2" not in game.zones
+
 
 def test_scene_new_reopens_setup_after_all_acknowledged():
     game = _ready_table_game()
@@ -716,12 +770,14 @@ def test_scene_new_reopens_setup_after_all_acknowledged():
     game = scene_start(game, actor_id="host1")
     game = scene_stand(game, player_id="p1")
 
-    assert game.meta["scene"]["status"] == "awaiting_ack"
-
-    game = scene_acknowledge_resolution(game, player_id="p1")
-
     assert game.meta["scene"]["status"] == "resolved"
+
     assert len(game.zones["players.p1.rewards"]) == 0
+
+    game = scene_close(game, actor_id="host1")
+
+    assert game.meta["scene"]["status"] == "closed"
+    assert len(game.zones["players.p1.rewards"]) == 1
 
     game = scene_new(game, actor_id="host1")
 
@@ -741,7 +797,7 @@ def test_scene_new_is_blocked_when_player_must_heal_or_skip():
     game.meta["players"]["p1"] = {"wounds": 1}
     game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
     game.meta["scene"] = {
-        "status": "resolved",
+        "status": "closed",
         "participants": ["p1"],
         "players": {
             "p1": {
@@ -767,7 +823,7 @@ def test_scene_skip_heal_clears_heal_gate_for_new_scene():
     game.meta["players"]["p1"] = {"wounds": 1}
     game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
     game.meta["scene"] = {
-        "status": "resolved",
+        "status": "closed",
         "participants": ["p1"],
         "players": {
             "p1": {
@@ -795,7 +851,7 @@ def test_scene_force_skip_heal_sets_skip_state():
     game.meta["players"]["p1"] = {"wounds": 1}
     game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
     game.meta["scene"] = {
-        "status": "resolved",
+        "status": "closed",
         "participants": ["p1"],
         "players": {
             "p1": {
@@ -818,7 +874,7 @@ def test_scene_heal_wound_spends_rewards_and_removes_pending_scene_wound():
     game.meta["players"]["p1"] = {"wounds": 0}
     game.zones["players.p1.rewards"] = ["6H", "5D", "2C"]
     game.meta["scene"] = {
-        "status": "resolved",
+        "status": "closed",
         "participants": ["p1"],
         "players": {
             "p1": {
@@ -847,7 +903,7 @@ def test_scene_discard_reward_must_continue_until_twenty_or_less():
     game = _ready_table_game()
     game.zones["players.p1.rewards"] = ["10H", "AH", "2C"]
     game.meta["scene"] = {
-        "status": "resolved",
+        "status": "closed",
         "participants": ["p1"],
         "players": {
             "p1": {
@@ -886,7 +942,7 @@ def test_scene_force_discard_rewards_discards_highest_point_rewards_until_twenty
     game = _ready_table_game()
     game.zones["players.p1.rewards"] = ["10H", "AH", "2C"]
     game.meta["scene"] = {
-        "status": "resolved",
+        "status": "closed",
         "participants": ["p1"],
         "players": {
             "p1": {
@@ -915,10 +971,10 @@ def test_bust_applies_exactly_one_persistent_wound_on_new_scene():
     game = scene_start(game, actor_id="host1")
     game = scene_draw_card(game, player_id="p1")
 
-    assert game.meta["scene"]["status"] == "awaiting_ack"
+    assert game.meta["scene"]["status"] == "resolved"
     assert game.meta["players"]["p1"].get("wounds", 0) == 0
 
-    game = scene_acknowledge_resolution(game, player_id="p1")
+    game = scene_close(game, actor_id="host1")
     game = scene_new(game, actor_id="host1")
 
     assert game.meta["players"]["p1"]["wounds"] == 1
@@ -933,11 +989,10 @@ def test_marshal_bust_prevents_persistent_wound_for_busted_player():
     game = scene_start(game, actor_id="host1")
     game = scene_draw_card(game, player_id="p1")
 
-    assert game.meta["scene"]["status"] == "awaiting_ack"
+    assert game.meta["scene"]["status"] == "resolved"
     assert game.meta["players"]["p1"].get("wounds", 0) == 0
 
-    game = scene_acknowledge_resolution(game, player_id="p1")
-    game = scene_acknowledge_resolution(game, player_id="p2")
+    game = scene_close(game, actor_id="host1")
     game = scene_new(game, actor_id="host1")
 
     assert game.meta["players"]["p1"]["wounds"] == 0
@@ -986,6 +1041,7 @@ def test_scene_new_enters_victory_phase_when_all_players_are_dead():
     assert game.meta["scene"]["status"] == "awaiting_ack"
 
     game = scene_acknowledge_resolution(game, player_id="p1")
+    game = scene_close(game, actor_id="host1")
     game = scene_new(game, actor_id="host1")
 
     assert game.meta["phase"] == "victory"
@@ -1016,9 +1072,9 @@ def test_scene_post_resolution_modifiers_recompute_results_and_clear_acks():
     game, result = scene_play_scum(game, player_id="p2", target_player_id="p1")
 
     assert result["modifier"] == -1
-    assert game.meta["scene"]["status"] == "awaiting_ack"
-    assert game.meta["scene"]["players"]["p1"]["acknowledged"] is False
-    assert game.meta["scene"]["players"]["p2"]["acknowledged"] is False
+    assert game.meta["scene"]["status"] == "resolved"
+    assert game.meta["scene"]["players"]["p1"]["acknowledged"] is True
+    assert game.meta["scene"]["players"]["p2"]["acknowledged"] is True
     assert game.meta["scene"]["players"]["p1"]["hand_value"] == 18
     assert game.meta["scene"]["players"]["p1"]["result"] == "success"
 
@@ -1083,6 +1139,7 @@ def test_busted_player_can_play_scum_on_non_busted_target_after_resolution():
     game, result = scene_play_scum(game, player_id="p1", target_player_id="p2")
 
     assert result["modifier"] == -2
+    assert game.meta["scene"]["status"] == "resolved"
     assert game.meta["scene"]["players"]["p2"]["hand_value"] == 10
 
 
@@ -1091,6 +1148,7 @@ def test_marshal_can_force_acknowledge_participant():
     success_card = _first_available(game, ["AH", "AD", "AC", "AS"])
     game = _with_draw_order(game, ["4H", "6C", "8D", "2H", success_card])
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game.zones["players.p1.scum"] = ["7S"]
     game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
     game = scene_draw_azzardo(game, actor_id="host1")
     game = scene_start(game, actor_id="host1")
@@ -1147,6 +1205,8 @@ def test_bonus_assignment_survives_ui_enrichment_and_still_blocks_second_bonus()
     game = scene_start(game, actor_id="host1")
     game = scene_stand(game, player_id="p1")
     game = scene_acknowledge_resolution(game, player_id="p1")
+
+    assert game.meta["scene"]["status"] == "resolved"
 
     game, _result = scene_assign_bonus_card(
         game,

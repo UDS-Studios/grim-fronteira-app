@@ -16,6 +16,7 @@ SCENE_STATUS_SETUP = "setup"
 SCENE_STATUS_ACTIVE = "active"
 SCENE_STATUS_AWAITING_ACK = "awaiting_ack"
 SCENE_STATUS_RESOLVED = "resolved"
+SCENE_STATUS_CLOSED = "closed"
 
 SCENE_DIFFICULTY_ZONE = "scene.difficulty"
 SCENE_AZZARDO_ZONE = "scene.azzardo"
@@ -279,7 +280,13 @@ def scene_start(game: GameState, *, actor_id: str) -> GameState:
     initiative_order: list[tuple[str, int, int]] = []
     for original_idx, pid in enumerate(scene["participants"]):
         zone_name = f"{SCENE_HAND_PREFIX}{pid}"
-        game, _card_id = _draw_to_zone(game, zone_name)
+        game, drawn_card_id = _draw_to_zone(game, zone_name)
+        if drawn_card_id in {"RJ", "BJ"}:
+            game = _grant_player_joker_bonus_card(
+                game,
+                player_id=pid,
+                bonus_type="scum" if drawn_card_id == "RJ" else "vengeance",
+            )
         scene = _scene(game)
         pstate = dict(scene["players"].get(pid) or {})
         hand_cards = list(game.zones.get(zone_name, []))
@@ -405,6 +412,7 @@ def scene_play_scum(game: GameState, *, player_id: str, target_player_id: str) -
     game = _replace_scene(game, scene=scene)
     if scene["status"] == SCENE_STATUS_AWAITING_ACK:
         game = _refresh_scene_resolution_preview(game, reset_acknowledgements=True)
+        game = _auto_acknowledge_if_no_post_resolution_actions(game)
     validate_unique_cards(game)
     return game, {
         "player_id": player_id,
@@ -452,6 +460,7 @@ def scene_play_vengeance(game: GameState, *, player_id: str) -> tuple[GameState,
     game = _replace_scene(game, scene=scene)
     if scene["status"] == SCENE_STATUS_AWAITING_ACK:
         game = _refresh_scene_resolution_preview(game, reset_acknowledgements=True)
+        game = _auto_acknowledge_if_no_post_resolution_actions(game)
     validate_unique_cards(game)
     return game, {
         "player_id": player_id,
@@ -534,6 +543,7 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     scene["status"] = SCENE_STATUS_AWAITING_ACK
     game = _replace_scene(game, scene=scene)
     game = _refresh_scene_resolution_preview(game, reset_acknowledgements=False)
+    game = _auto_acknowledge_if_no_post_resolution_actions(game)
     validate_unique_cards(game)
     return game
 
@@ -617,6 +627,57 @@ def _acknowledge_scene_player(game: GameState, *, player_id: str) -> GameState:
     return game
 
 
+def _has_post_resolution_reaction_options(game: GameState) -> bool:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_AWAITING_ACK:
+        return False
+
+    targetable_participants = [
+        pid
+        for pid in scene["participants"]
+        if not bool((scene["players"].get(pid) or {}).get("busted"))
+    ]
+
+    if targetable_participants:
+        for player_id in _non_marshal_players(game):
+            if not _player_has_character(game, player_id):
+                continue
+            if list(game.zones.get(f"players.{player_id}.scum", [])):
+                if any(target_pid != player_id for target_pid in targetable_participants):
+                    pstate = dict(scene["players"].get(player_id) or {})
+                    if player_id not in scene["participants"] or not pstate.get("acknowledged"):
+                        return True
+
+    for player_id in scene["participants"]:
+        pstate = dict(scene["players"].get(player_id) or {})
+        if pstate.get("busted") or pstate.get("acknowledged"):
+            continue
+        if list(game.zones.get(f"players.{player_id}.vengeance", [])):
+            return True
+
+    return False
+
+
+def _auto_acknowledge_if_no_post_resolution_actions(game: GameState) -> GameState:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_AWAITING_ACK:
+        return game
+    if _has_post_resolution_reaction_options(game):
+        return game
+
+    players = dict(scene["players"])
+    for pid in scene["participants"]:
+        pstate = dict(players.get(pid) or {})
+        pstate["acknowledged"] = True
+        players[pid] = pstate
+
+    scene["players"] = players
+    scene["status"] = SCENE_STATUS_RESOLVED
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game
+
+
 def _get_persistent_wounds(game: GameState, player_id: str) -> int:
     pdata = dict(((game.meta or {}).get("players") or {}).get(player_id) or {})
     return int(pdata.get("wounds", 0) or 0)
@@ -625,13 +686,17 @@ def _get_persistent_wounds(game: GameState, player_id: str) -> int:
 def _get_post_scene_wounds(game: GameState, player_id: str) -> int:
     scene = _scene(game)
     pstate = dict(scene["players"].get(player_id) or {})
-    pending_wounds = int(pstate.get("wounds_gained", 0) or 0) if scene["status"] == SCENE_STATUS_RESOLVED else 0
+    pending_wounds = (
+        int(pstate.get("wounds_gained", 0) or 0)
+        if scene["status"] in {SCENE_STATUS_RESOLVED, SCENE_STATUS_CLOSED}
+        else 0
+    )
     return _get_persistent_wounds(game, player_id) + pending_wounds
 
 
 def _must_heal_or_skip(game: GameState, player_id: str) -> bool:
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_RESOLVED:
+    if scene["status"] != SCENE_STATUS_CLOSED:
         return False
     if player_id not in scene["participants"]:
         return False
@@ -647,7 +712,7 @@ def _must_heal_or_skip(game: GameState, player_id: str) -> bool:
 
 def _must_discard_rewards(game: GameState, player_id: str) -> bool:
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_RESOLVED:
+    if scene["status"] != SCENE_STATUS_CLOSED:
         return False
     if player_id not in scene["participants"]:
         return False
@@ -660,7 +725,7 @@ def _must_discard_rewards(game: GameState, player_id: str) -> bool:
 
 def _has_pending_post_scene_requirements(game: GameState) -> bool:
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_RESOLVED:
+    if scene["status"] != SCENE_STATUS_CLOSED:
         return False
 
     for player_id in scene["participants"]:
@@ -722,14 +787,48 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
     return _replace_scene(game, scene=scene)
 
 
-def _finalize_resolved_scene(game: GameState) -> GameState:
+def _grant_resolved_scene_rewards(game: GameState) -> GameState:
     scene = _scene(game)
     for pid in scene["participants"]:
         pstate = dict(scene["players"].get(pid) or {})
-        if pstate.get("result") == "bust":
-            game = _increment_player_wounds(game, pid, int(pstate.get("wounds_gained", 0) or 0))
-        elif pstate.get("result") == "success":
+        if pstate.get("result") == "success":
             game, _reward_card = _draw_to_zone(game, f"players.{pid}.rewards")
+    return game
+
+
+def _apply_pending_scene_wounds(game: GameState) -> GameState:
+    scene = _scene(game)
+    updated_players = dict(scene["players"])
+
+    for pid in scene["participants"]:
+        pstate = dict(updated_players.get(pid) or {})
+        pending_wounds = int(pstate.get("wounds_gained", 0) or 0)
+        if pending_wounds <= 0:
+            continue
+        game = _increment_player_wounds(game, pid, pending_wounds)
+        pstate["wounds_gained"] = 0
+        updated_players[pid] = pstate
+
+    scene = _scene(game)
+    scene["players"] = updated_players
+    return _replace_scene(game, scene=scene)
+
+
+def scene_close(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        raise ValueError("A scene can only be closed after the previous one is fully acknowledged.")
+
+    game = _grant_resolved_scene_rewards(game)
+    game = _discard_scene_play_zones(game)
+
+    scene = _scene(game)
+    scene["status"] = SCENE_STATUS_CLOSED
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
     return game
 
 
@@ -738,12 +837,12 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
     _require_marshal(game, actor_id)
 
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_RESOLVED:
-        raise ValueError("A new scene can only be started after the previous one is fully acknowledged.")
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("A new scene can only be started after the previous one is closed.")
     if _has_pending_post_scene_requirements(game):
         raise ValueError("All required heal/skip and reward discard decisions must be resolved before starting a new scene.")
 
-    game = _finalize_resolved_scene(game)
+    game = _apply_pending_scene_wounds(game)
     if _all_non_marshal_players_dead(game):
         meta = dict(game.meta or {})
         meta["phase"] = "victory"
@@ -765,8 +864,8 @@ def scene_skip_heal(game: GameState, *, player_id: str) -> GameState:
     _require_table_phase(game)
 
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_RESOLVED:
-        raise ValueError("Healing choices are only available after the scene is fully acknowledged.")
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Healing choices are only available after the scene is closed.")
     if player_id not in scene["participants"]:
         raise ValueError("Only scene participants can choose to heal or skip.")
     if not _must_heal_or_skip(game, player_id):
@@ -790,8 +889,8 @@ def scene_heal_wound(game: GameState, *, player_id: str, reward_card_ids: list[s
     _require_table_phase(game)
 
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_RESOLVED:
-        raise ValueError("Healing is only available after the scene is fully acknowledged.")
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Healing is only available after the scene is closed.")
     if player_id not in scene["participants"]:
         raise ValueError("Only scene participants can heal wounds.")
     if not _must_heal_or_skip(game, player_id):
@@ -876,8 +975,8 @@ def scene_discard_reward(game: GameState, *, player_id: str, reward_card_id: str
     _require_table_phase(game)
 
     scene = _scene(game)
-    if scene["status"] != SCENE_STATUS_RESOLVED:
-        raise ValueError("Reward discard is only available after the scene is fully acknowledged.")
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Reward discard is only available after the scene is closed.")
     if player_id not in scene["participants"]:
         raise ValueError("Only scene participants can discard reward cards.")
     if not _must_discard_rewards(game, player_id):
@@ -973,7 +1072,7 @@ def scene_assign_bonus_card(
 
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_RESOLVED:
-        raise ValueError("Bonus Scum/Vengeance cards can only be assigned after the scene is fully acknowledged.")
+        raise ValueError("Bonus Scum/Vengeance cards can only be assigned after the scene is fully acknowledged and before it is closed.")
     if player_id not in _non_marshal_players(game):
         raise ValueError("Bonus cards can only be assigned to registered non-marshal players.")
     if _player_is_dead(game, player_id):
@@ -1045,6 +1144,8 @@ def _ensure_scene_setup(game: GameState) -> GameState:
     if scene["status"] == SCENE_STATUS_AWAITING_ACK:
         raise ValueError("Resolved scenes must be acknowledged by all participants before setup can continue.")
     if scene["status"] == SCENE_STATUS_RESOLVED:
+        raise ValueError("Resolved scenes must be closed before setup can continue.")
+    if scene["status"] == SCENE_STATUS_CLOSED:
         raise ValueError("Resolved scenes must be reset with scene_set_participants before setup can continue.")
     raise ValueError("Scene setup is locked after the scene has started.")
 
@@ -1095,6 +1196,7 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             SCENE_STATUS_ACTIVE,
             SCENE_STATUS_AWAITING_ACK,
             SCENE_STATUS_RESOLVED,
+            SCENE_STATUS_CLOSED,
         } else default["status"],
         "participants": [pid for pid in scene_in.get("participants") or [] if isinstance(pid, str)],
         "dark_mode": bool(scene_in.get("dark_mode", default["dark_mode"])),

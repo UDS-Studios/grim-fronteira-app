@@ -53,7 +53,7 @@ type ScenePlayerState = {
 };
 
 type SceneState = {
-  status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved";
+  status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved" | "closed";
   participants?: string[];
   dark_mode?: boolean;
   difficulty?: {
@@ -555,7 +555,7 @@ export default function PlayerTableView({
   const currentPlayerInScene = participantIds.includes(currentActorId);
   const difficultyCardId = scene.difficulty?.card_id ?? null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
-  const sceneResolved = scene.status === "resolved" || !!scene.resolution?.completed;
+  const sceneResolved = scene.status === "resolved" || scene.status === "closed" || !!scene.resolution?.completed;
   const azzardoCardId =
     scene.azzardo?.revealed && scene.azzardo?.card_id
       ? scene.azzardo.card_id
@@ -589,12 +589,12 @@ export default function PlayerTableView({
   const currentPlayerRewardPoints = getPlayerRewardPoints(currentActorId);
   const currentPlayerPostSceneWounds = getDisplayedWounds(currentActorId);
   const currentPlayerNeedsHealOrSkip =
-    scene.status === "resolved" &&
+    scene.status === "closed" &&
     currentPlayerPostSceneWounds === 1 &&
     currentPlayerRewardPoints > 11 &&
     currentPlayerState.recovery_action == null;
   const currentPlayerNeedsDiscardRewards =
-    scene.status === "resolved" &&
+    scene.status === "closed" &&
     (currentPlayerRewardPoints > 21 ||
       (!!currentPlayerState.reward_discard_started && currentPlayerRewardPoints > 20));
   const healSelectionActive = rewardSelectionMode === "heal";
@@ -671,8 +671,12 @@ export default function PlayerTableView({
     if (!sceneResolved) return null;
     const backendResult = scenePlayers?.[pid]?.result;
     const recoveryAction = scenePlayers?.[pid]?.recovery_action;
+    const total = getParticipantTotal(pid);
     const marshalBusted = effectiveDifficultyValue != null && effectiveDifficultyValue > 21;
     if (backendResult === "success") {
+      if (total === 21) {
+        return { key: "success", label: "Critical Success!!", color: "#1ea84f" };
+      }
       return { key: "success", label: "Success!", color: "#2f8f3e" };
     }
     if (backendResult === "failure") {
@@ -687,7 +691,6 @@ export default function PlayerTableView({
       }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
-    const total = getParticipantTotal(pid);
     return getSceneOutcome(total, effectiveDifficultyValue);
   }
 
@@ -796,6 +799,10 @@ export default function PlayerTableView({
     }
 
     if (scene.status === "resolved") {
+      return "Scene resolved. Waiting for the Marshal to close the scene.";
+    }
+
+    if (scene.status === "closed") {
       if (currentPlayerNeedsDiscardRewards) {
         return "You must discard rewards until you reach 20 points or less before the Marshal can open the next scene.";
       }
