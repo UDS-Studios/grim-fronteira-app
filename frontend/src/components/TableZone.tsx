@@ -2,16 +2,28 @@ type TableZoneProps = {
   title: string;
   children: React.ReactNode;
   fill?: boolean;
+  headerRight?: React.ReactNode;
+  borderColor?: string;
+  background?: string;
+  titleColor?: string;
 };
 
-export default function TableZone({ title, children, fill = false }: TableZoneProps) {
+export default function TableZone({
+  title,
+  children,
+  fill = false,
+  headerRight,
+  borderColor,
+  background,
+  titleColor,
+}: TableZoneProps) {
   return (
     <div
       style={{
-        border: "1px solid var(--border-strong)",
+        border: `1px solid ${borderColor ?? "var(--border-strong)"}`,
         borderRadius: 14,
         padding: 12,
-        background: "var(--surface-bg)",
+        background: background ?? "var(--surface-bg)",
         display: "grid",
         gap: 10,
         gridTemplateRows: fill ? "auto minmax(0, 1fr)" : undefined,
@@ -19,7 +31,17 @@ export default function TableZone({ title, children, fill = false }: TableZonePr
         minHeight: 0,
       }}
     >
-      <div style={{ fontWeight: 800 }}>{title}</div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontWeight: 800, color: titleColor ?? "inherit" }}>{title}</div>
+        {headerRight}
+      </div>
       {children}
     </div>
   );

@@ -47,13 +47,17 @@ type ScenePlayerState = {
   acknowledged?: boolean;
   wounds_gained?: number;
   reward_gained?: boolean;
-  result?: string | null;
+  result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
   recovery_action?: "healed" | "skipped" | null;
   reward_discard_started?: boolean;
 };
 
 type SceneState = {
   status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved" | "closed";
+  mode?: "standard" | "duel";
+  duel?: {
+    subtype?: "npc" | "pvp" | null;
+  };
   participants?: string[];
   dark_mode?: boolean;
   difficulty?: {
@@ -73,6 +77,7 @@ type SceneState = {
     completed?: boolean;
     winners?: string[];
     losers?: string[];
+    message?: string | null;
   };
 };
 
@@ -111,6 +116,7 @@ function getRewardCardPoints(cardId: string): number {
 
 function CurrentPlayerSceneRow({
   inScene,
+  isDuelScene,
   figureCardId,
   playedCards,
   displayName,
@@ -130,6 +136,7 @@ function CurrentPlayerSceneRow({
   onAcknowledge,
 }: {
   inScene: boolean;
+  isDuelScene: boolean;
   figureCardId?: string | null;
   playedCards: string[];
   displayName: string;
@@ -148,10 +155,33 @@ function CurrentPlayerSceneRow({
   onStay: () => void;
   onAcknowledge: () => void;
 }) {
+  const duelBorderColor = "#caa23a";
+  const duelBackground = "color-mix(in srgb, #d9b94b 20%, var(--surface-bg))";
+  const duelTitleColor = "#7f5a12";
   const totalColor = getTwentyOneColor(total);
 
   return (
-    <TableZone title="Scene Participation">
+    <TableZone
+      title="Scene Participation"
+      borderColor={isDuelScene ? duelBorderColor : undefined}
+      background={isDuelScene ? duelBackground : undefined}
+      titleColor={isDuelScene ? duelTitleColor : undefined}
+      headerRight={
+        isDuelScene ? (
+          <div
+            style={{
+              fontFamily: "LavaArabic, serif",
+              fontSize: 24,
+              lineHeight: 1,
+              color: duelTitleColor,
+              whiteSpace: "nowrap",
+            }}
+          >
+            It&apos;s a Duel!!
+          </div>
+        ) : null
+      }
+    >
       {!inScene ? (
         <div
           style={{
@@ -487,12 +517,14 @@ export default function PlayerTableView({
   const [selectedScumTargetId, setSelectedScumTargetId] = useState<string | null>(null);
   const [rewardSelectionMode, setRewardSelectionMode] = useState<"heal" | "discard" | null>(null);
   const [selectedRewardCardKeys, setSelectedRewardCardKeys] = useState<string[]>([]);
+  const [sceneActionPending, setSceneActionPending] = useState(false);
   const state = (resp.state as any) ?? {};
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
   const zones: Record<string, string[]> = state.zones ?? {};
 
   const scene: SceneState = meta.scene ?? {};
+  const isDuelScene = scene.mode === "duel";
   const scenePlayers: Record<string, ScenePlayerState> = scene.players ?? {};
   const metaPlayers: Record<string, MetaPlayerState> = meta.players ?? {};
   const lobby = meta.lobby ?? {};
@@ -553,6 +585,7 @@ export default function PlayerTableView({
     lobbyPlayers?.[currentActorId]?.summary_text ?? null;
 
   const currentPlayerInScene = participantIds.includes(currentActorId);
+  const isPvpDuelScene = scene.mode === "duel" && scene.duel?.subtype === "pvp";
   const difficultyCardId = scene.difficulty?.card_id ?? null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
   const sceneResolved = scene.status === "resolved" || scene.status === "closed" || !!scene.resolution?.completed;
@@ -682,6 +715,15 @@ export default function PlayerTableView({
     if (backendResult === "failure") {
       return { key: "failure", label: "Failure!", color: "#6f1d1b" };
     }
+    if (backendResult === "duel_win") {
+      return { key: "success", label: "Duel Won!", color: "#2f8f3e" };
+    }
+    if (backendResult === "wound") {
+      return { key: "wound", label: "Wound!!", color: "#d11f1f" };
+    }
+    if (backendResult === "friendship") {
+      return { key: "success", label: "Friends!!", color: "#7f5a12" };
+    }
     if (backendResult === "bust") {
       if (marshalBusted) {
         return { key: "failure", label: "Failure!", color: "#6f1d1b" };
@@ -741,6 +783,11 @@ export default function PlayerTableView({
         : azzardoStatus !== "unavailable"
           ? `${scene.difficulty.value} + ?`
           : `${scene.difficulty.value}`;
+  const displayedDifficultyCardId = isPvpDuelScene ? null : difficultyCardId;
+  const displayedAzzardoStatus = isPvpDuelScene ? "ignored" : azzardoStatus;
+  const displayedAzzardoCardId = isPvpDuelScene ? null : azzardoCardId;
+  const displayedDifficultyValueLabel = isPvpDuelScene ? "-" : difficultyValueLabel;
+  const displayedTotalBoxLabel = isPvpDuelScene ? "-" : totalBoxLabel;
 
   const isJokerDifficulty =
     difficultyCardId === "BJ" ||
@@ -753,6 +800,10 @@ export default function PlayerTableView({
   function getSceneInstruction(): string {
     if (scene.status === "idle") {
       return "Waiting for the Marshal to prepare the scene.";
+    }
+
+    if (scene.status === "setup" && isPvpDuelScene) {
+      return "PVP duel setup. No difficulty or azzardo is used.";
     }
 
     if (scene.status === "setup" && !difficultyCardId) {
@@ -792,6 +843,9 @@ export default function PlayerTableView({
     }
 
     if (scene.status === "awaiting_ack") {
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
+      }
       if (currentPlayerState.acknowledged) {
         return "Waiting for the other participants to acknowledge the scene.";
       }
@@ -799,10 +853,16 @@ export default function PlayerTableView({
     }
 
     if (scene.status === "resolved") {
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
+      }
       return "Scene resolved. Waiting for the Marshal to close the scene.";
     }
 
     if (scene.status === "closed") {
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
+      }
       if (currentPlayerNeedsDiscardRewards) {
         return "You must discard rewards until you reach 20 points or less before the Marshal can open the next scene.";
       }
@@ -816,46 +876,63 @@ export default function PlayerTableView({
   }
 
   async function handleSceneDraw() {
-    if (!isCurrentViewerActive) return;
+    if (!isCurrentViewerActive || sceneActionPending) return;
 
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_draw_card",
-        params: {
-          player_id: currentActorId,
-        },
-        view,
-      })
-    );
+    setSceneActionPending(true);
+    try {
+      await run(
+        gfAction({
+          game_id: resp.game_id,
+          action: "gf.scene_draw_card",
+          params: {
+            player_id: currentActorId,
+          },
+          view,
+        })
+      );
+    } finally {
+      setSceneActionPending(false);
+    }
   }
 
   async function handleSceneStay() {
-    if (!isCurrentViewerActive) return;
+    if (!isCurrentViewerActive || sceneActionPending) return;
 
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_stand",
-        params: {
-          player_id: currentActorId,
-        },
-        view,
-      })
-    );
+    setSceneActionPending(true);
+    try {
+      await run(
+        gfAction({
+          game_id: resp.game_id,
+          action: "gf.scene_stand",
+          params: {
+            player_id: currentActorId,
+          },
+          view,
+        })
+      );
+    } finally {
+      setSceneActionPending(false);
+    }
   }
 
   async function handleAcknowledgeResolution() {
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_acknowledge_resolution",
-        params: {
-          player_id: currentActorId,
-        },
-        view,
-      })
-    );
+    if (sceneActionPending) return;
+
+    setSceneActionPending(true);
+    try {
+      await run(
+        gfAction({
+          game_id: resp.game_id,
+          action: "gf.scene_acknowledge_resolution",
+          params: {
+            player_id: currentActorId,
+          },
+          view,
+        })
+      );
+    } finally {
+      setSceneActionPending(false);
+    }
   }
 
   async function handleSkipHeal() {
@@ -967,6 +1044,7 @@ export default function PlayerTableView({
     isCurrentViewerActive &&
     !currentPlayerState.standing &&
     !currentPlayerState.busted &&
+    !sceneActionPending &&
     !sceneResolved;
 
   const canStay =
@@ -975,13 +1053,15 @@ export default function PlayerTableView({
     isCurrentViewerActive &&
     !currentPlayerState.standing &&
     !currentPlayerState.busted &&
+    !sceneActionPending &&
     !sceneResolved;
 
   const canAcknowledge =
     currentPlayerInScene &&
     scene.status === "awaiting_ack" &&
     !!currentPlayerState.resolved &&
-    !currentPlayerState.acknowledged;
+    !currentPlayerState.acknowledged &&
+    !sceneActionPending;
 
   const deckTooltip =
     scene.status !== "active"
@@ -1289,9 +1369,9 @@ export default function PlayerTableView({
                             {isJokerDifficulty ? "20" : "10 +"}
                           </div>
 
-                          {difficultyCardId ? (
+                          {displayedDifficultyCardId ? (
                               <CardImg
-                                cardId={difficultyCardId}
+                                cardId={displayedDifficultyCardId}
                                 width={ds(86)}
                                 title="Difficulty card"
                               />
@@ -1299,10 +1379,10 @@ export default function PlayerTableView({
                             <div style={{ opacity: 0.6 }}>— no card —</div>
                           )}
 
-                          {azzardoStatus !== "unavailable" ? (
-                            azzardoCardId ? (
+                          {displayedAzzardoStatus !== "unavailable" ? (
+                            displayedAzzardoCardId ? (
                               <CardImg
-                                cardId={azzardoCardId}
+                                cardId={displayedAzzardoCardId}
                                 width={ds(86)}
                                 title="Azzardo"
                               />
@@ -1355,10 +1435,10 @@ export default function PlayerTableView({
                             lineHeight: 1,
                             whiteSpace: "nowrap",
                             opacity: 0.58,
-                            color: difficultyTotalColor ?? "inherit",
+                            color: isPvpDuelScene ? "inherit" : difficultyTotalColor ?? "inherit",
                           }}
                         >
-                          {totalBoxLabel}
+                          {displayedTotalBoxLabel}
                         </div>
                       </div>
 
@@ -1370,10 +1450,10 @@ export default function PlayerTableView({
                           minWidth: 0,
                         }}
                       >
-                        <div><b>difficulty value:</b> {difficultyValueLabel}</div>
+                        <div><b>difficulty value:</b> {displayedDifficultyValueLabel}</div>
                         <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
                         <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                        <div><b>azzardo status:</b> {azzardoStatus}</div>
+                        <div><b>azzardo status:</b> {displayedAzzardoStatus}</div>
                         <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
                         <div><b>participants selected:</b> {participantIds.length}</div>
                         <div><b>scene status:</b> {scene.status ?? "-"}</div>
@@ -1386,6 +1466,7 @@ export default function PlayerTableView({
                 <div style={{ width: "100%" }}>
                   <CurrentPlayerSceneRow
                     inScene={currentPlayerInScene}
+                    isDuelScene={isDuelScene}
                     figureCardId={currentPlayerFigureCardId}
                     playedCards={getPlayerSceneHand(currentActorId)}
                     displayName={currentPlayerDisplayName}

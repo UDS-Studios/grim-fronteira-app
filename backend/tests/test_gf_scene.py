@@ -11,6 +11,7 @@ from backend.engine.rules.grim_fronteira.lobby import (
 )
 from backend.engine.rules.grim_fronteira.scene import (
     scene_set_participants,
+    scene_set_mode,
     scene_roll_difficulty,
     scene_draw_azzardo,
     scene_remove_azzardo,
@@ -89,6 +90,8 @@ def test_scene_set_participants_initializes_scene_state():
 
     scene = game.meta["scene"]
     assert scene["status"] == "setup"
+    assert scene["mode"] == "standard"
+    assert scene["duel"] == {"subtype": None}
     assert scene["participants"] == ["p1", "p2"]
     assert scene["dark_mode"] is False
     assert scene["difficulty"] == {
@@ -107,6 +110,7 @@ def test_scene_set_participants_initializes_scene_state():
         "completed": False,
         "winners": [],
         "losers": [],
+        "message": None,
     }
     assert scene["players"]["p1"]["figure_card_id"] == "JS"
     assert scene["players"]["p1"]["hand_value"] == 10
@@ -129,6 +133,43 @@ def test_scene_start_blocked_until_setup_complete():
         assert "difficulty must be rolled" in str(exc)
     else:
         raise AssertionError("scene_start should fail before difficulty is rolled")
+
+
+def test_scene_set_mode_marks_duel_npc():
+    game = _ready_table_game()
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="npc")
+
+    assert game.meta["scene"]["mode"] == "duel"
+    assert game.meta["scene"]["duel"] == {"subtype": "npc"}
+
+
+def test_scene_start_blocks_invalid_npc_duel_participant_count():
+    game = _ready_table_game()
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="npc")
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1", seed=123)
+
+    try:
+        scene_start(game, actor_id="host1")
+    except ValueError as exc:
+        assert "NPC duels require exactly one player participant." == str(exc)
+    else:
+        raise AssertionError("scene_start should fail for npc duel with two participants")
+
+
+def test_scene_start_blocks_invalid_pvp_duel_participant_count():
+    game = _ready_table_game()
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+
+    try:
+        scene_start(game, actor_id="host1")
+    except ValueError as exc:
+        assert "PVP duels require exactly two player participants." == str(exc)
+    else:
+        raise AssertionError("scene_start should fail for pvp duel with one participant")
 
 
 def test_scene_draw_azzardo_and_skip_paths():
@@ -466,6 +507,7 @@ def test_scene_resolve_reveals_azzardo_and_previews_rewards():
         "completed": True,
         "winners": ["p2"],
         "losers": ["p1"],
+        "message": None,
     }
     assert scene["players"]["p1"]["result"] == "failure"
     assert scene["players"]["p1"]["reward_gained"] is False
@@ -500,6 +542,152 @@ def test_scene_auto_resolves_after_last_participant_finishes():
     assert scene["resolution"]["completed"] is True
     assert scene["players"]["p1"]["result"] == "failure"
     assert scene["players"]["p2"]["result"] == "success"
+
+
+def test_pvp_duel_winner_inflicts_wound_on_loser():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["9C", "5H"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "resolved"
+    assert scene["resolution"] == {
+        "completed": True,
+        "winners": ["p1"],
+        "losers": ["p2"],
+        "message": None,
+    }
+    assert scene["players"]["p1"]["result"] == "duel_win"
+    assert scene["players"]["p1"]["wounds_gained"] == 0
+    assert scene["players"]["p1"]["reward_gained"] is False
+    assert scene["players"]["p2"]["result"] == "wound"
+    assert scene["players"]["p2"]["wounds_gained"] == 1
+    assert scene["players"]["p2"]["reward_gained"] is False
+
+
+def test_pvp_duel_bust_ends_duel_immediately():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["9C", "5H", "4D"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game = scene_start(game, actor_id="host1")
+
+    game = scene_draw_card(game, player_id="p1")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "resolved"
+    assert scene["players"]["p1"]["busted"] is True
+    assert scene["players"]["p1"]["result"] == "wound"
+    assert scene["players"]["p1"]["wounds_gained"] == 1
+    assert scene["players"]["p2"]["result"] == "duel_win"
+    assert scene["players"]["p2"]["wounds_gained"] == 0
+
+
+def test_pvp_duel_tie_not_at_21_restarts_duel_with_new_difficulty():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["9H", "9S", "9D", "5C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "active"
+    assert scene["mode"] == "duel"
+    assert scene["duel"] == {"subtype": "pvp"}
+    assert scene["difficulty"]["card_id"] is None
+    assert scene["resolution"] == {
+        "completed": False,
+        "winners": [],
+        "losers": [],
+        "message": None,
+    }
+    assert scene["players"]["p1"]["hand_value"] == 19
+    assert scene["players"]["p2"]["hand_value"] == 15
+    assert "9H" in game.deck.discard_pile
+    assert "9S" in game.deck.discard_pile
+    assert "9D" in game.zones["scene.hand.p1"]
+    assert "5C" in game.zones["scene.hand.p2"]
+
+
+def test_pvp_duel_tie_at_21_ends_in_friendship_message():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["AH", "AS"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "resolved"
+    assert scene["resolution"] == {
+        "completed": True,
+        "winners": [],
+        "losers": [],
+        "message": "Both duelists hit 21. Impressed by each other's ability, they leave the duel as friends.",
+    }
+    assert scene["players"]["p1"]["result"] == "friendship"
+    assert scene["players"]["p1"]["wounds_gained"] == 0
+    assert scene["players"]["p2"]["result"] == "friendship"
+    assert scene["players"]["p2"]["wounds_gained"] == 0
+
+
+def test_pvp_duel_blocks_difficulty_and_azzardo_actions():
+    game = _ready_table_game()
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+
+    try:
+        scene_roll_difficulty(game, actor_id="host1")
+    except ValueError as exc:
+        assert str(exc) == "PVP duels do not use scene difficulty."
+    else:
+        raise AssertionError("scene_roll_difficulty should fail for pvp duel")
+
+    try:
+        scene_draw_azzardo(game, actor_id="host1")
+    except ValueError as exc:
+        assert str(exc) == "PVP duels do not use azzardo."
+    else:
+        raise AssertionError("scene_draw_azzardo should fail for pvp duel")
+
+
+def test_pvp_duel_preserves_drawn_difficulty_and_azzardo_for_next_standard_scene():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["5H", "6C", "9C", "5S"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_draw_azzardo(game, actor_id="host1")
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+    game = scene_close(game, actor_id="host1")
+    game = scene_new(game, actor_id="host1")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "setup"
+    assert scene["mode"] == "standard"
+    assert scene["difficulty"] == {
+        "rule_id": "base10_plus_1card_v1",
+        "base": 10,
+        "card_id": "5H",
+        "value": 15,
+    }
+    assert scene["azzardo"] == {
+        "status": "drawn",
+        "card_id": "6C",
+        "value": 6,
+        "revealed": False,
+    }
+    assert game.zones["scene.difficulty"] == ["5H"]
+    assert game.zones["scene.azzardo"] == ["6C"]
 
 
 def test_scene_auto_acknowledges_when_no_post_resolution_actions_exist():
@@ -691,6 +879,7 @@ def test_scene_set_participants_allows_second_scene_after_resolve():
         "completed": False,
         "winners": [],
         "losers": [],
+        "message": None,
     }
     assert "scene.hand.p1" not in game.zones
 

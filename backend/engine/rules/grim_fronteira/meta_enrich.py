@@ -36,11 +36,16 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
     # scene structure
     scene = dict(default_scene_state())
     scene_in = dict(meta.get("scene") or {})
+    duel_in = dict(scene_in.get("duel") or {})
     difficulty_in = dict(scene_in.get("difficulty") or {})
     azzardo_in = dict(scene_in.get("azzardo") or {})
     resolution_in = dict(scene_in.get("resolution") or {})
 
     scene["status"] = scene_in.get("status", scene["status"])
+    scene["mode"] = scene_in.get("mode", scene["mode"])
+    scene["duel"] = {
+        "subtype": duel_in.get("subtype", scene["duel"]["subtype"]),
+    }
     scene["participants"] = [pid for pid in scene_in.get("participants", []) if isinstance(pid, str)]
     scene["dark_mode"] = bool(scene_in.get("dark_mode", scene["dark_mode"]))
     scene["bonus_assignments"] = {
@@ -69,6 +74,7 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
         "completed": bool(resolution_in.get("completed", scene["resolution"]["completed"])),
         "winners": [pid for pid in resolution_in.get("winners", []) if isinstance(pid, str)],
         "losers": [pid for pid in resolution_in.get("losers", []) if isinstance(pid, str)],
+        "message": resolution_in.get("message") if isinstance(resolution_in.get("message"), str) else None,
     }
     meta["scene"] = scene
 

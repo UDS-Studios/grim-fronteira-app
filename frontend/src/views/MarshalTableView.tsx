@@ -41,6 +41,10 @@ type MetaPlayerState = {
 
 type SceneState = {
   status?: "idle" | "setup" | "active" | "awaiting_ack" | "resolved" | "closed";
+  mode?: "standard" | "duel";
+  duel?: {
+    subtype?: "npc" | "pvp" | null;
+  };
   participants?: string[];
   dark_mode?: boolean;
   bonus_assignments?: Record<string, "scum" | "vengeance">;
@@ -69,7 +73,7 @@ type SceneState = {
     acknowledged?: boolean;
     wounds_gained?: number;
     reward_gained?: boolean;
-    result?: string | null;
+    result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
     recovery_action?: "healed" | "skipped" | null;
     reward_discard_started?: boolean;
   }>;
@@ -77,6 +81,7 @@ type SceneState = {
     completed?: boolean;
     winners?: string[];
     losers?: string[];
+    message?: string | null;
   };
 };
 
@@ -569,6 +574,9 @@ export default function MarshalTableView({
   run,
   onBackHome,
 }: MarshalTableViewProps) {
+  const duelBorderColor = "#caa23a";
+  const duelBackground = "color-mix(in srgb, #d9b94b 20%, var(--surface-bg))";
+  const duelTitleColor = "#7f5a12";
   const deckScale = 1.6;
   const playersRailScale = 1.6;
   const [pendingBonusType, setPendingBonusType] = useState<"scum" | "vengeance" | null>(null);
@@ -743,6 +751,15 @@ export default function MarshalTableView({
     if (backendResult === "failure") {
       return { key: "failure", label: "Failure!", color: "#6f1d1b" };
     }
+    if (backendResult === "duel_win") {
+      return { key: "success", label: "Duel Won!", color: "#2f8f3e" };
+    }
+    if (backendResult === "wound") {
+      return { key: "wound", label: "Wound!!", color: "#d11f1f" };
+    }
+    if (backendResult === "friendship") {
+      return { key: "success", label: "Friends!!", color: "#7f5a12" };
+    }
     if (backendResult === "bust") {
       if (marshalBusted) {
         return { key: "failure", label: "Failure!", color: "#6f1d1b" };
@@ -754,6 +771,9 @@ export default function MarshalTableView({
     }
     return getSceneOutcome(total, effectiveDifficultyValue);
   }
+
+  const isDuelScene = scene.mode === "duel";
+  const isPvpDuelScene = isDuelScene && scene.duel?.subtype === "pvp";
 
   const difficultyValueLabel =
     scene.difficulty?.value == null
@@ -771,6 +791,12 @@ export default function MarshalTableView({
         : hasAzzardo
           ? `${scene.difficulty.value} + ?`
           : `${scene.difficulty.value}`;
+  const displayedDifficultyCardId = isPvpDuelScene ? null : difficultyCardId;
+  const displayedHasAzzardo = isPvpDuelScene ? false : hasAzzardo;
+  const displayedAzzardoCardId = isPvpDuelScene ? null : azzardoCardId;
+  const displayedDifficultyValueLabel = isPvpDuelScene ? "-" : difficultyValueLabel;
+  const displayedAzzardoStatus = isPvpDuelScene ? "ignored" : azzardoStatus;
+  const displayedTotalBoxLabel = isPvpDuelScene ? "-" : totalBoxLabel;
 
   const isJokerDifficulty =
     difficultyCardId === "BJ" ||
@@ -785,10 +811,17 @@ export default function MarshalTableView({
   const azzardoBlockedByDifficulty = isJokerDifficulty || isAceDifficulty || isFigureDifficulty;
 
   const canDeckClick =
+    !isPvpDuelScene &&
     isEditable &&
     (!hasDifficulty || (!hasAzzardo && !azzardoBlockedByDifficulty));
 
-  const canStartScene = !isLocked && hasDifficulty && participantIds.length > 0;
+  const canStartScene =
+    !isLocked &&
+    participantIds.length > 0 &&
+    (isPvpDuelScene ? participantIds.length === 2 : hasDifficulty);
+  const canUseDuelMode = participantIds.length === 1 || participantIds.length === 2;
+  const showDuelToggle = canUseDuelMode || isDuelScene;
+  const duelToggleDisabled = !isEditable || (!isDuelScene && !canUseDuelMode);
 
   function getParticipantPostSceneRequirements(pid: string): {
     mustHealOrSkip: boolean;
@@ -842,8 +875,36 @@ export default function MarshalTableView({
     );
   }
 
+  async function handleToggleDuelMode() {
+    if (duelToggleDisabled) return;
+
+    const nextMode = isDuelScene ? "standard" : "duel";
+    const nextDuelSubtype =
+      nextMode === "duel"
+        ? participantIds.length === 1
+          ? "npc"
+          : participantIds.length === 2
+            ? "pvp"
+            : null
+        : null;
+
+    await run(
+      gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_set_mode",
+        params: {
+          actor_id: currentActorId,
+          mode: nextMode,
+          duel_subtype: nextDuelSubtype,
+        },
+        view,
+      })
+    );
+  }
+
   async function handleDeckClick() {
     if (!isEditable) return;
+    if (isPvpDuelScene) return;
 
     if (!hasDifficulty) {
       await run(
@@ -1008,7 +1069,22 @@ export default function MarshalTableView({
 
   function getSceneInstruction(): string {
     if (scene.status === "idle") {
+      if (isPvpDuelScene) {
+        return "Select the two duelists and start the duel. No difficulty is drawn.";
+      }
       return "Select participants or click deck to roll difficulty.";
+    }
+
+    if (scene.status === "setup" && isPvpDuelScene && participantIds.length === 0) {
+      return "Select exactly two participants for the duel.";
+    }
+
+    if (scene.status === "setup" && isPvpDuelScene && participantIds.length !== 2) {
+      return "Select exactly two participants for the duel.";
+    }
+
+    if (scene.status === "setup" && isPvpDuelScene && participantIds.length === 2) {
+      return "PVP duel ready. No difficulty or azzardo is used. Start the duel.";
     }
 
     if (scene.status === "setup" && !hasDifficulty) {
@@ -1062,11 +1138,17 @@ export default function MarshalTableView({
     }
 
     if (scene.status === "awaiting_ack") {
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
+      }
       const remaining = participantIds.filter((pid) => !scenePlayers?.[pid]?.acknowledged);
       return `Scene resolved. Waiting for acknowledgments from ${remaining.length} participant${remaining.length === 1 ? "" : "s"}.`;
     }
 
     if (scene.status === "resolved") {
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
+      }
       if (pendingBonusType) {
         return `Scene resolved. Click a player to assign one bonus ${pendingBonusType} card, or click the same assign button again to cancel.`;
       }
@@ -1074,6 +1156,9 @@ export default function MarshalTableView({
     }
 
     if (scene.status === "closed") {
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
+      }
       if (hasBlockedParticipantForNewScene) {
         return "Scene closed. Resolve participant heal/skip or reward discard requirements before opening a new scene.";
       }
@@ -1431,9 +1516,9 @@ export default function MarshalTableView({
                     {isJokerDifficulty ? "20" : "10 +"}
                   </div>
 
-                  {difficultyCardId ? (
+                  {displayedDifficultyCardId ? (
                     <CardImg
-                      cardId={difficultyCardId}
+                      cardId={displayedDifficultyCardId}
                       width={ds(86)}
                       title="Difficulty card"
                     />
@@ -1441,7 +1526,7 @@ export default function MarshalTableView({
                     <div style={{ opacity: 0.6 }}>— no card —</div>
                   )}
 
-                  {hasAzzardo ? (
+                  {displayedHasAzzardo ? (
                     <button
                       type="button"
                       onClick={handleAzzardoUndo}
@@ -1459,8 +1544,8 @@ export default function MarshalTableView({
                           : "Click to return azzardo to the deck"
                       }
                     >
-                      {azzardoCardId ? (
-                        <CardImg cardId={azzardoCardId} width={ds(86)} title="Azzardo" />
+                      {displayedAzzardoCardId ? (
+                        <CardImg cardId={displayedAzzardoCardId} width={ds(86)} title="Azzardo" />
                       ) : (
                         <CardImg
                           cardId="BACK"
@@ -1482,7 +1567,9 @@ export default function MarshalTableView({
                   title={
                     canStartScene
                       ? "Lock setup and begin scene"
-                      : "Requires difficulty card and at least one participant"
+                      : isPvpDuelScene
+                        ? "Requires exactly two participants"
+                        : "Requires difficulty card and at least one participant"
                   }
                 />
               </div>
@@ -1520,10 +1607,10 @@ export default function MarshalTableView({
                     lineHeight: 1,
                     whiteSpace: "nowrap",
                     opacity: 0.58,
-                    color: difficultyTotalColor ?? "inherit",
+                    color: isPvpDuelScene ? "inherit" : difficultyTotalColor ?? "inherit",
                   }}
                 >
-                  {totalBoxLabel}
+                  {displayedTotalBoxLabel}
                 </div>
               </div>
 
@@ -1535,10 +1622,10 @@ export default function MarshalTableView({
                   minWidth: 0,
                 }}
               >
-                <div><b>difficulty value:</b> {difficultyValueLabel}</div>
+                <div><b>difficulty value:</b> {displayedDifficultyValueLabel}</div>
                 <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
                 <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                <div><b>azzardo status:</b> {azzardoStatus}</div>
+                <div><b>azzardo status:</b> {displayedAzzardoStatus}</div>
                 <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
                 <div><b>participants selected:</b> {participantIds.length}</div>
                 <div>
@@ -1550,7 +1637,55 @@ export default function MarshalTableView({
           </TableZone>
 
           <div style={{ minHeight: 0 }}>
-            <TableZone title="Scene Participants">
+            <TableZone
+              title="Scene Participants"
+              borderColor={isDuelScene ? duelBorderColor : undefined}
+              background={isDuelScene ? duelBackground : undefined}
+              titleColor={isDuelScene ? duelTitleColor : undefined}
+              headerRight={
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  {isDuelScene ? (
+                    <div
+                      style={{
+                        fontFamily: "LavaArabic, serif",
+                        fontSize: 24,
+                        lineHeight: 1,
+                        color: duelTitleColor,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      It&apos;s a Duel!!
+                    </div>
+                  ) : null}
+                  {showDuelToggle ? (
+                    <button
+                      type="button"
+                      onClick={handleToggleDuelMode}
+                      disabled={duelToggleDisabled}
+                      title={
+                        canUseDuelMode
+                          ? `Mark this scene as a ${participantIds.length === 1 ? "duel vs NPC" : "PvP duel"}`
+                          : "Duel mode is only available with one or two participants."
+                      }
+                      style={{
+                        border: `1px solid ${isDuelScene ? duelBorderColor : "var(--border-muted)"}`,
+                        borderRadius: 999,
+                        padding: "6px 12px",
+                        background: isDuelScene
+                          ? "color-mix(in srgb, #d9b94b 26%, var(--surface-strong))"
+                          : "var(--surface-strong)",
+                        color: isDuelScene ? duelTitleColor : "inherit",
+                        cursor: duelToggleDisabled ? "not-allowed" : "pointer",
+                        fontWeight: 800,
+                        opacity: duelToggleDisabled ? 0.6 : 1,
+                      }}
+                    >
+                      {isDuelScene ? "Remove Duel" : "Make Duel"}
+                    </button>
+                  ) : null}
+                </div>
+              }
+            >
               <div
                 style={{
                   display: "grid",

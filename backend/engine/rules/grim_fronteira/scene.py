@@ -18,6 +18,11 @@ SCENE_STATUS_AWAITING_ACK = "awaiting_ack"
 SCENE_STATUS_RESOLVED = "resolved"
 SCENE_STATUS_CLOSED = "closed"
 
+SCENE_MODE_STANDARD = "standard"
+SCENE_MODE_DUEL = "duel"
+SCENE_DUEL_SUBTYPE_NPC = "npc"
+SCENE_DUEL_SUBTYPE_PVP = "pvp"
+
 SCENE_DIFFICULTY_ZONE = "scene.difficulty"
 SCENE_AZZARDO_ZONE = "scene.azzardo"
 SCENE_HAND_PREFIX = "scene.hand."
@@ -28,6 +33,10 @@ SCENE_VENGEANCE_MOD_PREFIX = "scene.mod.vengeance."
 def default_scene_state() -> dict[str, Any]:
     return {
         "status": SCENE_STATUS_IDLE,
+        "mode": SCENE_MODE_STANDARD,
+        "duel": {
+            "subtype": None,
+        },
         "participants": [],
         "dark_mode": False,
         "bonus_assignments": {},
@@ -48,6 +57,7 @@ def default_scene_state() -> dict[str, Any]:
             "completed": False,
             "winners": [],
             "losers": [],
+            "message": None,
         },
     }
 
@@ -108,12 +118,41 @@ def scene_set_participants(game: GameState, *, actor_id: str, participant_ids: l
     return _replace_scene(game, scene=scene, zones=zones)
 
 
+def scene_set_mode(
+    game: GameState,
+    *,
+    actor_id: str,
+    mode: str,
+    duel_subtype: str | None = None,
+) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_IDLE, SCENE_STATUS_SETUP}:
+        raise ValueError("Scene mode can only be changed while the scene is idle or in setup.")
+    if mode not in {SCENE_MODE_STANDARD, SCENE_MODE_DUEL}:
+        raise ValueError("Scene mode must be 'standard' or 'duel'.")
+    if mode == SCENE_MODE_DUEL and duel_subtype not in {SCENE_DUEL_SUBTYPE_NPC, SCENE_DUEL_SUBTYPE_PVP}:
+        raise ValueError("Duel scenes require duel_subtype 'npc' or 'pvp'.")
+    if mode != SCENE_MODE_DUEL and duel_subtype is not None:
+        raise ValueError("duel_subtype can only be set when mode is 'duel'.")
+
+    scene["mode"] = mode
+    scene["duel"] = {
+        "subtype": duel_subtype if mode == SCENE_MODE_DUEL else None,
+    }
+    return _replace_scene(game, scene=scene)
+
+
 def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = None) -> tuple[GameState, dict[str, Any]]:
     _require_table_phase(game)
     _require_marshal(game, actor_id)
 
     game = _ensure_scene_setup(game)
     scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use scene difficulty.")
     if scene["difficulty"]["card_id"] is not None:
         raise ValueError("Scene difficulty has already been rolled.")
 
@@ -199,6 +238,8 @@ def scene_draw_azzardo(game: GameState, *, actor_id: str, seed: int | None = Non
     _require_marshal(game, actor_id)
 
     scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use azzardo.")
     if scene["status"] != SCENE_STATUS_SETUP:
         raise ValueError("Azzardo can only be drawn while the scene is in setup.")
     if scene["difficulty"]["card_id"] is None:
@@ -229,6 +270,8 @@ def scene_remove_azzardo(game: GameState, *, actor_id: str) -> GameState:
     _require_marshal(game, actor_id)
 
     scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use azzardo.")
     if scene["status"] != SCENE_STATUS_SETUP:
         raise ValueError("Azzardo can only be removed while the scene is in setup.")
     if scene["azzardo"]["status"] != "drawn":
@@ -247,6 +290,8 @@ def scene_skip_azzardo(game: GameState, *, actor_id: str) -> GameState:
     _require_marshal(game, actor_id)
 
     scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use azzardo.")
     if scene["status"] != SCENE_STATUS_SETUP:
         raise ValueError("Azzardo can only be skipped while the scene is in setup.")
     if scene["difficulty"]["card_id"] is None:
@@ -272,10 +317,11 @@ def scene_start(game: GameState, *, actor_id: str) -> GameState:
         raise ValueError("Scene can only start from setup.")
     if not scene["participants"]:
         raise ValueError("Scene requires at least one participant.")
-    if scene["difficulty"]["card_id"] is None:
+    if not _is_pvp_duel(scene) and scene["difficulty"]["card_id"] is None:
         raise ValueError("Scene difficulty must be rolled before starting.")
-    if scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
+    if not _is_pvp_duel(scene) and scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
         raise ValueError("Azzardo is in an invalid state for starting the scene.")
+    _validate_scene_configuration(scene)
 
     initiative_order: list[tuple[str, int, int]] = []
     for original_idx, pid in enumerate(scene["participants"]):
@@ -487,6 +533,9 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     if unresolved:
         raise ValueError(f"All participants must stand or bust before resolution: {', '.join(unresolved)}")
 
+    if _is_pvp_duel(scene):
+        return _resolve_pvp_duel_scene(game, actor_id=actor_id)
+
     azzardo = dict(scene["azzardo"])
     if azzardo["status"] == "drawn":
         azzardo["revealed"] = True
@@ -539,6 +588,7 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
         "completed": True,
         "winners": winners,
         "losers": losers,
+        "message": None,
     }
     scene["status"] = SCENE_STATUS_AWAITING_ACK
     game = _replace_scene(game, scene=scene)
@@ -589,6 +639,11 @@ def _resolve_scene_if_all_participants_done(game: GameState) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_ACTIVE:
         return game
+    if _is_pvp_duel(scene) and any(bool((scene["players"].get(pid) or {}).get("busted")) for pid in scene["participants"]):
+        marshal_id = (game.meta or {}).get("marshal_id")
+        if not isinstance(marshal_id, str) or not marshal_id:
+            raise ValueError("Scene cannot auto-resolve without a marshal_id.")
+        return scene_resolve(game, actor_id=marshal_id)
 
     unresolved = [
         pid
@@ -736,6 +791,9 @@ def _has_pending_post_scene_requirements(game: GameState) -> bool:
 
 def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements: bool) -> GameState:
     scene = _scene(game)
+    if _is_pvp_duel(scene):
+        return _refresh_pvp_duel_resolution_preview(game, reset_acknowledgements=reset_acknowledgements)
+
     effective_difficulty = int(scene["difficulty"]["value"])
     azzardo = dict(scene["azzardo"])
     if azzardo["status"] == "drawn":
@@ -783,6 +841,7 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
         "completed": True,
         "winners": winners,
         "losers": losers,
+        "message": None,
     }
     return _replace_scene(game, scene=scene)
 
@@ -791,7 +850,7 @@ def _grant_resolved_scene_rewards(game: GameState) -> GameState:
     scene = _scene(game)
     for pid in scene["participants"]:
         pstate = dict(scene["players"].get(pid) or {})
-        if pstate.get("result") == "success":
+        if pstate.get("reward_gained"):
             game, _reward_card = _draw_to_zone(game, f"players.{pid}.rewards")
     return game
 
@@ -823,7 +882,10 @@ def scene_close(game: GameState, *, actor_id: str) -> GameState:
         raise ValueError("A scene can only be closed after the previous one is fully acknowledged.")
 
     game = _grant_resolved_scene_rewards(game)
-    game = _discard_scene_play_zones(game)
+    if _is_pvp_duel(scene):
+        game = _discard_pvp_duel_play_zones(game)
+    else:
+        game = _discard_scene_play_zones(game)
 
     scene = _scene(game)
     scene["status"] = SCENE_STATUS_CLOSED
@@ -853,6 +915,16 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
         }
         validate_unique_cards(game)
         return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+    preserved_difficulty = dict(scene.get("difficulty") or {})
+    preserved_azzardo = dict(scene.get("azzardo") or {})
+    if _is_pvp_duel(scene):
+        game = _discard_pvp_duel_play_zones(game)
+        scene = default_scene_state()
+        scene["status"] = SCENE_STATUS_SETUP
+        scene["difficulty"] = preserved_difficulty
+        scene["azzardo"] = preserved_azzardo
+        return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones))
 
     game = _discard_scene_play_zones(game)
     scene = default_scene_state()
@@ -1181,9 +1253,170 @@ def _scene(game: GameState) -> dict[str, Any]:
     return _normalized_scene((game.meta or {}).get("scene"))
 
 
+def _validate_scene_configuration(scene: dict[str, Any]) -> None:
+    mode = scene.get("mode")
+    duel_subtype = dict(scene.get("duel") or {}).get("subtype")
+    participant_count = len(scene.get("participants") or [])
+
+    if mode != SCENE_MODE_DUEL:
+        return
+    if duel_subtype == SCENE_DUEL_SUBTYPE_NPC and participant_count != 1:
+        raise ValueError("NPC duels require exactly one player participant.")
+    if duel_subtype == SCENE_DUEL_SUBTYPE_PVP and participant_count != 2:
+        raise ValueError("PVP duels require exactly two player participants.")
+    if duel_subtype not in {SCENE_DUEL_SUBTYPE_NPC, SCENE_DUEL_SUBTYPE_PVP}:
+        raise ValueError("Duel scenes require a valid duel subtype.")
+
+
+def _is_pvp_duel(scene: dict[str, Any]) -> bool:
+    return scene.get("mode") == SCENE_MODE_DUEL and dict(scene.get("duel") or {}).get("subtype") == SCENE_DUEL_SUBTYPE_PVP
+
+
+def _pvp_duel_outcome(scene: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    participant_ids = list(scene.get("participants") or [])
+    if len(participant_ids) != 2:
+        raise ValueError("PVP duel scenes require exactly two participants.")
+
+    p1, p2 = participant_ids
+    p1_state = dict(scene["players"].get(p1) or {})
+    p2_state = dict(scene["players"].get(p2) or {})
+    p1_total = int(p1_state.get("hand_value") or 0)
+    p2_total = int(p2_state.get("hand_value") or 0)
+    p1_busted = bool(p1_state.get("busted")) or p1_total > 21
+    p2_busted = bool(p2_state.get("busted")) or p2_total > 21
+
+    if p1_busted and p2_busted:
+        return "rematch", {"message": None}
+    if p1_busted and not p2_busted:
+        return "resolved", {"winner": p2, "loser": p1, "message": None}
+    if p2_busted and not p1_busted:
+        return "resolved", {"winner": p1, "loser": p2, "message": None}
+
+    p1_distance = 21 - p1_total
+    p2_distance = 21 - p2_total
+    if p1_distance < p2_distance:
+        return "resolved", {"winner": p1, "loser": p2, "message": None}
+    if p2_distance < p1_distance:
+        return "resolved", {"winner": p2, "loser": p1, "message": None}
+    if p1_total == 21 and p2_total == 21:
+        return "friends", {
+            "message": "Both duelists hit 21. Impressed by each other's ability, they leave the duel as friends.",
+        }
+    return "rematch", {"message": None}
+
+
+def _resolve_pvp_duel_scene(game: GameState, *, actor_id: str) -> GameState:
+    scene = _scene(game)
+    outcome, data = _pvp_duel_outcome(scene)
+    if outcome == "rematch":
+        return _restart_pvp_duel_after_tie(game, actor_id=actor_id)
+
+    winners: list[str] = []
+    losers: list[str] = []
+    players = dict(scene["players"])
+    for pid in scene["participants"]:
+        pstate = dict(players.get(pid) or {})
+        pstate["resolved"] = True
+        pstate["acknowledged"] = False
+        pstate["reward_gained"] = False
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
+        if outcome == "friends":
+            pstate["wounds_gained"] = 0
+            pstate["result"] = "friendship"
+        else:
+            if pid == data["winner"]:
+                pstate["wounds_gained"] = 0
+                pstate["result"] = "duel_win"
+                winners.append(pid)
+            else:
+                pstate["wounds_gained"] = 1
+                pstate["result"] = "wound"
+                losers.append(pid)
+        players[pid] = pstate
+
+    scene["players"] = players
+    scene["resolution"] = {
+        "completed": True,
+        "winners": winners,
+        "losers": losers,
+        "message": data.get("message"),
+    }
+    scene["status"] = SCENE_STATUS_AWAITING_ACK
+    game = _replace_scene(game, scene=scene)
+    game = _auto_acknowledge_if_no_post_resolution_actions(game)
+    validate_unique_cards(game)
+    return game
+
+
+def _refresh_pvp_duel_resolution_preview(game: GameState, *, reset_acknowledgements: bool) -> GameState:
+    scene = _scene(game)
+    outcome, data = _pvp_duel_outcome(scene)
+    if outcome == "rematch":
+        return game
+
+    winners: list[str] = []
+    losers: list[str] = []
+    players = dict(scene["players"])
+    for pid in scene["participants"]:
+        pstate = dict(players.get(pid) or {})
+        pstate["resolved"] = True
+        pstate["reward_gained"] = False
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
+        if reset_acknowledgements:
+            pstate["acknowledged"] = False
+        if outcome == "friends":
+            pstate["wounds_gained"] = 0
+            pstate["result"] = "friendship"
+        else:
+            if pid == data["winner"]:
+                pstate["wounds_gained"] = 0
+                pstate["result"] = "duel_win"
+                winners.append(pid)
+            else:
+                pstate["wounds_gained"] = 1
+                pstate["result"] = "wound"
+                losers.append(pid)
+        players[pid] = pstate
+
+    scene["players"] = players
+    scene["resolution"] = {
+        "completed": True,
+        "winners": winners,
+        "losers": losers,
+        "message": data.get("message"),
+    }
+    return _replace_scene(game, scene=scene)
+
+
+def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
+    scene = _scene(game)
+    participant_ids = list(scene["participants"])
+    mode = scene.get("mode")
+    duel = dict(scene.get("duel") or {})
+    difficulty = dict(scene.get("difficulty") or {})
+    azzardo = dict(scene.get("azzardo") or {})
+
+    game = _discard_pvp_duel_play_zones(game)
+
+    reset_scene = default_scene_state()
+    reset_scene["status"] = SCENE_STATUS_SETUP
+    reset_scene["mode"] = mode
+    reset_scene["duel"] = duel
+    reset_scene["difficulty"] = difficulty
+    reset_scene["azzardo"] = azzardo
+    reset_scene["participants"] = participant_ids
+    reset_scene["players"] = {pid: _default_scene_player(game, pid) for pid in participant_ids}
+    game = _replace_scene(game, scene=reset_scene, zones=_reset_scene_zones(game.zones))
+    game = scene_start(game, actor_id=actor_id)
+    return game
+
+
 def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
     default = default_scene_state()
     scene_in = dict(raw_scene or {})
+    duel_in = dict(scene_in.get("duel") or {})
     difficulty_in = dict(scene_in.get("difficulty") or {})
     azzardo_in = dict(scene_in.get("azzardo") or {})
     resolution_in = dict(scene_in.get("resolution") or {})
@@ -1198,6 +1431,14 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             SCENE_STATUS_RESOLVED,
             SCENE_STATUS_CLOSED,
         } else default["status"],
+        "mode": scene_in.get("mode")
+        if scene_in.get("mode") in {SCENE_MODE_STANDARD, SCENE_MODE_DUEL}
+        else default["mode"],
+        "duel": {
+            "subtype": duel_in.get("subtype")
+            if duel_in.get("subtype") in {SCENE_DUEL_SUBTYPE_NPC, SCENE_DUEL_SUBTYPE_PVP}
+            else default["duel"]["subtype"],
+        },
         "participants": [pid for pid in scene_in.get("participants") or [] if isinstance(pid, str)],
         "dark_mode": bool(scene_in.get("dark_mode", default["dark_mode"])),
         "bonus_assignments": {
@@ -1224,6 +1465,7 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             "completed": bool(resolution_in.get("completed", default["resolution"]["completed"])),
             "winners": [pid for pid in resolution_in.get("winners") or [] if isinstance(pid, str)],
             "losers": [pid for pid in resolution_in.get("losers") or [] if isinstance(pid, str)],
+            "message": resolution_in.get("message") if isinstance(resolution_in.get("message"), str) else None,
         },
     }
 
@@ -1366,6 +1608,13 @@ def _discard_scene_modifier_zones(game: GameState) -> GameState:
 def _discard_scene_play_zones(game: GameState) -> GameState:
     game = _discard_zone_if_present(game, SCENE_DIFFICULTY_ZONE)
     game = _discard_zone_if_present(game, SCENE_AZZARDO_ZONE)
+    game = _discard_pvp_duel_play_zones(game)
+    if any(card_id in {"RJ", "BJ"} for card_id in list((game.deck.discard_pile if game.deck else []))):
+        game = _reshuffle_discard_into_draw(game)
+    return game
+
+
+def _discard_pvp_duel_play_zones(game: GameState) -> GameState:
 
     hand_zone_names = [
         zone_name
@@ -1376,8 +1625,6 @@ def _discard_scene_play_zones(game: GameState) -> GameState:
         game = _discard_zone_if_present(game, zone_name)
 
     game = _discard_scene_modifier_zones(game)
-    if any(card_id in {"RJ", "BJ"} for card_id in list((game.deck.discard_pile if game.deck else []))):
-        game = _reshuffle_discard_into_draw(game)
     return game
 
 

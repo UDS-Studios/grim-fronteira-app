@@ -36,6 +36,7 @@ class ActionRequest(BaseModel):
         "gf.start_game",
         "gf.begin_table",
         "gf.scene_set_participants",
+        "gf.scene_set_mode",
         "gf.scene_roll_difficulty",
         "gf.scene_draw_azzardo",
         "gf.scene_remove_azzardo",

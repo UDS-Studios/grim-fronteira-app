@@ -24,6 +24,7 @@ from backend.engine.rules.grim_fronteira.meta_enrich import enrich_meta_for_ui
 from backend.engine.rules.grim_fronteira.scene import (
     ensure_scene_state,
     scene_set_participants,
+    scene_set_mode,
     scene_roll_difficulty,
     scene_draw_azzardo,
     scene_remove_azzardo,
@@ -444,6 +445,28 @@ def action(req: ActionRequest) -> ActionResponse:
         game = scene_set_participants(game, actor_id=actor_id, participant_ids=participant_ids)
         mutated = True
         result = {"ok": True, "action": req.action, "participant_ids": participant_ids}
+
+    elif req.action == "gf.scene_set_mode":
+        params = req.params
+        actor_id = params.get("actor_id")
+        mode = params.get("mode")
+        duel_subtype = params.get("duel_subtype")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(mode, str):
+            raise HTTPException(status_code=400, detail="params.mode must be a string")
+        if duel_subtype is not None and not isinstance(duel_subtype, str):
+            raise HTTPException(status_code=400, detail="params.duel_subtype must be a string or omitted")
+
+        game = scene_set_mode(game, actor_id=actor_id, mode=mode, duel_subtype=duel_subtype)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "mode": mode,
+            "duel_subtype": duel_subtype,
+        }
 
     elif req.action == "gf.scene_roll_difficulty":
         params = req.params
