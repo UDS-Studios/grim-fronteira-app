@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 import random
 
-from backend.engine.grimdeck.models import CardID, DeckState
+from backend.engine.grimdeck.models import CardID
 from backend.engine.grimdeck.deck_ops import play
 from backend.engine.state.game_state import GameState
 from backend.engine.state.zone_ops import claim_from_in_play
@@ -88,33 +88,6 @@ def _bump_scene_meta(game: GameState, *, base: int, value: int, rule_id: str, da
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
 
 
-def _reshuffle_discard_into_draw(game: GameState, rng: random.Random) -> GameState:
-    if game.deck is None:
-        raise ValueError("GameState has no deck.")
-
-    if not game.deck.discard_pile:
-        return game
-
-    merged = game.deck.draw_pile + game.deck.discard_pile
-    rng.shuffle(merged)
-
-    new_deck = DeckState(
-        version=game.deck.version,
-        schema=game.deck.schema,
-        created_utc=game.deck.created_utc,
-        notes=game.deck.notes,
-        settings=game.deck.settings,
-        draw_pile=merged,
-        in_play=game.deck.in_play,
-        discard_pile=[],  # moved out
-        removed=game.deck.removed,
-    )
-
-    new_game = GameState(deck=new_deck, zones=game.zones, meta=game.meta)
-    validate_unique_cards(new_game)
-    return new_game
-
-
 def marshal_roll_difficulty(
     game: GameState,
     *,
@@ -134,8 +107,6 @@ def marshal_roll_difficulty(
     if game.deck is None:
         raise ValueError("GameState has no deck.")
 
-    rng = random.Random(seed)
-
     # 1) play -> card to deck.in_play
     new_deck = play(game.deck)
     game = GameState(deck=new_deck, zones=game.zones, meta=game.meta)
@@ -154,10 +125,7 @@ def marshal_roll_difficulty(
     dark_mode = False
 
     # Joker effects
-    if card_id == "RJ":
-        effects.append(DifficultyEffect(kind="RESHUFFLE_DISCARD"))
-        game = _reshuffle_discard_into_draw(game, rng)
-    elif card_id == "BJ":
+    if card_id == "BJ":
         effects.append(DifficultyEffect(kind="DARK_MODE"))
         dark_mode = True
 

@@ -17,6 +17,7 @@ from backend.engine.rules.grim_fronteira.setup import (
 from backend.engine.helpers.hooks import generate_hook_suggestions
 from backend.engine.helpers.characters import character_label, figure_to_character
 from backend.engine.helpers.character_creation import pick_three
+from backend.engine.rules.grim_fronteira.scene import default_scene_state
 
 FIGURE_POOL_ZONE = "lobby.figure_pool.available"
 
@@ -439,5 +440,6 @@ def begin_table(game: GameState, actor_id: str, selected_hook: str | None = None
 
     meta["hooks"] = hooks
     meta["phase"] = "table"
+    meta["scene"] = default_scene_state()
 
     return GameState(deck=game.deck, zones=game.zones, meta=meta)

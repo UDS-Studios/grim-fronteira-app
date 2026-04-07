@@ -1,0 +1,2019 @@
+from __future__ import annotations
+
+from typing import Any
+
+from backend.engine.grimdeck.deck_ops import play, shuffle as shuffle_deck
+from backend.engine.grimdeck.models import CardID, DeckState
+from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
+from backend.engine.state.game_state import GameState
+from backend.engine.state.validators import validate_unique_cards
+from backend.engine.state.zone_ops import claim_from_in_play
+from backend.engine.rules.grim_fronteira.reward_points import reward_card_points
+
+
+SCENE_STATUS_IDLE = "idle"
+SCENE_STATUS_SETUP = "setup"
+SCENE_STATUS_ACTIVE = "active"
+SCENE_STATUS_AWAITING_ACK = "awaiting_ack"
+SCENE_STATUS_RESOLVED = "resolved"
+SCENE_STATUS_CLOSED = "closed"
+
+SCENE_MODE_STANDARD = "standard"
+SCENE_MODE_DUEL = "duel"
+SCENE_DUEL_SUBTYPE_NPC = "npc"
+SCENE_DUEL_SUBTYPE_PVP = "pvp"
+
+SCENE_DIFFICULTY_ZONE = "scene.difficulty"
+SCENE_AZZARDO_ZONE = "scene.azzardo"
+SCENE_HAND_PREFIX = "scene.hand."
+SCENE_SCUM_MOD_PREFIX = "scene.mod.scum."
+SCENE_VENGEANCE_MOD_PREFIX = "scene.mod.vengeance."
+
+
+def default_scene_state() -> dict[str, Any]:
+    return {
+        "status": SCENE_STATUS_IDLE,
+        "mode": SCENE_MODE_STANDARD,
+        "duel": {
+            "subtype": None,
+            "sudden_death": False,
+        },
+        "participants": [],
+        "deck_exhausted": False,
+        "deck_exhausted_participants": [],
+        "dark_mode": False,
+        "bonus_assignments": {},
+        "difficulty": {
+            "rule_id": None,
+            "base": None,
+            "card_id": None,
+            "value": None,
+        },
+        "azzardo": {
+            "status": "unavailable",
+            "card_id": None,
+            "value": None,
+            "revealed": False,
+        },
+        "players": {},
+        "resolution": {
+            "completed": False,
+            "winners": [],
+            "losers": [],
+            "message": None,
+        },
+    }
+
+
+def ensure_scene_state(game: GameState) -> GameState:
+    meta = dict(game.meta or {})
+    meta["scene"] = _normalized_scene(meta.get("scene"))
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+
+def scene_set_participants(game: GameState, *, actor_id: str, participant_ids: list[str]) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    original_status = scene["status"]
+    if scene["status"] == SCENE_STATUS_ACTIVE:
+        raise ValueError("Scene participants cannot be changed after the scene has started.")
+    if not all(isinstance(pid, str) and pid for pid in participant_ids):
+        raise ValueError("participant_ids must be a list of non-empty player ids.")
+
+    valid_players = set(_non_marshal_players(game))
+    invalid = [pid for pid in participant_ids if pid not in valid_players]
+    if invalid:
+        raise ValueError(f"Participants must be registered non-marshal players: {', '.join(invalid)}")
+
+    missing_character = [pid for pid in participant_ids if not _player_has_character(game, pid)]
+    if missing_character:
+        raise ValueError(f"Participants must already have characters: {', '.join(missing_character)}")
+
+    dead_players = [pid for pid in participant_ids if _player_is_dead(game, pid)]
+    if dead_players:
+        raise ValueError(f"Dead characters cannot participate in scenes: {', '.join(dead_players)}")
+
+    old_participants = set(scene["participants"])
+    new_participants = set(participant_ids)
+
+    if scene["status"] == SCENE_STATUS_IDLE:
+        game = _start_clean_setup(game)
+        scene = _scene(game)
+        zones = game.zones
+    elif scene["status"] == SCENE_STATUS_SETUP:
+        zones = _remove_scene_hands_for_players(game.zones, old_participants - new_participants)
+    else:
+        raise ValueError("Scene participants can only be set while the scene is idle or in setup.")
+
+    players = {pid: _default_scene_player(game, pid) for pid in participant_ids}
+
+    scene["status"] = SCENE_STATUS_SETUP
+    scene["participants"] = participant_ids.copy()
+    if original_status != SCENE_STATUS_SETUP:
+        scene["dark_mode"] = False
+        scene["difficulty"] = default_scene_state()["difficulty"]
+        scene["azzardo"] = default_scene_state()["azzardo"]
+    scene["players"] = players
+    scene["resolution"] = default_scene_state()["resolution"]
+
+    return _replace_scene(game, scene=scene, zones=zones)
+
+
+def scene_set_mode(
+    game: GameState,
+    *,
+    actor_id: str,
+    mode: str,
+    duel_subtype: str | None = None,
+) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_IDLE, SCENE_STATUS_SETUP}:
+        raise ValueError("Scene mode can only be changed while the scene is idle or in setup.")
+    if mode not in {SCENE_MODE_STANDARD, SCENE_MODE_DUEL}:
+        raise ValueError("Scene mode must be 'standard' or 'duel'.")
+    if mode == SCENE_MODE_DUEL and duel_subtype not in {SCENE_DUEL_SUBTYPE_NPC, SCENE_DUEL_SUBTYPE_PVP}:
+        raise ValueError("Duel scenes require duel_subtype 'npc' or 'pvp'.")
+    if mode != SCENE_MODE_DUEL and duel_subtype is not None:
+        raise ValueError("duel_subtype can only be set when mode is 'duel'.")
+
+    scene["mode"] = mode
+    scene["duel"] = {
+        "subtype": duel_subtype if mode == SCENE_MODE_DUEL else None,
+        "sudden_death": False,
+    }
+    return _replace_scene(game, scene=scene)
+
+
+def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = None) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    game = _ensure_scene_setup(game)
+    scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use scene difficulty.")
+    if scene["difficulty"]["card_id"] is not None:
+        raise ValueError("Scene difficulty has already been rolled.")
+
+    game = _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones, keep_hands=True))
+    game, diff = marshal_roll_difficulty(game, seed=seed, zone_name=SCENE_DIFFICULTY_ZONE)
+    if diff.drawn_cards and diff.drawn_cards[0] in {"RJ", "BJ"}:
+        game = _grant_joker_bonus_cards(
+            game,
+            bonus_type="scum" if diff.drawn_cards[0] == "RJ" else "vengeance",
+        )
+
+    scene = _scene(game)
+    card_id = diff.drawn_cards[0] if diff.drawn_cards else None
+    scene["difficulty"] = {
+        "rule_id": diff.rule_id,
+        "base": diff.base,
+        "card_id": card_id,
+        "value": diff.value,
+    }
+    scene["dark_mode"] = bool(any(effect.kind == "DARK_MODE" for effect in diff.effects))
+
+    game = _replace_scene(game, scene=scene)
+    return game, {
+        "rule_id": diff.rule_id,
+        "base": diff.base,
+        "card_id": card_id,
+        "value": diff.value,
+        "effects": [effect.kind for effect in diff.effects],
+    }
+
+
+def _grant_joker_bonus_cards(game: GameState, *, bonus_type: str) -> GameState:
+    if bonus_type not in {"scum", "vengeance"}:
+        raise ValueError("bonus_type must be 'scum' or 'vengeance'.")
+
+    for player_id in _non_marshal_players(game):
+        if not _player_has_character(game, player_id) or _player_is_dead(game, player_id):
+            continue
+        zone_name = f"players.{player_id}.{'scum' if bonus_type == 'scum' else 'vengeance'}"
+        game, _card_id = _draw_to_zone(game, zone_name)
+
+    validate_unique_cards(game)
+    return game
+
+
+def _grant_player_joker_bonus_card(game: GameState, *, player_id: str, bonus_type: str) -> GameState:
+    if bonus_type not in {"scum", "vengeance"}:
+        raise ValueError("bonus_type must be 'scum' or 'vengeance'.")
+    if not _player_has_character(game, player_id) or _player_is_dead(game, player_id):
+        return game
+
+    zone_name = f"players.{player_id}.{'scum' if bonus_type == 'scum' else 'vengeance'}"
+    game, _card_id = _draw_to_zone(game, zone_name)
+    validate_unique_cards(game)
+    return game
+
+
+def _reshuffle_discard_into_draw(game: GameState, *, seed: int | None = None) -> GameState:
+    if game.deck is None:
+        raise ValueError("GameState has no deck.")
+    if not game.deck.discard_pile:
+        return game
+
+    merged_deck = DeckState(
+        version=game.deck.version,
+        schema=game.deck.schema,
+        created_utc=game.deck.created_utc,
+        notes=game.deck.notes,
+        settings=game.deck.settings,
+        draw_pile=game.deck.draw_pile + game.deck.discard_pile,
+        in_play=game.deck.in_play,
+        discard_pile=[],
+        removed=game.deck.removed,
+    )
+    game = GameState(deck=merged_deck, zones=game.zones, meta=game.meta)
+    game = GameState(deck=shuffle_deck(game.deck, seed=seed), zones=game.zones, meta=game.meta)
+    validate_unique_cards(game)
+    return game
+
+
+def scene_draw_azzardo(game: GameState, *, actor_id: str, seed: int | None = None) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use azzardo.")
+    if scene["status"] != SCENE_STATUS_SETUP:
+        raise ValueError("Azzardo can only be drawn while the scene is in setup.")
+    if scene["difficulty"]["card_id"] is None:
+        raise ValueError("Scene difficulty must be rolled before drawing azzardo.")
+    if scene["azzardo"]["status"] != "unavailable":
+        raise ValueError("Azzardo is already set for this scene.")
+    if int(scene["difficulty"]["value"] or 0) >= 21:
+        raise ValueError("Azzardo is not allowed when scene difficulty is already 21 or higher.")
+
+    if seed is not None:
+        if game.deck is None:
+            raise ValueError("GameState has no deck.")
+        game = GameState(deck=shuffle_deck(game.deck, seed=seed), zones=game.zones, meta=game.meta)
+
+    game, card_id = _draw_to_zone(game, SCENE_AZZARDO_ZONE)
+    scene = _scene(game)
+    scene["azzardo"] = {
+        "status": "drawn",
+        "card_id": card_id,
+        "value": _blackjack_value(card_id),
+        "revealed": False,
+    }
+    return _replace_scene(game, scene=scene)
+
+
+def scene_remove_azzardo(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use azzardo.")
+    if scene["status"] != SCENE_STATUS_SETUP:
+        raise ValueError("Azzardo can only be removed while the scene is in setup.")
+    if scene["azzardo"]["status"] != "drawn":
+        raise ValueError("Azzardo must be drawn before it can be removed.")
+    if scene["azzardo"]["revealed"]:
+        raise ValueError("Revealed azzardo cannot be removed.")
+
+    game = _return_zone_card_to_draw_pile(game, SCENE_AZZARDO_ZONE)
+    scene = _scene(game)
+    scene["azzardo"] = default_scene_state()["azzardo"]
+    return _replace_scene(game, scene=scene)
+
+
+def scene_skip_azzardo(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not use azzardo.")
+    if scene["status"] != SCENE_STATUS_SETUP:
+        raise ValueError("Azzardo can only be skipped while the scene is in setup.")
+    if scene["difficulty"]["card_id"] is None:
+        raise ValueError("Scene difficulty must be rolled before skipping azzardo.")
+    if scene["azzardo"]["status"] != "unavailable":
+        raise ValueError("Azzardo is already set for this scene.")
+
+    scene["azzardo"] = {
+        "status": "skipped",
+        "card_id": None,
+        "value": None,
+        "revealed": False,
+    }
+    return _replace_scene(game, scene=scene)
+
+
+def scene_start(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_SETUP:
+        raise ValueError("Scene can only start from setup.")
+    if not scene["participants"]:
+        raise ValueError("Scene requires at least one participant.")
+    if not _is_pvp_duel(scene) and scene["difficulty"]["card_id"] is None:
+        raise ValueError("Scene difficulty must be rolled before starting.")
+    if not _is_pvp_duel(scene) and scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
+        raise ValueError("Azzardo is in an invalid state for starting the scene.")
+    _validate_scene_configuration(scene)
+
+    initiative_order: list[tuple[str, int, int]] = []
+    for original_idx, pid in enumerate(scene["participants"]):
+        zone_name = f"{SCENE_HAND_PREFIX}{pid}"
+        game, drawn_card_id = _draw_to_zone(game, zone_name)
+        if drawn_card_id in {"RJ", "BJ"}:
+            game = _grant_player_joker_bonus_card(
+                game,
+                player_id=pid,
+                bonus_type="scum" if drawn_card_id == "RJ" else "vengeance",
+            )
+        scene = _scene(game)
+        pstate = dict(scene["players"].get(pid) or {})
+        hand_cards = list(game.zones.get(zone_name, []))
+        hand_value = _scene_hand_value(figure_card_id=pstate.get("figure_card_id"), hand_cards=hand_cards)
+        pstate["hand_value"] = hand_value
+        pstate["busted"] = hand_value > 21
+        scene["players"][pid] = pstate
+        initiative_order.append((pid, hand_value, original_idx))
+        game = _replace_scene(game, scene=scene)
+
+    initiative_order.sort(key=lambda item: (-item[1], item[2]))
+
+    scene = _scene(game)
+    scene["participants"] = [pid for pid, _score, _original_idx in initiative_order]
+    scene["status"] = SCENE_STATUS_ACTIVE
+    return _replace_scene(game, scene=scene)
+
+
+def scene_draw_card(game: GameState, *, player_id: str) -> GameState:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        raise ValueError("Scene cards can only be drawn while the scene is active.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can draw scene cards.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if pstate.get("standing"):
+        raise ValueError("Player has already stood.")
+    if scene["status"] == SCENE_STATUS_ACTIVE and pstate.get("busted"):
+        raise ValueError("Player is already busted.")
+
+    zone_name = f"{SCENE_HAND_PREFIX}{player_id}"
+    game, drawn_card_id = _draw_to_zone(game, zone_name)
+    if drawn_card_id in {"RJ", "BJ"}:
+        game = _grant_player_joker_bonus_card(
+            game,
+            player_id=player_id,
+            bonus_type="scum" if drawn_card_id == "RJ" else "vengeance",
+        )
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+
+    hand_cards = list(game.zones.get(zone_name, []))
+    hand_value = _scene_hand_value(figure_card_id=pstate.get("figure_card_id"), hand_cards=hand_cards)
+
+    pstate["hand_value"] = hand_value
+    pstate["busted"] = hand_value > 21
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    return _resolve_scene_if_all_participants_done(game)
+
+
+def scene_stand(game: GameState, *, player_id: str) -> GameState:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        raise ValueError("Players can only stand while the scene is active.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can stand.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if pstate.get("standing"):
+        raise ValueError("Player has already stood.")
+    if pstate.get("busted"):
+        raise ValueError("Player is already busted.")
+
+    pstate["standing"] = True
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    return _resolve_scene_if_all_participants_done(game)
+
+
+def scene_play_scum(game: GameState, *, player_id: str, target_player_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_ACTIVE, SCENE_STATUS_AWAITING_ACK}:
+        raise ValueError("Scum can only be played while the scene is active or awaiting acknowledgement.")
+    if player_id not in _non_marshal_players(game):
+        raise ValueError("Only registered non-marshal players can play Scum.")
+    if not _player_has_character(game, player_id):
+        raise ValueError("Player must have a character to play Scum.")
+    if target_player_id not in scene["participants"]:
+        raise ValueError("Scum target must be a scene participant.")
+    if target_player_id == player_id:
+        raise ValueError("Scum must target another participant.")
+    if scene["status"] == SCENE_STATUS_ACTIVE and player_id in scene["participants"] and _active_scene_player_id(scene) != player_id:
+        raise ValueError("Only the active participant can play Scum.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if scene["status"] == SCENE_STATUS_ACTIVE and player_id in scene["participants"] and pstate.get("standing"):
+        raise ValueError("Player has already stood.")
+    if scene["status"] == SCENE_STATUS_ACTIVE and player_id in scene["participants"] and pstate.get("busted"):
+        raise ValueError("Player is already busted.")
+    if scene["status"] == SCENE_STATUS_AWAITING_ACK and player_id in scene["participants"] and pstate.get("acknowledged"):
+        raise ValueError("Player has already acknowledged the resolved scene.")
+
+    target_state = dict(scene["players"].get(target_player_id) or {})
+    if target_state.get("busted"):
+        raise ValueError("Busted participants cannot be targeted with Scum.")
+    if scene["status"] == SCENE_STATUS_ACTIVE and target_state.get("resolved"):
+        raise ValueError("Resolved participants cannot be targeted with Scum.")
+
+    scum_zone = f"players.{player_id}.scum"
+    scum_cards = list(game.zones.get(scum_zone, []))
+    if not scum_cards:
+        raise ValueError("Player has no Scum cards to play.")
+
+    scum_card_id = scum_cards[-1]
+    source_figure_card_id = pstate.get("figure_card_id") or _player_character_card_id(game, player_id)
+    modifier = -2 if _card_suit(scum_card_id) == _card_suit(source_figure_card_id) else -1
+
+    game = _move_zone_top_card_to_zone(game, scum_zone, f"{SCENE_SCUM_MOD_PREFIX}{target_player_id}")
+    scene = _scene(game)
+    target_state = dict(scene["players"].get(target_player_id) or {})
+    target_state["hand_value"] = int(target_state.get("hand_value") or 0) + modifier
+    target_state["modifier_total"] = int(target_state.get("modifier_total") or 0) + modifier
+    target_state["scum_mod_cards"] = list(target_state.get("scum_mod_cards") or []) + [scum_card_id]
+    scene["players"][target_player_id] = target_state
+    game = _replace_scene(game, scene=scene)
+    if scene["status"] == SCENE_STATUS_AWAITING_ACK:
+        game = _refresh_scene_resolution_preview(game, reset_acknowledgements=True)
+        game = _auto_acknowledge_if_no_post_resolution_actions(game)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "target_player_id": target_player_id,
+        "scum_card_id": scum_card_id,
+        "modifier": modifier,
+        "target_total": target_state["hand_value"],
+    }
+
+
+def scene_play_vengeance(game: GameState, *, player_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_ACTIVE, SCENE_STATUS_AWAITING_ACK}:
+        raise ValueError("Vengeance can only be played while the scene is active or awaiting acknowledgement.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can play Vengeance.")
+    if scene["status"] == SCENE_STATUS_ACTIVE and _active_scene_player_id(scene) != player_id:
+        raise ValueError("Only the active participant can play Vengeance.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if scene["status"] == SCENE_STATUS_ACTIVE and pstate.get("standing"):
+        raise ValueError("Player has already stood.")
+    if pstate.get("busted"):
+        raise ValueError("Player is already busted.")
+    if scene["status"] == SCENE_STATUS_AWAITING_ACK and pstate.get("acknowledged"):
+        raise ValueError("Player has already acknowledged the resolved scene.")
+
+    vengeance_zone = f"players.{player_id}.vengeance"
+    vengeance_cards = list(game.zones.get(vengeance_zone, []))
+    if not vengeance_cards:
+        raise ValueError("Player has no Vengeance cards to play.")
+
+    vengeance_card_id = vengeance_cards[-1]
+    modifier = 2 if _card_suit(vengeance_card_id) == _card_suit(pstate.get("figure_card_id")) else 1
+
+    game = _move_zone_top_card_to_zone(game, vengeance_zone, f"{SCENE_VENGEANCE_MOD_PREFIX}{player_id}")
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pstate["hand_value"] = int(pstate.get("hand_value") or 0) + modifier
+    pstate["modifier_total"] = int(pstate.get("modifier_total") or 0) + modifier
+    pstate["vengeance_mod_cards"] = list(pstate.get("vengeance_mod_cards") or []) + [vengeance_card_id]
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    if scene["status"] == SCENE_STATUS_AWAITING_ACK:
+        game = _refresh_scene_resolution_preview(game, reset_acknowledgements=True)
+        game = _auto_acknowledge_if_no_post_resolution_actions(game)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "vengeance_card_id": vengeance_card_id,
+        "modifier": modifier,
+        "target_total": pstate["hand_value"],
+    }
+
+
+def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        raise ValueError("Scene can only be resolved while active.")
+
+    unresolved = [
+        pid
+        for pid in scene["participants"]
+        if not bool((scene["players"].get(pid) or {}).get("standing"))
+        and not bool((scene["players"].get(pid) or {}).get("busted"))
+    ]
+    if unresolved:
+        raise ValueError(f"All participants must stand or bust before resolution: {', '.join(unresolved)}")
+
+    if _is_pvp_duel(scene):
+        return _resolve_pvp_duel_scene(game, actor_id=actor_id)
+
+    azzardo = dict(scene["azzardo"])
+    if azzardo["status"] == "drawn":
+        azzardo["revealed"] = True
+
+    effective_difficulty = int(scene["difficulty"]["value"])
+    if azzardo["status"] == "drawn":
+        effective_difficulty += int(azzardo["value"])
+    marshal_busted = effective_difficulty > 21
+
+    winners: list[str] = []
+    losers: list[str] = []
+
+    for pid in scene["participants"]:
+        pstate = dict(scene["players"].get(pid) or {})
+        pstate["resolved"] = True
+        pstate["acknowledged"] = False
+        pstate["wounds_gained"] = 0
+        pstate["reward_gained"] = False
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
+
+        if marshal_busted:
+            if pstate.get("busted"):
+                pstate["result"] = "bust"
+                pstate["wounds_gained"] = 0
+                losers.append(pid)
+            else:
+                pstate["result"] = "success"
+                pstate["reward_gained"] = True
+                winners.append(pid)
+        elif pstate.get("busted"):
+            pstate["result"] = "bust"
+            pstate["wounds_gained"] = 1
+            losers.append(pid)
+        elif int(pstate.get("hand_value", 0)) >= effective_difficulty:
+            pstate["result"] = "success"
+            pstate["reward_gained"] = True
+            winners.append(pid)
+        else:
+            pstate["result"] = "failure"
+            losers.append(pid)
+
+        scene = _scene(game)
+        scene["players"][pid] = pstate
+        game = _replace_scene(game, scene=scene)
+
+    scene = _scene(game)
+    scene["azzardo"] = azzardo
+    scene["resolution"] = {
+        "completed": True,
+        "winners": winners,
+        "losers": losers,
+        "message": None,
+    }
+    scene["status"] = SCENE_STATUS_AWAITING_ACK
+    game = _replace_scene(game, scene=scene)
+    game = _refresh_scene_resolution_preview(game, reset_acknowledgements=False)
+    game = _auto_acknowledge_if_no_post_resolution_actions(game)
+    validate_unique_cards(game)
+    return game
+
+
+def scene_acknowledge_resolution(game: GameState, *, player_id: str) -> GameState:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_AWAITING_ACK:
+        raise ValueError("Scene acknowledgement is only allowed after resolution and before cleanup.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can acknowledge the scene result.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if not pstate.get("resolved"):
+        raise ValueError("Player cannot acknowledge before their scene result is resolved.")
+    if pstate.get("acknowledged"):
+        raise ValueError("Player has already acknowledged the resolved scene.")
+
+    return _acknowledge_scene_player(game, player_id=player_id)
+
+
+def scene_force_acknowledge_resolution(game: GameState, *, actor_id: str, player_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_AWAITING_ACK:
+        raise ValueError("Force acknowledgement is only allowed after resolution and before cleanup.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can be force acknowledged.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if not pstate.get("resolved"):
+        raise ValueError("Player cannot be force acknowledged before their scene result is resolved.")
+    if pstate.get("acknowledged"):
+        raise ValueError("Player has already acknowledged the resolved scene.")
+
+    return _acknowledge_scene_player(game, player_id=player_id)
+
+
+def _resolve_scene_if_all_participants_done(game: GameState) -> GameState:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        return game
+    if _is_pvp_duel(scene) and any(bool((scene["players"].get(pid) or {}).get("busted")) for pid in scene["participants"]):
+        marshal_id = (game.meta or {}).get("marshal_id")
+        if not isinstance(marshal_id, str) or not marshal_id:
+            raise ValueError("Scene cannot auto-resolve without a marshal_id.")
+        return scene_resolve(game, actor_id=marshal_id)
+
+    unresolved = [
+        pid
+        for pid in scene["participants"]
+        if not bool((scene["players"].get(pid) or {}).get("standing"))
+        and not bool((scene["players"].get(pid) or {}).get("busted"))
+    ]
+    if unresolved:
+        return game
+
+    marshal_id = (game.meta or {}).get("marshal_id")
+    if not isinstance(marshal_id, str) or not marshal_id:
+        raise ValueError("Scene cannot auto-resolve without a marshal_id.")
+
+    return scene_resolve(game, actor_id=marshal_id)
+
+
+def _acknowledge_scene_player(game: GameState, *, player_id: str) -> GameState:
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pstate["acknowledged"] = True
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+
+    scene = _scene(game)
+    all_acknowledged = all(
+        bool((scene["players"].get(pid) or {}).get("acknowledged"))
+        for pid in scene["participants"]
+    )
+    if not all_acknowledged:
+        return game
+
+    scene["status"] = SCENE_STATUS_RESOLVED
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game
+
+
+def _has_post_resolution_reaction_options(game: GameState) -> bool:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_AWAITING_ACK:
+        return False
+
+    targetable_participants = [
+        pid
+        for pid in scene["participants"]
+        if not bool((scene["players"].get(pid) or {}).get("busted"))
+    ]
+
+    if targetable_participants:
+        for player_id in _non_marshal_players(game):
+            if not _player_has_character(game, player_id):
+                continue
+            if list(game.zones.get(f"players.{player_id}.scum", [])):
+                if any(target_pid != player_id for target_pid in targetable_participants):
+                    pstate = dict(scene["players"].get(player_id) or {})
+                    if player_id not in scene["participants"] or not pstate.get("acknowledged"):
+                        return True
+
+    for player_id in scene["participants"]:
+        pstate = dict(scene["players"].get(player_id) or {})
+        if pstate.get("busted") or pstate.get("acknowledged"):
+            continue
+        if list(game.zones.get(f"players.{player_id}.vengeance", [])):
+            return True
+
+    return False
+
+
+def _auto_acknowledge_if_no_post_resolution_actions(game: GameState) -> GameState:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_AWAITING_ACK:
+        return game
+    if _has_post_resolution_reaction_options(game):
+        return game
+
+    players = dict(scene["players"])
+    for pid in scene["participants"]:
+        pstate = dict(players.get(pid) or {})
+        pstate["acknowledged"] = True
+        players[pid] = pstate
+
+    scene["players"] = players
+    scene["status"] = SCENE_STATUS_RESOLVED
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game
+
+
+def _get_persistent_wounds(game: GameState, player_id: str) -> int:
+    pdata = dict(((game.meta or {}).get("players") or {}).get(player_id) or {})
+    return int(pdata.get("wounds", 0) or 0)
+
+
+def _get_post_scene_wounds(game: GameState, player_id: str) -> int:
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pending_wounds = (
+        int(pstate.get("wounds_gained", 0) or 0)
+        if scene["status"] in {SCENE_STATUS_RESOLVED, SCENE_STATUS_CLOSED}
+        else 0
+    )
+    return _get_persistent_wounds(game, player_id) + pending_wounds
+
+
+def _must_heal_or_skip(game: GameState, player_id: str) -> bool:
+    if dict((game.meta or {}).get("endgame") or {}).get("active"):
+        return False
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        return False
+    if player_id not in scene["participants"]:
+        return False
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    if pstate.get("recovery_action") in {"healed", "skipped"}:
+        return False
+
+    post_scene_wounds = _get_post_scene_wounds(game, player_id)
+    reward_points = sum(reward_card_points(card_id) for card_id in list(game.zones.get(f"players.{player_id}.rewards", [])))
+    return post_scene_wounds == 1 and reward_points > 11
+
+
+def _must_discard_rewards(game: GameState, player_id: str) -> bool:
+    if dict((game.meta or {}).get("endgame") or {}).get("active"):
+        return False
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        return False
+    if player_id not in scene["participants"]:
+        return False
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    reward_points = sum(reward_card_points(card_id) for card_id in list(game.zones.get(f"players.{player_id}.rewards", [])))
+    threshold = 20 if pstate.get("reward_discard_started") else 21
+    return reward_points > threshold
+
+
+def _has_pending_post_scene_requirements(game: GameState) -> bool:
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        return False
+
+    for player_id in scene["participants"]:
+        if _must_heal_or_skip(game, player_id) or _must_discard_rewards(game, player_id):
+            return True
+    return False
+
+
+def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements: bool) -> GameState:
+    scene = _scene(game)
+    if _is_pvp_duel(scene):
+        return _refresh_pvp_duel_resolution_preview(game, reset_acknowledgements=reset_acknowledgements)
+
+    effective_difficulty = int(scene["difficulty"]["value"])
+    azzardo = dict(scene["azzardo"])
+    if azzardo["status"] == "drawn":
+        effective_difficulty += int(azzardo["value"])
+    marshal_busted = effective_difficulty > 21
+
+    winners: list[str] = []
+    losers: list[str] = []
+    players = dict(scene["players"])
+
+    for pid in scene["participants"]:
+        pstate = dict(players.get(pid) or {})
+        hand_value = int(pstate.get("hand_value") or 0)
+        busted = hand_value > 21
+        pstate["busted"] = busted
+        pstate["resolved"] = True
+        pstate["wounds_gained"] = 0 if marshal_busted else 1 if busted else 0
+        pstate["reward_gained"] = (not busted) if marshal_busted else (not busted and hand_value >= effective_difficulty)
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
+        if reset_acknowledgements:
+            pstate["acknowledged"] = False
+
+        if marshal_busted:
+            if busted:
+                pstate["result"] = "bust"
+                losers.append(pid)
+            else:
+                pstate["result"] = "success"
+                winners.append(pid)
+        elif busted:
+            pstate["result"] = "bust"
+            losers.append(pid)
+        elif pstate["reward_gained"]:
+            pstate["result"] = "success"
+            winners.append(pid)
+        else:
+            pstate["result"] = "failure"
+            losers.append(pid)
+
+        players[pid] = pstate
+
+    scene["players"] = players
+    scene["resolution"] = {
+        "completed": True,
+        "winners": winners,
+        "losers": losers,
+        "message": None,
+    }
+    return _replace_scene(game, scene=scene)
+
+
+def _grant_resolved_scene_rewards(game: GameState) -> GameState:
+    scene = _scene(game)
+    if scene.get("deck_exhausted"):
+        return game
+    for pid in scene["participants"]:
+        pstate = dict(scene["players"].get(pid) or {})
+        if pstate.get("reward_gained"):
+            game, _reward_card = _draw_to_zone(game, f"players.{pid}.rewards")
+    return game
+
+
+def _apply_pending_scene_wounds(game: GameState) -> GameState:
+    scene = _scene(game)
+    updated_players = dict(scene["players"])
+
+    for pid in scene["participants"]:
+        pstate = dict(updated_players.get(pid) or {})
+        pending_wounds = int(pstate.get("wounds_gained", 0) or 0)
+        if pending_wounds <= 0:
+            continue
+        game = _increment_player_wounds(game, pid, pending_wounds)
+        pstate["wounds_gained"] = 0
+        updated_players[pid] = pstate
+
+    scene = _scene(game)
+    scene["players"] = updated_players
+    return _replace_scene(game, scene=scene)
+
+
+def _reward_points_for_player(game: GameState, player_id: str) -> int:
+    return sum(reward_card_points(card_id) for card_id in list(game.zones.get(f"players.{player_id}.rewards", [])))
+
+
+def _player_display_name(game: GameState, player_id: str) -> str:
+    lobby_players = dict(((game.meta or {}).get("lobby") or {}).get("players") or {})
+    pstate = dict(lobby_players.get(player_id) or {})
+    return str(pstate.get("chosen_name") or pstate.get("summary_text") or player_id)
+
+
+def _set_victory(game: GameState, *, winner: str, winner_label: str, reason: str) -> GameState:
+    meta = dict(game.meta or {})
+    meta["phase"] = "victory"
+    meta["victory"] = {
+        "winner": winner,
+        "winner_label": winner_label,
+        "reason": reason,
+    }
+    validate_unique_cards(game)
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+
+def _set_marshal_victory(game: GameState) -> GameState:
+    return _set_victory(
+        game,
+        winner="marshal",
+        winner_label="Marshal",
+        reason="All players are dead.",
+    )
+
+
+def _player_is_standing_after_scene(game: GameState, player_id: str) -> bool:
+    return _get_post_scene_wounds(game, player_id) < 2
+
+
+def _order_contenders_for_endgame(
+    game: GameState,
+    *,
+    contender_ids: list[str],
+    preferred_order: list[str],
+) -> list[str]:
+    contender_set = set(contender_ids)
+    ordered: list[str] = []
+
+    for pid in preferred_order:
+        if pid in contender_set and pid not in ordered:
+            ordered.append(pid)
+
+    for pid in _non_marshal_players(game):
+        if pid in contender_set and pid not in ordered:
+            ordered.append(pid)
+
+    return ordered
+
+
+def _start_sudden_death(
+    game: GameState,
+    *,
+    contender_ids: list[str],
+    preferred_order: list[str],
+    reason: str,
+) -> GameState:
+    ordered_contenders = _order_contenders_for_endgame(
+        game,
+        contender_ids=contender_ids,
+        preferred_order=preferred_order,
+    )
+    if len(ordered_contenders) < 2:
+        raise ValueError("Sudden death requires at least two contenders.")
+
+    if (
+        "deck was exhausted" in reason.lower()
+        and game.deck is not None
+        and not game.deck.draw_pile
+        and game.deck.discard_pile
+    ):
+        game = _reshuffle_discard_into_draw(game)
+
+    meta = dict(game.meta or {})
+    meta["endgame"] = {
+        "active": True,
+        "kind": "sudden_death",
+        "reason": reason,
+        "contenders": ordered_contenders,
+        "champion": ordered_contenders[0],
+        "cursor": 1,
+    }
+    validate_unique_cards(game)
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+
+def _resolve_scene_endgame(game: GameState) -> GameState:
+    meta = dict(game.meta or {})
+    endgame = dict(meta.get("endgame") or {})
+    if endgame.get("active"):
+        return game
+
+    scene = _scene(game)
+    active_players = [
+        pid
+        for pid in _non_marshal_players(game)
+        if _player_has_character(game, pid) and _player_is_standing_after_scene(game, pid)
+    ]
+    if not active_players:
+        return game
+
+    exact_twenty_one_players = [pid for pid in active_players if _reward_points_for_player(game, pid) == 21]
+    if exact_twenty_one_players:
+        if len(exact_twenty_one_players) == 1:
+            winner_id = exact_twenty_one_players[0]
+            return _set_victory(
+                game,
+                winner=winner_id,
+                winner_label=_player_display_name(game, winner_id),
+                reason="Reached exactly 21 reward points.",
+            )
+        return _start_sudden_death(
+            game,
+            contender_ids=exact_twenty_one_players,
+            preferred_order=list(scene.get("participants") or []),
+            reason="Multiple players reached exactly 21 reward points.",
+        )
+
+    if not scene.get("deck_exhausted"):
+        return game
+
+    reward_points = {pid: _reward_points_for_player(game, pid) for pid in active_players}
+    top_points = max(reward_points.values(), default=0)
+    leaders = [pid for pid in active_players if reward_points.get(pid, 0) == top_points]
+    if len(leaders) == 1:
+        winner_id = leaders[0]
+        return _set_victory(
+            game,
+            winner=winner_id,
+            winner_label=_player_display_name(game, winner_id),
+            reason="Won with the most reward points after the deck was exhausted.",
+        )
+    return _start_sudden_death(
+        game,
+        contender_ids=leaders,
+        preferred_order=list(scene.get("deck_exhausted_participants") or scene.get("participants") or []),
+        reason="The deck was exhausted with a tie for the most reward points.",
+    )
+
+
+def _prepare_next_sudden_death_scene(game: GameState) -> GameState:
+    meta = dict(game.meta or {})
+    endgame = dict(meta.get("endgame") or {})
+    if not endgame.get("active"):
+        return game
+    final_reason = (
+        "Won the sudden-death duels after a tie at 21 reward points."
+        if endgame.get("reason") == "Multiple players reached exactly 21 reward points."
+        else "Won the sudden-death duels after the deck was exhausted."
+    )
+
+    scene = _scene(game)
+    winners = [pid for pid in dict(scene.get("resolution") or {}).get("winners") or [] if isinstance(pid, str)]
+    if winners:
+        endgame["champion"] = winners[0]
+
+    contenders = [pid for pid in endgame.get("contenders", []) if isinstance(pid, str)]
+    alive_contenders = [pid for pid in contenders if _player_has_character(game, pid) and not _player_is_dead(game, pid)]
+    if len(alive_contenders) == 1:
+        meta.pop("endgame", None)
+        game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+        winner_id = alive_contenders[0]
+        return _set_victory(
+            game,
+            winner=winner_id,
+            winner_label=_player_display_name(game, winner_id),
+            reason=final_reason,
+        )
+
+    champion = endgame.get("champion")
+    if champion not in alive_contenders:
+        champion = alive_contenders[0]
+
+    cursor = int(endgame.get("cursor", 1) or 1)
+    challenger: str | None = None
+    challenger_index = cursor
+    for idx in range(cursor, len(contenders)):
+        pid = contenders[idx]
+        if pid != champion and pid in alive_contenders:
+            challenger = pid
+            challenger_index = idx
+            break
+    if challenger is None:
+        for idx, pid in enumerate(contenders):
+            if pid != champion and pid in alive_contenders:
+                challenger = pid
+                challenger_index = idx
+                break
+    if challenger is None:
+        meta.pop("endgame", None)
+        game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+        return _set_victory(
+            game,
+            winner=champion,
+            winner_label=_player_display_name(game, champion),
+            reason=final_reason,
+        )
+
+    endgame["champion"] = champion
+    endgame["cursor"] = challenger_index + 1
+    meta["endgame"] = endgame
+    game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+    if game.deck is not None and not game.deck.draw_pile and game.deck.discard_pile:
+        game = _reshuffle_discard_into_draw(game)
+
+    next_scene = default_scene_state()
+    next_scene["status"] = SCENE_STATUS_SETUP
+    next_scene["mode"] = SCENE_MODE_DUEL
+    next_scene["duel"] = {
+        "subtype": SCENE_DUEL_SUBTYPE_PVP,
+        "sudden_death": True,
+    }
+    next_scene["participants"] = [champion, challenger]
+    next_scene["players"] = {
+        champion: _default_scene_player(game, champion),
+        challenger: _default_scene_player(game, challenger),
+    }
+    return _replace_scene(game, scene=next_scene, zones=_reset_scene_zones(game.zones))
+
+
+def scene_close(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        raise ValueError("A scene can only be closed after the previous one is fully acknowledged.")
+
+    game = _grant_resolved_scene_rewards(game)
+    if _is_pvp_duel(scene):
+        game = _discard_pvp_duel_play_zones(game)
+    else:
+        game = _discard_scene_play_zones(game)
+
+    scene = _scene(game)
+    scene["status"] = SCENE_STATUS_CLOSED
+    game = _replace_scene(game, scene=scene)
+    game = _resolve_scene_endgame(game)
+    validate_unique_cards(game)
+    return game
+
+
+def scene_new(game: GameState, *, actor_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("A new scene can only be started after the previous one is closed.")
+    if not dict((game.meta or {}).get("endgame") or {}).get("active") and _has_pending_post_scene_requirements(game):
+        raise ValueError("All required heal/skip and reward discard decisions must be resolved before starting a new scene.")
+
+    game = _apply_pending_scene_wounds(game)
+    if _all_non_marshal_players_dead(game):
+        return _set_marshal_victory(game)
+
+    if dict((game.meta or {}).get("endgame") or {}).get("active"):
+        return _prepare_next_sudden_death_scene(game)
+
+    preserved_difficulty = dict(scene.get("difficulty") or {})
+    preserved_azzardo = dict(scene.get("azzardo") or {})
+    if _is_pvp_duel(scene):
+        game = _discard_pvp_duel_play_zones(game)
+        scene = default_scene_state()
+        scene["status"] = SCENE_STATUS_SETUP
+        scene["difficulty"] = preserved_difficulty
+        scene["azzardo"] = preserved_azzardo
+        return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones, keep_setup_cards=True))
+
+    game = _discard_scene_play_zones(game)
+    scene = default_scene_state()
+    scene["status"] = SCENE_STATUS_SETUP
+    return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones))
+
+
+def scene_skip_heal(game: GameState, *, player_id: str) -> GameState:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Healing choices are only available after the scene is closed.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can choose to heal or skip.")
+    if not _must_heal_or_skip(game, player_id):
+        raise ValueError("Player does not currently need to heal or skip.")
+
+    pstate = dict(scene["players"].get(player_id) or {})
+    pstate["recovery_action"] = "skipped"
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game
+
+
+def scene_force_skip_heal(game: GameState, *, actor_id: str, player_id: str) -> GameState:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+    return scene_skip_heal(game, player_id=player_id)
+
+
+def scene_heal_wound(game: GameState, *, player_id: str, reward_card_ids: list[str]) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Healing is only available after the scene is closed.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can heal wounds.")
+    if not _must_heal_or_skip(game, player_id):
+        raise ValueError("Player does not currently need to heal or skip.")
+    if not reward_card_ids or not all(isinstance(card_id, str) and card_id for card_id in reward_card_ids):
+        raise ValueError("reward_card_ids must contain at least one reward card id.")
+
+    reward_zone_name = f"players.{player_id}.rewards"
+    reward_zone_cards = list(game.zones.get(reward_zone_name, []))
+    if not reward_zone_cards:
+        raise ValueError("Player has no reward cards available to spend on healing.")
+
+    selected_card_ids = reward_card_ids.copy()
+    zone_counts: dict[str, int] = {}
+    for card_id in reward_zone_cards:
+        zone_counts[card_id] = zone_counts.get(card_id, 0) + 1
+
+    for card_id in selected_card_ids:
+        available = zone_counts.get(card_id, 0)
+        if available <= 0:
+            raise ValueError("Selected reward cards must all belong to the player.")
+        zone_counts[card_id] = available - 1
+
+    total_points = sum(reward_card_points(card_id) for card_id in selected_card_ids)
+    if total_points < 11:
+        raise ValueError("Selected reward cards must sum to at least 11 points to heal.")
+
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    remaining_to_remove = selected_card_ids.copy()
+    updated_reward_zone: list[CardID] = []
+    for card_id in reward_zone_cards:
+        if card_id in remaining_to_remove:
+            remaining_to_remove.remove(card_id)
+            continue
+        updated_reward_zone.append(card_id)
+    zones[reward_zone_name] = updated_reward_zone
+
+    deck = game.deck
+    if deck is None:
+        raise ValueError("GameState has no deck.")
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile,
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile + selected_card_ids,
+        removed=deck.removed,
+    )
+    game = GameState(deck=new_deck, zones=zones, meta=game.meta)
+
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pending_wounds = int(pstate.get("wounds_gained", 0) or 0)
+    if pending_wounds > 0:
+        pstate["wounds_gained"] = pending_wounds - 1
+    else:
+        meta = dict(game.meta or {})
+        players = dict(meta.get("players") or {})
+        pdata = dict(players.get(player_id) or {})
+        pdata["wounds"] = max(0, int(pdata.get("wounds", 0) or 0) - 1)
+        players[player_id] = pdata
+        meta["players"] = players
+        game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+        scene = _scene(game)
+        pstate = dict(scene["players"].get(player_id) or {})
+
+    pstate["recovery_action"] = "healed"
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "reward_card_ids": selected_card_ids,
+        "reward_points_spent": total_points,
+    }
+
+
+def scene_discard_reward(game: GameState, *, player_id: str, reward_card_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Reward discard is only available after the scene is closed.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can discard reward cards.")
+    if not _must_discard_rewards(game, player_id):
+        raise ValueError("Player does not currently need to discard reward cards.")
+
+    reward_zone_name = f"players.{player_id}.rewards"
+    reward_zone_cards = list(game.zones.get(reward_zone_name, []))
+    if reward_card_id not in reward_zone_cards:
+        raise ValueError("Selected reward card must belong to the player.")
+
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    updated_reward_zone = list(reward_zone_cards)
+    updated_reward_zone.remove(reward_card_id)
+    zones[reward_zone_name] = updated_reward_zone
+
+    deck = game.deck
+    if deck is None:
+        raise ValueError("GameState has no deck.")
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile,
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile + [reward_card_id],
+        removed=deck.removed,
+    )
+    game = GameState(deck=new_deck, zones=zones, meta=game.meta)
+
+    remaining_points = sum(reward_card_points(card_id) for card_id in updated_reward_zone)
+    scene = _scene(game)
+    pstate = dict(scene["players"].get(player_id) or {})
+    pstate["reward_discard_started"] = remaining_points > 20
+    scene["players"][player_id] = pstate
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "reward_card_id": reward_card_id,
+        "remaining_reward_points": remaining_points,
+    }
+
+
+def scene_force_discard_rewards(game: GameState, *, actor_id: str, player_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    discarded_reward_card_ids: list[str] = []
+
+    while _must_discard_rewards(game, player_id):
+        reward_zone_cards = list(game.zones.get(f"players.{player_id}.rewards", []))
+        if not reward_zone_cards:
+            raise ValueError("Player has no reward cards available to discard.")
+
+        indexed_cards = list(enumerate(reward_zone_cards))
+        indexed_cards.sort(
+            key=lambda entry: (
+                -reward_card_points(entry[1]),
+                -entry[0],
+            )
+        )
+        chosen_reward_card_id = indexed_cards[0][1]
+        game, _discard_result = scene_discard_reward(
+            game,
+            player_id=player_id,
+            reward_card_id=chosen_reward_card_id,
+        )
+        discarded_reward_card_ids.append(chosen_reward_card_id)
+
+    remaining_reward_points = sum(
+        reward_card_points(card_id)
+        for card_id in list(game.zones.get(f"players.{player_id}.rewards", []))
+    )
+
+    return game, {
+        "player_id": player_id,
+        "discarded_reward_card_ids": discarded_reward_card_ids,
+        "remaining_reward_points": remaining_reward_points,
+    }
+
+
+def scene_assign_bonus_card(
+    game: GameState,
+    *,
+    actor_id: str,
+    player_id: str,
+    bonus_type: str,
+) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_RESOLVED:
+        raise ValueError("Bonus Scum/Vengeance cards can only be assigned after the scene is fully acknowledged and before it is closed.")
+    if player_id not in _non_marshal_players(game):
+        raise ValueError("Bonus cards can only be assigned to registered non-marshal players.")
+    if _player_is_dead(game, player_id):
+        raise ValueError("Dead characters cannot receive Marshal bonus cards.")
+    if bonus_type not in {"scum", "vengeance"}:
+        raise ValueError("bonus_type must be 'scum' or 'vengeance'.")
+
+    bonus_assignments = dict(scene.get("bonus_assignments") or {})
+    if bonus_assignments.get(player_id):
+        raise ValueError("Each player can receive at most one Marshal bonus card per scene.")
+
+    zone_name = f"players.{player_id}.{'scum' if bonus_type == 'scum' else 'vengeance'}"
+    game, card_id = _draw_to_zone(game, zone_name)
+    scene = _scene(game)
+    bonus_assignments = dict(scene.get("bonus_assignments") or {})
+    bonus_assignments[player_id] = bonus_type
+    scene["bonus_assignments"] = bonus_assignments
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "bonus_type": bonus_type,
+        "card_id": card_id,
+    }
+
+
+def _default_scene_player(game: GameState, player_id: str) -> dict[str, Any]:
+    figure_zone = list(game.zones.get(f"players.{player_id}.character", []))
+    if len(figure_zone) != 1:
+        raise ValueError(f"Player '{player_id}' must have exactly one character card.")
+
+    figure_card_id = figure_zone[0]
+    figure_value = _blackjack_value(figure_card_id)
+    return {
+        "figure_card_id": figure_card_id,
+        "figure_value": figure_value,
+        "hand_value": figure_value,
+        "scum_mod_cards": [],
+        "vengeance_mod_cards": [],
+        "modifier_total": 0,
+        "standing": False,
+        "busted": False,
+        "resolved": False,
+        "acknowledged": False,
+        "wounds_gained": 0,
+        "reward_gained": False,
+        "result": None,
+        "recovery_action": None,
+        "reward_discard_started": False,
+    }
+
+
+def _mark_scene_deck_exhausted_if_needed(game: GameState) -> GameState:
+    if game.deck is None or game.deck.draw_pile:
+        return game
+
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_SETUP, SCENE_STATUS_ACTIVE}:
+        return game
+    if scene.get("deck_exhausted"):
+        return game
+
+    scene["deck_exhausted"] = True
+    scene["deck_exhausted_participants"] = list(scene.get("participants") or [])
+    return _replace_scene(game, scene=scene)
+
+
+def _active_scene_player_id(scene: dict[str, Any]) -> str | None:
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        return None
+    for pid in scene["participants"]:
+        pstate = dict(scene["players"].get(pid) or {})
+        if not pstate.get("standing") and not pstate.get("busted") and not pstate.get("resolved"):
+            return pid
+    return None
+
+
+def _ensure_scene_setup(game: GameState) -> GameState:
+    scene = _scene(game)
+    if scene["status"] == SCENE_STATUS_IDLE:
+        return _start_clean_setup(game)
+    if scene["status"] == SCENE_STATUS_SETUP:
+        return game
+    if scene["status"] == SCENE_STATUS_AWAITING_ACK:
+        raise ValueError("Resolved scenes must be acknowledged by all participants before setup can continue.")
+    if scene["status"] == SCENE_STATUS_RESOLVED:
+        raise ValueError("Resolved scenes must be closed before setup can continue.")
+    if scene["status"] == SCENE_STATUS_CLOSED:
+        raise ValueError("Resolved scenes must be reset with scene_set_participants before setup can continue.")
+    raise ValueError("Scene setup is locked after the scene has started.")
+
+
+def _start_clean_setup(game: GameState) -> GameState:
+    scene = default_scene_state()
+    scene["status"] = SCENE_STATUS_SETUP
+    return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones))
+
+
+
+
+def _replace_scene(game: GameState, *, scene: dict[str, Any], zones: dict[str, list[CardID]] | None = None) -> GameState:
+    meta = dict(game.meta or {})
+    meta["scene"] = _normalized_scene(scene)
+    return GameState(deck=game.deck, zones=game.zones if zones is None else zones, meta=meta)
+
+
+def _increment_player_wounds(game: GameState, player_id: str, amount: int) -> GameState:
+    if amount <= 0:
+        return game
+
+    meta = dict(game.meta or {})
+    players = dict(meta.get("players") or {})
+    pdata = dict(players.get(player_id) or {})
+    pdata["wounds"] = int(pdata.get("wounds", 0) or 0) + amount
+    players[player_id] = pdata
+    meta["players"] = players
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+
+def _scene(game: GameState) -> dict[str, Any]:
+    return _normalized_scene((game.meta or {}).get("scene"))
+
+
+def _validate_scene_configuration(scene: dict[str, Any]) -> None:
+    mode = scene.get("mode")
+    duel_subtype = dict(scene.get("duel") or {}).get("subtype")
+    participant_count = len(scene.get("participants") or [])
+
+    if mode != SCENE_MODE_DUEL:
+        return
+    if duel_subtype == SCENE_DUEL_SUBTYPE_NPC and participant_count != 1:
+        raise ValueError("NPC duels require exactly one player participant.")
+    if duel_subtype == SCENE_DUEL_SUBTYPE_PVP and participant_count != 2:
+        raise ValueError("PVP duels require exactly two player participants.")
+    if duel_subtype not in {SCENE_DUEL_SUBTYPE_NPC, SCENE_DUEL_SUBTYPE_PVP}:
+        raise ValueError("Duel scenes require a valid duel subtype.")
+
+
+def _is_pvp_duel(scene: dict[str, Any]) -> bool:
+    return scene.get("mode") == SCENE_MODE_DUEL and dict(scene.get("duel") or {}).get("subtype") == SCENE_DUEL_SUBTYPE_PVP
+
+
+def _is_sudden_death_pvp_duel(scene: dict[str, Any]) -> bool:
+    return _is_pvp_duel(scene) and bool(dict(scene.get("duel") or {}).get("sudden_death"))
+
+
+def _pvp_duel_outcome(scene: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    participant_ids = list(scene.get("participants") or [])
+    if len(participant_ids) != 2:
+        raise ValueError("PVP duel scenes require exactly two participants.")
+
+    p1, p2 = participant_ids
+    p1_state = dict(scene["players"].get(p1) or {})
+    p2_state = dict(scene["players"].get(p2) or {})
+    p1_total = int(p1_state.get("hand_value") or 0)
+    p2_total = int(p2_state.get("hand_value") or 0)
+    p1_busted = bool(p1_state.get("busted")) or p1_total > 21
+    p2_busted = bool(p2_state.get("busted")) or p2_total > 21
+
+    if p1_busted and p2_busted:
+        return "rematch", {"message": None}
+    if p1_busted and not p2_busted:
+        return "resolved", {"winner": p2, "loser": p1, "message": None}
+    if p2_busted and not p1_busted:
+        return "resolved", {"winner": p1, "loser": p2, "message": None}
+
+    p1_distance = 21 - p1_total
+    p2_distance = 21 - p2_total
+    if p1_distance < p2_distance:
+        return "resolved", {"winner": p1, "loser": p2, "message": None}
+    if p2_distance < p1_distance:
+        return "resolved", {"winner": p2, "loser": p1, "message": None}
+    if p1_total == 21 and p2_total == 21 and not _is_sudden_death_pvp_duel(scene):
+        return "friends", {
+            "message": "Both duelists hit 21. Impressed by each other's ability, they leave the duel as friends.",
+        }
+    return "rematch", {"message": None}
+
+
+def _resolve_pvp_duel_scene(game: GameState, *, actor_id: str) -> GameState:
+    scene = _scene(game)
+    outcome, data = _pvp_duel_outcome(scene)
+    if outcome == "rematch":
+        return _restart_pvp_duel_after_tie(game, actor_id=actor_id)
+
+    winners: list[str] = []
+    losers: list[str] = []
+    players = dict(scene["players"])
+    for pid in scene["participants"]:
+        pstate = dict(players.get(pid) or {})
+        pstate["resolved"] = True
+        pstate["acknowledged"] = False
+        pstate["reward_gained"] = False
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
+        if outcome == "friends":
+            pstate["wounds_gained"] = 0
+            pstate["result"] = "friendship"
+        else:
+            if pid == data["winner"]:
+                pstate["wounds_gained"] = 0
+                pstate["reward_gained"] = not _is_sudden_death_pvp_duel(scene)
+                pstate["result"] = "duel_win"
+                winners.append(pid)
+            else:
+                pstate["wounds_gained"] = 1
+                pstate["result"] = "wound"
+                losers.append(pid)
+        players[pid] = pstate
+
+    scene["players"] = players
+    scene["resolution"] = {
+        "completed": True,
+        "winners": winners,
+        "losers": losers,
+        "message": data.get("message"),
+    }
+    scene["status"] = SCENE_STATUS_AWAITING_ACK
+    game = _replace_scene(game, scene=scene)
+    game = _auto_acknowledge_if_no_post_resolution_actions(game)
+    validate_unique_cards(game)
+    return game
+
+
+def _refresh_pvp_duel_resolution_preview(game: GameState, *, reset_acknowledgements: bool) -> GameState:
+    scene = _scene(game)
+    outcome, data = _pvp_duel_outcome(scene)
+    if outcome == "rematch":
+        return game
+
+    winners: list[str] = []
+    losers: list[str] = []
+    players = dict(scene["players"])
+    for pid in scene["participants"]:
+        pstate = dict(players.get(pid) or {})
+        pstate["resolved"] = True
+        pstate["reward_gained"] = False
+        pstate["recovery_action"] = None
+        pstate["reward_discard_started"] = False
+        if reset_acknowledgements:
+            pstate["acknowledged"] = False
+        if outcome == "friends":
+            pstate["wounds_gained"] = 0
+            pstate["result"] = "friendship"
+        else:
+            if pid == data["winner"]:
+                pstate["wounds_gained"] = 0
+                pstate["reward_gained"] = not _is_sudden_death_pvp_duel(scene)
+                pstate["result"] = "duel_win"
+                winners.append(pid)
+            else:
+                pstate["wounds_gained"] = 1
+                pstate["result"] = "wound"
+                losers.append(pid)
+        players[pid] = pstate
+
+    scene["players"] = players
+    scene["resolution"] = {
+        "completed": True,
+        "winners": winners,
+        "losers": losers,
+        "message": data.get("message"),
+    }
+    return _replace_scene(game, scene=scene)
+
+
+def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
+    scene = _scene(game)
+    participant_ids = list(scene["participants"])
+    mode = scene.get("mode")
+    duel = dict(scene.get("duel") or {})
+    difficulty = dict(scene.get("difficulty") or {})
+    azzardo = dict(scene.get("azzardo") or {})
+
+    game = _discard_pvp_duel_play_zones(game)
+    if _is_sudden_death_pvp_duel(scene) and game.deck is not None and not game.deck.draw_pile and game.deck.discard_pile:
+        game = _reshuffle_discard_into_draw(game)
+
+    reset_scene = default_scene_state()
+    reset_scene["status"] = SCENE_STATUS_SETUP
+    reset_scene["mode"] = mode
+    reset_scene["duel"] = duel
+    reset_scene["difficulty"] = difficulty
+    reset_scene["azzardo"] = azzardo
+    reset_scene["participants"] = participant_ids
+    reset_scene["players"] = {pid: _default_scene_player(game, pid) for pid in participant_ids}
+    game = _replace_scene(game, scene=reset_scene, zones=_reset_scene_zones(game.zones, keep_setup_cards=True))
+    game = scene_start(game, actor_id=actor_id)
+    return game
+
+
+def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
+    default = default_scene_state()
+    scene_in = dict(raw_scene or {})
+    duel_in = dict(scene_in.get("duel") or {})
+    difficulty_in = dict(scene_in.get("difficulty") or {})
+    azzardo_in = dict(scene_in.get("azzardo") or {})
+    resolution_in = dict(scene_in.get("resolution") or {})
+    players_in = dict(scene_in.get("players") or {})
+
+    scene = {
+        "status": scene_in.get("status") if scene_in.get("status") in {
+            SCENE_STATUS_IDLE,
+            SCENE_STATUS_SETUP,
+            SCENE_STATUS_ACTIVE,
+            SCENE_STATUS_AWAITING_ACK,
+            SCENE_STATUS_RESOLVED,
+            SCENE_STATUS_CLOSED,
+        } else default["status"],
+        "mode": scene_in.get("mode")
+        if scene_in.get("mode") in {SCENE_MODE_STANDARD, SCENE_MODE_DUEL}
+        else default["mode"],
+        "duel": {
+            "subtype": duel_in.get("subtype")
+            if duel_in.get("subtype") in {SCENE_DUEL_SUBTYPE_NPC, SCENE_DUEL_SUBTYPE_PVP}
+            else default["duel"]["subtype"],
+            "sudden_death": bool(duel_in.get("sudden_death", default["duel"]["sudden_death"])),
+        },
+        "participants": [pid for pid in scene_in.get("participants") or [] if isinstance(pid, str)],
+        "deck_exhausted": bool(scene_in.get("deck_exhausted", default["deck_exhausted"])),
+        "deck_exhausted_participants": [
+            pid for pid in scene_in.get("deck_exhausted_participants") or [] if isinstance(pid, str)
+        ],
+        "dark_mode": bool(scene_in.get("dark_mode", default["dark_mode"])),
+        "bonus_assignments": {
+            pid: bonus
+            for pid, bonus in dict(scene_in.get("bonus_assignments") or {}).items()
+            if isinstance(pid, str) and bonus in {"scum", "vengeance"}
+        },
+        "difficulty": {
+            "rule_id": difficulty_in.get("rule_id"),
+            "base": difficulty_in.get("base"),
+            "card_id": difficulty_in.get("card_id"),
+            "value": difficulty_in.get("value"),
+        },
+        "azzardo": {
+            "status": azzardo_in.get("status")
+            if azzardo_in.get("status") in {"unavailable", "drawn", "skipped"}
+            else default["azzardo"]["status"],
+            "card_id": azzardo_in.get("card_id"),
+            "value": azzardo_in.get("value"),
+            "revealed": bool(azzardo_in.get("revealed", default["azzardo"]["revealed"])),
+        },
+        "players": {},
+        "resolution": {
+            "completed": bool(resolution_in.get("completed", default["resolution"]["completed"])),
+            "winners": [pid for pid in resolution_in.get("winners") or [] if isinstance(pid, str)],
+            "losers": [pid for pid in resolution_in.get("losers") or [] if isinstance(pid, str)],
+            "message": resolution_in.get("message") if isinstance(resolution_in.get("message"), str) else None,
+        },
+    }
+
+    for pid, pstate in players_in.items():
+        if not isinstance(pid, str):
+            continue
+        pdata = dict(pstate or {})
+        scene["players"][pid] = {
+            "figure_card_id": pdata.get("figure_card_id"),
+            "figure_value": pdata.get("figure_value"),
+            "hand_value": pdata.get("hand_value"),
+            "scum_mod_cards": [card_id for card_id in pdata.get("scum_mod_cards") or [] if isinstance(card_id, str)],
+            "vengeance_mod_cards": [
+                card_id for card_id in pdata.get("vengeance_mod_cards") or [] if isinstance(card_id, str)
+            ],
+            "modifier_total": int(pdata.get("modifier_total", 0) or 0),
+            "standing": bool(pdata.get("standing", False)),
+            "busted": bool(pdata.get("busted", False)),
+            "resolved": bool(pdata.get("resolved", False)),
+            "acknowledged": bool(pdata.get("acknowledged", False)),
+            "wounds_gained": int(pdata.get("wounds_gained", 0) or 0),
+            "reward_gained": bool(pdata.get("reward_gained", False)),
+            "result": pdata.get("result"),
+            "recovery_action": pdata.get("recovery_action")
+            if pdata.get("recovery_action") in {"healed", "skipped"}
+            else None,
+            "reward_discard_started": bool(pdata.get("reward_discard_started", False)),
+        }
+
+    return scene
+
+
+def _reset_scene_zones(
+    zones: dict[str, list[CardID]],
+    *,
+    keep_hands: bool = False,
+    keep_setup_cards: bool = False,
+) -> dict[str, list[CardID]]:
+    new_zones: dict[str, list[CardID]] = {}
+    for zone_name, cards in zones.items():
+        if zone_name in {SCENE_DIFFICULTY_ZONE, SCENE_AZZARDO_ZONE} and not keep_setup_cards:
+            continue
+        if zone_name.startswith(SCENE_HAND_PREFIX) and not keep_hands:
+            continue
+        new_zones[zone_name] = cards.copy()
+    return new_zones
+
+
+def _remove_scene_hands_for_players(zones: dict[str, list[CardID]], player_ids: set[str]) -> dict[str, list[CardID]]:
+    if not player_ids:
+        return {zone_name: cards.copy() for zone_name, cards in zones.items()}
+
+    new_zones: dict[str, list[CardID]] = {}
+    for zone_name, cards in zones.items():
+        if any(zone_name == f"{SCENE_HAND_PREFIX}{player_id}" for player_id in player_ids):
+            continue
+        new_zones[zone_name] = cards.copy()
+    return new_zones
+
+
+def _draw_to_zone(game: GameState, zone_name: str) -> tuple[GameState, CardID]:
+    if game.deck is None:
+        raise ValueError("GameState has no deck.")
+
+    new_deck = play(game.deck)
+    game = GameState(deck=new_deck, zones=game.zones, meta=game.meta)
+    card_id = game.deck.in_play[-1]
+    game = claim_from_in_play(game, card_id, zone_name)
+    game = _mark_scene_deck_exhausted_if_needed(game)
+    return game, card_id
+
+
+def _move_zone_top_card_to_zone(game: GameState, source_zone_name: str, dest_zone_name: str) -> GameState:
+    zone_cards = list(game.zones.get(source_zone_name, []))
+    if not zone_cards:
+      raise ValueError(f"Zone '{source_zone_name}' is empty.")
+
+    card_id = zone_cards[-1]
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    zones[source_zone_name] = zones.get(source_zone_name, []).copy()
+    zones[source_zone_name].pop()
+    zones.setdefault(dest_zone_name, []).append(card_id)
+    return GameState(deck=game.deck, zones=zones, meta=game.meta)
+
+
+def _move_zone_top_card_to_discard(game: GameState, zone_name: str) -> GameState:
+    if game.deck is None:
+        raise ValueError("GameState has no deck.")
+
+    zone_cards = list(game.zones.get(zone_name, []))
+    if not zone_cards:
+        raise ValueError(f"Zone '{zone_name}' is empty.")
+
+    card_id = zone_cards[-1]
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    zones[zone_name] = zones.get(zone_name, []).copy()
+    zones[zone_name].pop()
+
+    deck = game.deck
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile,
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile + [card_id],
+        removed=deck.removed,
+    )
+
+    return GameState(deck=new_deck, zones=zones, meta=game.meta)
+
+
+def _discard_scene_modifier_zones(game: GameState) -> GameState:
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    modifier_zone_names = [
+        name
+        for name in zones
+        if name.startswith(SCENE_SCUM_MOD_PREFIX) or name.startswith(SCENE_VENGEANCE_MOD_PREFIX)
+    ]
+    if not modifier_zone_names:
+        return game
+    if game.deck is None:
+        raise ValueError("GameState has no deck.")
+
+    discard_cards: list[CardID] = []
+    for zone_name in modifier_zone_names:
+        discard_cards.extend(zones.pop(zone_name, []))
+
+    deck = game.deck
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile,
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile + discard_cards,
+        removed=deck.removed,
+    )
+    return GameState(deck=new_deck, zones=zones, meta=game.meta)
+
+
+def _discard_scene_play_zones(game: GameState) -> GameState:
+    game = _discard_zone_if_present(game, SCENE_DIFFICULTY_ZONE)
+    game = _discard_zone_if_present(game, SCENE_AZZARDO_ZONE)
+    game = _discard_pvp_duel_play_zones(game)
+    if any(card_id in {"RJ", "BJ"} for card_id in list((game.deck.discard_pile if game.deck else []))):
+        game = _reshuffle_discard_into_draw(game)
+    return game
+
+
+def _discard_pvp_duel_play_zones(game: GameState) -> GameState:
+
+    hand_zone_names = [
+        zone_name
+        for zone_name in list(game.zones.keys())
+        if zone_name.startswith(SCENE_HAND_PREFIX)
+    ]
+    for zone_name in hand_zone_names:
+        game = _discard_zone_if_present(game, zone_name)
+
+    game = _discard_scene_modifier_zones(game)
+    return game
+
+
+def _discard_zone_if_present(game: GameState, zone_name: str) -> GameState:
+    while list(game.zones.get(zone_name, [])):
+        game = _move_zone_top_card_to_discard(game, zone_name)
+
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    if zone_name in zones and not zones[zone_name]:
+        zones.pop(zone_name, None)
+        return GameState(deck=game.deck, zones=zones, meta=game.meta)
+
+    return game
+
+
+def _return_zone_card_to_draw_pile(game: GameState, zone_name: str) -> GameState:
+    if game.deck is None:
+        raise ValueError("GameState has no deck.")
+
+    zone_cards = list(game.zones.get(zone_name, []))
+    if len(zone_cards) != 1:
+        raise ValueError(f"Zone '{zone_name}' must contain exactly one card.")
+
+    card_id = zone_cards[0]
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    zones.pop(zone_name, None)
+
+    deck = game.deck
+    new_deck = DeckState(
+        version=deck.version,
+        schema=deck.schema,
+        created_utc=deck.created_utc,
+        notes=deck.notes,
+        settings=deck.settings,
+        draw_pile=deck.draw_pile + [card_id],
+        in_play=deck.in_play,
+        discard_pile=deck.discard_pile,
+        removed=deck.removed,
+    )
+
+    game = GameState(deck=new_deck, zones=zones, meta=game.meta)
+    validate_unique_cards(game)
+    return game
+
+
+def _require_table_phase(game: GameState) -> None:
+    if (game.meta or {}).get("phase") != "table":
+        raise ValueError("Action allowed only during table phase.")
+
+
+def _require_marshal(game: GameState, actor_id: str) -> None:
+    if (game.meta or {}).get("marshal_id") != actor_id:
+        raise ValueError("Only the Marshal can perform this action.")
+
+
+def _player_has_character(game: GameState, player_id: str) -> bool:
+    cards = game.zones.get(f"players.{player_id}.character", [])
+    return isinstance(cards, list) and len(cards) == 1
+
+
+def _player_character_card_id(game: GameState, player_id: str) -> str | None:
+    cards = game.zones.get(f"players.{player_id}.character", [])
+    if isinstance(cards, list) and len(cards) == 1 and isinstance(cards[0], str):
+        return cards[0]
+    return None
+
+
+def _player_is_dead(game: GameState, player_id: str) -> bool:
+    pdata = dict(((game.meta or {}).get("players") or {}).get(player_id) or {})
+    return int(pdata.get("wounds", 0) or 0) >= 2
+
+
+def _non_marshal_players(game: GameState) -> list[str]:
+    meta = dict(game.meta or {})
+    marshal_id = meta.get("marshal_id")
+    order = meta.get("players_order") or []
+    return [pid for pid in order if isinstance(pid, str) and pid != marshal_id]
+
+
+def _all_non_marshal_players_dead(game: GameState) -> bool:
+    player_ids = _non_marshal_players(game)
+    return bool(player_ids) and all(_player_is_dead(game, player_id) for player_id in player_ids)
+
+
+def _blackjack_value(card_id: str) -> int:
+    rank = _rank(card_id)
+    if rank in ("RJ", "BJ", "J", "Q", "K"):
+        return 10
+    if rank == "A":
+        return 11
+    return int(rank)
+
+
+def _cards_blackjack_value(cards: list[str]) -> int:
+    return sum(_blackjack_value(card_id) for card_id in cards)
+
+
+def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str]) -> int:
+    cards = [card_id for card_id in [figure_card_id, *hand_cards] if isinstance(card_id, str) and card_id]
+    total = sum(_scene_card_value(card_id) for card_id in cards)
+    aces = sum(1 for card_id in cards if _rank(card_id) == "A")
+
+    # Count aces as 1 instead of 11 when that produces the best non-busting total.
+    while total > 21 and aces > 0:
+        total -= 10
+        aces -= 1
+
+    return total
+
+
+def _scene_card_value(card_id: str) -> int:
+    if card_id in {"RJ", "BJ"}:
+        return 0
+    return _blackjack_value(card_id)
+
+
+def _rank(card_id: str) -> str:
+    if card_id in ("RJ", "BJ"):
+        return card_id
+    return card_id[:-1]
+
+
+def _card_suit(card_id: str | None) -> str:
+    if not isinstance(card_id, str) or len(card_id) < 2 or card_id in ("RJ", "BJ"):
+        return ""
+    return card_id[-1].upper()

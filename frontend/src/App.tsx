@@ -8,6 +8,7 @@ import LobbyView from "./views/LobbyView";
 import HookSelectionView from "./views/HookSelectionView";
 import RegistrationClosedView from "./views/RegistrationClosedView";
 import TableRouterView from "./views/TableRouterView";
+import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
@@ -102,9 +103,17 @@ export default function App() {
 
   const state = (resp?.state as any) ?? {};
   const meta: MetaAny = state.meta ?? {};
+  const zones = state.zones ?? {};
   const phase = meta.phase ?? "no-game";
+  const victoryWinnerId = meta.victory?.winner ?? null;
+  const victoryWinnerFigureCardId =
+    typeof victoryWinnerId === "string" && victoryWinnerId !== "marshal"
+      ? (zones[`players.${victoryWinnerId}.character`]?.[0] ?? null)
+      : null;
+  const showMarshalVictoryPortrait = victoryWinnerId === "marshal";
   const viewportHeight = "calc(100vh - 32px)";
   const useScrollableGameContent = phase === "lobby";
+  const useFixedGameViewport = phase === "lobby";
 
   return (
     <div
@@ -135,7 +144,6 @@ export default function App() {
                 newGame({
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
-                  seed: 42,
                   view,
                 })
               )
@@ -208,10 +216,11 @@ export default function App() {
       {screen === "game" && (
         <div
           style={{
-            height: viewportHeight,
+            height: useFixedGameViewport ? viewportHeight : undefined,
+            minHeight: viewportHeight,
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden",
+            overflow: useFixedGameViewport ? "hidden" : "visible",
             flexShrink: 0,
           }}
         >
@@ -260,10 +269,10 @@ export default function App() {
 
           <div
             style={{
-              flex: 1,
+              flex: useFixedGameViewport ? 1 : "0 0 auto",
               minHeight: 0,
-              overflowY: useScrollableGameContent ? "auto" : "hidden",
-              overflowX: "hidden",
+              overflowY: useScrollableGameContent ? "auto" : "visible",
+              overflowX: useFixedGameViewport ? "hidden" : "visible",
               display: "flex",
               flexDirection: "column",
             }}
@@ -305,6 +314,21 @@ export default function App() {
                 view={view}
                 currentActorId={currentActorId}
                 run={run}
+                onBackHome={() => {
+                  setResp(null);
+                  setGameId("");
+                  setJoinGameId("");
+                  setScreen("home");
+                }}
+              />
+            )}
+
+            {resp && phase === "victory" && (
+              <VictoryView
+                winnerLabel={meta.victory?.winner_label ?? "Marshal"}
+                winnerFigureCardId={victoryWinnerFigureCardId}
+                showMarshalPortrait={showMarshalVictoryPortrait}
+                reason={meta.victory?.reason ?? null}
                 onBackHome={() => {
                   setResp(null);
                   setGameId("");
