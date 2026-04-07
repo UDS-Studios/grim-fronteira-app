@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { publicAsset } from "../app/assets";
 
 type CardImgProps = {
   cardId: string;
@@ -20,10 +21,10 @@ export default function CardImg({
   const [hover, setHover] = useState(false);
 
   const src = faceDown
-    ? "/assets/cards/back/back.jpg"
+    ? publicAsset("assets/cards/back/back.jpg")
     : deadVariant
-      ? `/assets/cards/dead/dead${cardId}.jpg`
-      : `/assets/cards/front/${cardId}.jpg`;
+      ? publicAsset(`assets/cards/dead/dead${cardId}.jpg`)
+      : publicAsset(`assets/cards/front/${cardId}.jpg`);
 
   return (
     <div

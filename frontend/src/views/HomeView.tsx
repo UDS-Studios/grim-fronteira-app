@@ -1,3 +1,5 @@
+import { publicAsset } from "../app/assets";
+
 type HomeViewProps = {
   joinGameId: string;
   setJoinGameId: (v: string) => void;
@@ -80,7 +82,7 @@ export default function HomeView({
             title="Create a new game"
           >
             <img
-              src="/ui/new-game.png"
+              src={publicAsset("ui/new-game.png")}
               alt="New Game"
               style={{
                 width: 260,
@@ -121,7 +123,7 @@ export default function HomeView({
               title={joinGameId.trim() ? "Join existing game" : "Enter a game id first"}
             >
               <img
-                src="/ui/join-game.png"
+                src={publicAsset("ui/join-game.png")}
                 alt="Join Game"
                 style={{
                   width: 260,

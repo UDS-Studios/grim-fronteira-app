@@ -2,6 +2,7 @@ import { getGame, gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import Section from "../components/Section";
+import { publicAsset } from "../app/assets";
 import type { LobbyViewProps, MetaAny, Zones } from "./types";
 
 type LobbyPlayerState = {
@@ -130,7 +131,7 @@ export default function MarshalLobbyView({
         }}
       >
         <IconButton
-          src="/ui/home.png"
+          src={publicAsset("ui/home.png")}
           alt="Home"
           title="Return to Home"
           onClick={onBackHome}
@@ -148,7 +149,7 @@ export default function MarshalLobbyView({
         </h1>
 
         <IconButton
-          src="/ui/refresh.png"
+          src={publicAsset("ui/refresh.png")}
           alt="Refresh"
           title="Refresh Lobby"
           onClick={() => run(getGame(resp.game_id, view))}
@@ -186,7 +187,7 @@ export default function MarshalLobbyView({
           }}
         >
           <IconButton
-            src="/ui/copy.png"
+            src={publicAsset("ui/copy.png")}
             alt="Copy Game ID"
             title="Copy Game ID"
             onClick={copyGameId}

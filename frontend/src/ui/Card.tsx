@@ -1,3 +1,5 @@
+import { publicAsset } from "../app/assets";
+
 type CardProps = {
   cardId: string;
   faceDown?: boolean;
@@ -7,8 +9,8 @@ type CardProps = {
 
 export default function Card({ cardId, faceDown, width = 96, title }: CardProps) {
   const src = faceDown
-    ? "/assets/cards/back/back.jpg"
-    : `/assets/cards/front/${cardId}.jpg`;
+    ? publicAsset("assets/cards/back/back.jpg")
+    : publicAsset(`assets/cards/front/${cardId}.jpg`);
 
   return (
     <img

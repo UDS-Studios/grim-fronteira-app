@@ -3,6 +3,7 @@ import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import TableZone from "../components/TableZone";
+import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
 import type { ActionResponse, View } from "../api/types";
 import PTVPlayerBoard from "./player_table/PTV-PlayerBoard";
@@ -1154,7 +1155,7 @@ export default function PlayerTableView({
           }}
         >
           <IconButton
-            src="/ui/home.png"
+            src={publicAsset("ui/home.png")}
             alt="Home"
             title="Return to Home"
             onClick={onBackHome}
@@ -1172,7 +1173,7 @@ export default function PlayerTableView({
           </h1>
 
           <IconButton
-            src="/ui/refresh.png"
+            src={publicAsset("ui/refresh.png")}
             alt="Refresh"
             title="Refresh Table"
             onClick={() => run(getGame(resp.game_id, view))}
