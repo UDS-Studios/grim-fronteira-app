@@ -15,10 +15,50 @@ from backend.app.serializers import game_state_to_dict
 from backend.engine.grimdeck.deck_io import load_deck
 from backend.engine.grimdeck.deck_ops import shuffle as shuffle_deck
 from backend.engine.state.game_state import GameState
+from backend.engine.state.debug_ops import stack_card_on_top
 from backend.engine.state.validators import validate_game_state
 
 from backend.engine.rules.grim_fronteira.setup import setup_players
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
+from backend.engine.rules.grim_fronteira.meta_enrich import enrich_meta_for_ui
+from backend.engine.rules.grim_fronteira.scene import (
+    ensure_scene_state,
+    scene_set_participants,
+    scene_set_mode,
+    scene_roll_difficulty,
+    scene_draw_azzardo,
+    scene_remove_azzardo,
+    scene_skip_azzardo,
+    scene_start,
+    scene_close,
+    scene_new,
+    scene_resolve,
+    scene_draw_card,
+    scene_stand,
+    scene_play_scum,
+    scene_play_vengeance,
+    scene_acknowledge_resolution,
+    scene_force_acknowledge_resolution,
+    scene_skip_heal,
+    scene_force_skip_heal,
+    scene_heal_wound,
+    scene_discard_reward,
+    scene_force_discard_rewards,
+    scene_assign_bonus_card,
+)
+
+from backend.engine.rules.grim_fronteira.lobby import (
+    initialize_lobby,
+    set_character_assignment_mode,
+    claim_character,
+    draw_character,
+    join_lobby,
+    set_registration_open,
+    submit_character_name,
+    submit_character_feature,
+    start_game,
+    begin_table,
+)
 
 app = FastAPI(title="Grim Fronteira API", version="0.1.0")
 
@@ -134,11 +174,12 @@ def _bump_revision(game: GameState) -> GameState:
 def new_game(req: NewGameRequest) -> ActionResponse:
     deck = load_deck(req.template_path)
 
-    # Optional deterministic shuffle for reproducible dev runs
     if req.seed is not None:
         deck = shuffle_deck(deck, seed=req.seed)
 
     game = GameState(deck=deck, zones={}, meta={"game": "grim_fronteira", **(req.meta or {})})
+    game = initialize_lobby(game, creator_id=req.creator_id)
+    game = enrich_meta_for_ui(game)
     game = _bump_revision(game)
     validate_game_state(game)
 
@@ -154,12 +195,13 @@ def new_game(req: NewGameRequest) -> ActionResponse:
         error=None,
     )
 
-
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
-def get_state(game_id: str, view: Literal["public", "debug"] = "debug") -> ActionResponse:
+def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug") -> ActionResponse:
     g = _get_game(game_id)
     game = g.state
     validate_game_state(game)
+    game = enrich_meta_for_ui(game)
+    game = ensure_scene_state(game)
 
     return ActionResponse(
         game_id=game_id,
@@ -207,6 +249,24 @@ def action(req: ActionRequest) -> ActionResponse:
         mutated = True
         result = {"ok": True, "action": req.action}
 
+    elif req.action == "gf.debug_stack_top_card":
+        params = req.params
+        card_id = params.get("card_id")
+
+        if req.view != "debug":
+            raise HTTPException(status_code=403, detail="gf.debug_stack_top_card is debug-only")
+        if not isinstance(card_id, str):
+            raise HTTPException(status_code=400, detail="params.card_id must be a string")
+
+        game = stack_card_on_top(game, card_id=card_id)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "card_id": card_id,
+            "top_of_draw_pile": card_id,
+        }
+
     elif req.action == "gf.roll_difficulty":
         params = req.params
         player_ids = params.get("player_ids")
@@ -228,9 +288,448 @@ def action(req: ActionRequest) -> ActionResponse:
                 "base": diff.base,
                 "value": diff.value,
                 "drawn_cards": diff.drawn_cards,
-                "effects": [e.__dict__ for e in diff.effects],
+                "effects": [e.kind for e in diff.effects],
             },
         }
+    elif req.action == "gf.set_character_assignment_mode":
+        params = req.params
+        actor_id = params.get("actor_id")
+        mode = params.get("mode")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(mode, str):
+            raise HTTPException(status_code=400, detail="params.mode must be a string")
+
+        game = set_character_assignment_mode(game, actor_id=actor_id, mode=mode)
+        mutated = True
+        result = {"ok": True, "action": req.action, "mode": mode}
+
+    elif req.action == "gf.join_lobby":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = join_lobby(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.claim_character":
+        params = req.params
+        player_id = params.get("player_id")
+        card_id = params.get("card_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(card_id, str):
+            raise HTTPException(status_code=400, detail="params.card_id must be a string")
+
+        game = claim_character(game, player_id=player_id, card_id=card_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id, "card_id": card_id}
+
+    elif req.action == "gf.draw_character":
+        params = req.params
+        player_id = params.get("player_id")
+        seed = params.get("seed")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if seed is not None and not isinstance(seed, int):
+            raise HTTPException(status_code=400, detail="params.seed must be an integer or omitted")
+
+        game = draw_character(game, player_id=player_id, seed=seed)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.submit_character_name":
+        params = req.params
+        player_id = params.get("player_id")
+        name = params.get("name")
+        seed = params.get("seed")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(name, str):
+            raise HTTPException(status_code=400, detail="params.name must be a string")
+        if seed is not None and not isinstance(seed, int):
+            raise HTTPException(status_code=400, detail="params.seed must be an integer or omitted")
+
+        game = submit_character_name(game, player_id=player_id, name=name, seed=seed)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "player_id": player_id,
+            "name": name,
+        }
+
+    elif req.action == "gf.submit_character_feature":
+        params = req.params
+        player_id = params.get("player_id")
+        feature = params.get("feature")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(feature, str):
+            raise HTTPException(status_code=400, detail="params.feature must be a string")
+
+        game = submit_character_feature(game, player_id=player_id, feature=feature)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "player_id": player_id,
+            "feature": feature,
+        }
+
+    elif req.action == "gf.set_registration_open":
+        params = req.params
+        actor_id = params.get("actor_id")
+        is_open = params.get("is_open")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(is_open, bool):
+            raise HTTPException(status_code=400, detail="params.is_open must be a boolean")
+
+        game = set_registration_open(game, actor_id=actor_id, is_open=is_open)
+        mutated = True
+        result = {"ok": True, "action": req.action, "registration_open": is_open}
+
+    elif req.action == "gf.start_game":
+        params = req.params
+        actor_id = params.get("actor_id")
+        seed = params.get("seed")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if seed is not None and not isinstance(seed, int):
+            raise HTTPException(status_code=400, detail="params.seed must be an integer or omitted")
+
+        game = start_game(game, actor_id=actor_id, seed=seed)
+        mutated = True
+        result = {"ok": True, "action": req.action, "phase": "hook_selection"}
+
+    elif req.action == "gf.begin_table":
+        params = req.params
+        actor_id = params.get("actor_id")
+        selected_hook = params.get("selected_hook")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if selected_hook is not None and not isinstance(selected_hook, str):
+            raise HTTPException(status_code=400, detail="params.selected_hook must be a string or omitted")
+
+        game = begin_table(game, actor_id=actor_id, selected_hook=selected_hook)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "phase": "table",
+            "selected_hook": selected_hook,
+        }
+
+    elif req.action == "gf.scene_set_participants":
+        params = req.params
+        actor_id = params.get("actor_id")
+        participant_ids = params.get("participant_ids")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(participant_ids, list) or not all(isinstance(pid, str) for pid in participant_ids):
+            raise HTTPException(status_code=400, detail="params.participant_ids must be a list of strings")
+
+        game = scene_set_participants(game, actor_id=actor_id, participant_ids=participant_ids)
+        mutated = True
+        result = {"ok": True, "action": req.action, "participant_ids": participant_ids}
+
+    elif req.action == "gf.scene_set_mode":
+        params = req.params
+        actor_id = params.get("actor_id")
+        mode = params.get("mode")
+        duel_subtype = params.get("duel_subtype")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(mode, str):
+            raise HTTPException(status_code=400, detail="params.mode must be a string")
+        if duel_subtype is not None and not isinstance(duel_subtype, str):
+            raise HTTPException(status_code=400, detail="params.duel_subtype must be a string or omitted")
+
+        game = scene_set_mode(game, actor_id=actor_id, mode=mode, duel_subtype=duel_subtype)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "mode": mode,
+            "duel_subtype": duel_subtype,
+        }
+
+    elif req.action == "gf.scene_roll_difficulty":
+        params = req.params
+        actor_id = params.get("actor_id")
+        seed = params.get("seed")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if seed is not None and not isinstance(seed, int):
+            raise HTTPException(status_code=400, detail="params.seed must be an integer or omitted")
+
+        game, difficulty = scene_roll_difficulty(game, actor_id=actor_id, seed=seed)
+        mutated = True
+        result = {"ok": True, "action": req.action, "difficulty": difficulty}
+
+    elif req.action == "gf.scene_draw_azzardo":
+        params = req.params
+        actor_id = params.get("actor_id")
+        seed = params.get("seed")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if seed is not None and not isinstance(seed, int):
+            raise HTTPException(status_code=400, detail="params.seed must be an integer or omitted")
+
+        game = scene_draw_azzardo(game, actor_id=actor_id, seed=seed)
+        mutated = True
+        result = {"ok": True, "action": req.action}
+
+    elif req.action == "gf.scene_remove_azzardo":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_remove_azzardo(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action}
+
+    elif req.action == "gf.scene_skip_azzardo":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_skip_azzardo(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action}
+
+    elif req.action == "gf.scene_start":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_start(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action}
+
+    elif req.action == "gf.scene_draw_card":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_draw_card(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.scene_stand":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_stand(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.scene_play_scum":
+        params = req.params
+        player_id = params.get("player_id")
+        target_player_id = params.get("target_player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(target_player_id, str):
+            raise HTTPException(status_code=400, detail="params.target_player_id must be a string")
+
+        game, scum_result = scene_play_scum(
+            game,
+            player_id=player_id,
+            target_player_id=target_player_id,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **scum_result}
+
+    elif req.action == "gf.scene_play_vengeance":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game, vengeance_result = scene_play_vengeance(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, **vengeance_result}
+
+    elif req.action == "gf.scene_acknowledge_resolution":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_acknowledge_resolution(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.scene_force_acknowledge_resolution":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_force_acknowledge_resolution(game, actor_id=actor_id, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id, "player_id": player_id}
+
+    elif req.action == "gf.scene_skip_heal":
+        params = req.params
+        player_id = params.get("player_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_skip_heal(game, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "player_id": player_id}
+
+    elif req.action == "gf.scene_heal_wound":
+        params = req.params
+        player_id = params.get("player_id")
+        reward_card_ids = params.get("reward_card_ids")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(reward_card_ids, list) or not all(isinstance(card_id, str) for card_id in reward_card_ids):
+            raise HTTPException(status_code=400, detail="params.reward_card_ids must be a list of strings")
+
+        game, heal_result = scene_heal_wound(game, player_id=player_id, reward_card_ids=reward_card_ids)
+        mutated = True
+        result = {"ok": True, "action": req.action, **heal_result}
+
+    elif req.action == "gf.scene_force_skip_heal":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game = scene_force_skip_heal(game, actor_id=actor_id, player_id=player_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id, "player_id": player_id}
+
+    elif req.action == "gf.scene_discard_reward":
+        params = req.params
+        player_id = params.get("player_id")
+        reward_card_id = params.get("reward_card_id")
+
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(reward_card_id, str):
+            raise HTTPException(status_code=400, detail="params.reward_card_id must be a string")
+
+        game, discard_result = scene_discard_reward(game, player_id=player_id, reward_card_id=reward_card_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, **discard_result}
+
+    elif req.action == "gf.scene_force_discard_rewards":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+
+        game, discard_result = scene_force_discard_rewards(
+            game,
+            actor_id=actor_id,
+            player_id=player_id,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **discard_result}
+
+    elif req.action == "gf.scene_assign_bonus_card":
+        params = req.params
+        actor_id = params.get("actor_id")
+        player_id = params.get("player_id")
+        bonus_type = params.get("bonus_type")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        if not isinstance(player_id, str):
+            raise HTTPException(status_code=400, detail="params.player_id must be a string")
+        if not isinstance(bonus_type, str):
+            raise HTTPException(status_code=400, detail="params.bonus_type must be a string")
+
+        game, bonus_result = scene_assign_bonus_card(
+            game,
+            actor_id=actor_id,
+            player_id=player_id,
+            bonus_type=bonus_type,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **bonus_result}
+
+    elif req.action == "gf.scene_close":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_close(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id}
+
+    elif req.action == "gf.scene_new":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_new(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id}
+
+    elif req.action == "gf.scene_resolve":
+        params = req.params
+        actor_id = params.get("actor_id")
+
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+
+        game = scene_resolve(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action}
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'")
@@ -239,6 +738,8 @@ def action(req: ActionRequest) -> ActionResponse:
     if mutated:
         game = _bump_revision(game)
 
+    game = enrich_meta_for_ui(game)
+    game = ensure_scene_state(game)
     validate_game_state(game)
     g.state = game
 

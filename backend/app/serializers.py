@@ -41,12 +41,25 @@ def game_state_to_dict(game: GameState, *, view: str = "debug") -> Dict[str, Any
     if view == "debug":
         return data
 
-    # --- PUBLIC VIEW ---
+    # --- PUBLIC / PLAYER VIEW ---
     deck = data.get("deck")
     if deck and "draw_pile" in deck:
         draw_pile = deck["draw_pile"]
         deck["draw_pile"] = {
             "count": len(draw_pile)
         }
+
+    meta = data.get("meta") or {}
+    scene = meta.get("scene") or {}
+    azzardo = scene.get("azzardo") or {}
+    if not bool(azzardo.get("revealed", False)):
+        azzardo["card_id"] = None
+        azzardo["value"] = None
+        scene["azzardo"] = azzardo
+        meta["scene"] = scene
+
+        zones = data.get("zones") or {}
+        if "scene.azzardo" in zones:
+            zones["scene.azzardo"] = []
 
     return data

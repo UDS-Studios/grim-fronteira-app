@@ -152,3 +152,9 @@ rules.
 -   All new behavior must be covered by pytest
 -   No game logic inside deck layer
 -   No I/O inside engine logic
+
+
+```bash
+PYTHONPATH=. uvicorn backend.app.main:app --reload
+npm run dev
+```
