@@ -36,8 +36,11 @@ def default_scene_state() -> dict[str, Any]:
         "mode": SCENE_MODE_STANDARD,
         "duel": {
             "subtype": None,
+            "sudden_death": False,
         },
         "participants": [],
+        "deck_exhausted": False,
+        "deck_exhausted_participants": [],
         "dark_mode": False,
         "bonus_assignments": {},
         "difficulty": {
@@ -141,6 +144,7 @@ def scene_set_mode(
     scene["mode"] = mode
     scene["duel"] = {
         "subtype": duel_subtype if mode == SCENE_MODE_DUEL else None,
+        "sudden_death": False,
     }
     return _replace_scene(game, scene=scene)
 
@@ -750,6 +754,8 @@ def _get_post_scene_wounds(game: GameState, player_id: str) -> int:
 
 
 def _must_heal_or_skip(game: GameState, player_id: str) -> bool:
+    if dict((game.meta or {}).get("endgame") or {}).get("active"):
+        return False
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_CLOSED:
         return False
@@ -766,6 +772,8 @@ def _must_heal_or_skip(game: GameState, player_id: str) -> bool:
 
 
 def _must_discard_rewards(game: GameState, player_id: str) -> bool:
+    if dict((game.meta or {}).get("endgame") or {}).get("active"):
+        return False
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_CLOSED:
         return False
@@ -848,6 +856,8 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
 
 def _grant_resolved_scene_rewards(game: GameState) -> GameState:
     scene = _scene(game)
+    if scene.get("deck_exhausted"):
+        return game
     for pid in scene["participants"]:
         pstate = dict(scene["players"].get(pid) or {})
         if pstate.get("reward_gained"):
@@ -873,6 +883,232 @@ def _apply_pending_scene_wounds(game: GameState) -> GameState:
     return _replace_scene(game, scene=scene)
 
 
+def _reward_points_for_player(game: GameState, player_id: str) -> int:
+    return sum(reward_card_points(card_id) for card_id in list(game.zones.get(f"players.{player_id}.rewards", [])))
+
+
+def _player_display_name(game: GameState, player_id: str) -> str:
+    lobby_players = dict(((game.meta or {}).get("lobby") or {}).get("players") or {})
+    pstate = dict(lobby_players.get(player_id) or {})
+    return str(pstate.get("chosen_name") or pstate.get("summary_text") or player_id)
+
+
+def _set_victory(game: GameState, *, winner: str, winner_label: str, reason: str) -> GameState:
+    meta = dict(game.meta or {})
+    meta["phase"] = "victory"
+    meta["victory"] = {
+        "winner": winner,
+        "winner_label": winner_label,
+        "reason": reason,
+    }
+    validate_unique_cards(game)
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+
+def _set_marshal_victory(game: GameState) -> GameState:
+    return _set_victory(
+        game,
+        winner="marshal",
+        winner_label="Marshal",
+        reason="All players are dead.",
+    )
+
+
+def _player_is_standing_after_scene(game: GameState, player_id: str) -> bool:
+    return _get_post_scene_wounds(game, player_id) < 2
+
+
+def _order_contenders_for_endgame(
+    game: GameState,
+    *,
+    contender_ids: list[str],
+    preferred_order: list[str],
+) -> list[str]:
+    contender_set = set(contender_ids)
+    ordered: list[str] = []
+
+    for pid in preferred_order:
+        if pid in contender_set and pid not in ordered:
+            ordered.append(pid)
+
+    for pid in _non_marshal_players(game):
+        if pid in contender_set and pid not in ordered:
+            ordered.append(pid)
+
+    return ordered
+
+
+def _start_sudden_death(
+    game: GameState,
+    *,
+    contender_ids: list[str],
+    preferred_order: list[str],
+    reason: str,
+) -> GameState:
+    ordered_contenders = _order_contenders_for_endgame(
+        game,
+        contender_ids=contender_ids,
+        preferred_order=preferred_order,
+    )
+    if len(ordered_contenders) < 2:
+        raise ValueError("Sudden death requires at least two contenders.")
+
+    if (
+        "deck was exhausted" in reason.lower()
+        and game.deck is not None
+        and not game.deck.draw_pile
+        and game.deck.discard_pile
+    ):
+        game = _reshuffle_discard_into_draw(game)
+
+    meta = dict(game.meta or {})
+    meta["endgame"] = {
+        "active": True,
+        "kind": "sudden_death",
+        "reason": reason,
+        "contenders": ordered_contenders,
+        "champion": ordered_contenders[0],
+        "cursor": 1,
+    }
+    validate_unique_cards(game)
+    return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+
+def _resolve_scene_endgame(game: GameState) -> GameState:
+    meta = dict(game.meta or {})
+    endgame = dict(meta.get("endgame") or {})
+    if endgame.get("active"):
+        return game
+
+    scene = _scene(game)
+    active_players = [
+        pid
+        for pid in _non_marshal_players(game)
+        if _player_has_character(game, pid) and _player_is_standing_after_scene(game, pid)
+    ]
+    if not active_players:
+        return game
+
+    exact_twenty_one_players = [pid for pid in active_players if _reward_points_for_player(game, pid) == 21]
+    if exact_twenty_one_players:
+        if len(exact_twenty_one_players) == 1:
+            winner_id = exact_twenty_one_players[0]
+            return _set_victory(
+                game,
+                winner=winner_id,
+                winner_label=_player_display_name(game, winner_id),
+                reason="Reached exactly 21 reward points.",
+            )
+        return _start_sudden_death(
+            game,
+            contender_ids=exact_twenty_one_players,
+            preferred_order=list(scene.get("participants") or []),
+            reason="Multiple players reached exactly 21 reward points.",
+        )
+
+    if not scene.get("deck_exhausted"):
+        return game
+
+    reward_points = {pid: _reward_points_for_player(game, pid) for pid in active_players}
+    top_points = max(reward_points.values(), default=0)
+    leaders = [pid for pid in active_players if reward_points.get(pid, 0) == top_points]
+    if len(leaders) == 1:
+        winner_id = leaders[0]
+        return _set_victory(
+            game,
+            winner=winner_id,
+            winner_label=_player_display_name(game, winner_id),
+            reason="Won with the most reward points after the deck was exhausted.",
+        )
+    return _start_sudden_death(
+        game,
+        contender_ids=leaders,
+        preferred_order=list(scene.get("deck_exhausted_participants") or scene.get("participants") or []),
+        reason="The deck was exhausted with a tie for the most reward points.",
+    )
+
+
+def _prepare_next_sudden_death_scene(game: GameState) -> GameState:
+    meta = dict(game.meta or {})
+    endgame = dict(meta.get("endgame") or {})
+    if not endgame.get("active"):
+        return game
+    final_reason = (
+        "Won the sudden-death duels after a tie at 21 reward points."
+        if endgame.get("reason") == "Multiple players reached exactly 21 reward points."
+        else "Won the sudden-death duels after the deck was exhausted."
+    )
+
+    scene = _scene(game)
+    winners = [pid for pid in dict(scene.get("resolution") or {}).get("winners") or [] if isinstance(pid, str)]
+    if winners:
+        endgame["champion"] = winners[0]
+
+    contenders = [pid for pid in endgame.get("contenders", []) if isinstance(pid, str)]
+    alive_contenders = [pid for pid in contenders if _player_has_character(game, pid) and not _player_is_dead(game, pid)]
+    if len(alive_contenders) == 1:
+        meta.pop("endgame", None)
+        game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+        winner_id = alive_contenders[0]
+        return _set_victory(
+            game,
+            winner=winner_id,
+            winner_label=_player_display_name(game, winner_id),
+            reason=final_reason,
+        )
+
+    champion = endgame.get("champion")
+    if champion not in alive_contenders:
+        champion = alive_contenders[0]
+
+    cursor = int(endgame.get("cursor", 1) or 1)
+    challenger: str | None = None
+    challenger_index = cursor
+    for idx in range(cursor, len(contenders)):
+        pid = contenders[idx]
+        if pid != champion and pid in alive_contenders:
+            challenger = pid
+            challenger_index = idx
+            break
+    if challenger is None:
+        for idx, pid in enumerate(contenders):
+            if pid != champion and pid in alive_contenders:
+                challenger = pid
+                challenger_index = idx
+                break
+    if challenger is None:
+        meta.pop("endgame", None)
+        game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+        return _set_victory(
+            game,
+            winner=champion,
+            winner_label=_player_display_name(game, champion),
+            reason=final_reason,
+        )
+
+    endgame["champion"] = champion
+    endgame["cursor"] = challenger_index + 1
+    meta["endgame"] = endgame
+    game = GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+    if game.deck is not None and not game.deck.draw_pile and game.deck.discard_pile:
+        game = _reshuffle_discard_into_draw(game)
+
+    next_scene = default_scene_state()
+    next_scene["status"] = SCENE_STATUS_SETUP
+    next_scene["mode"] = SCENE_MODE_DUEL
+    next_scene["duel"] = {
+        "subtype": SCENE_DUEL_SUBTYPE_PVP,
+        "sudden_death": True,
+    }
+    next_scene["participants"] = [champion, challenger]
+    next_scene["players"] = {
+        champion: _default_scene_player(game, champion),
+        challenger: _default_scene_player(game, challenger),
+    }
+    return _replace_scene(game, scene=next_scene, zones=_reset_scene_zones(game.zones))
+
+
 def scene_close(game: GameState, *, actor_id: str) -> GameState:
     _require_table_phase(game)
     _require_marshal(game, actor_id)
@@ -890,6 +1126,7 @@ def scene_close(game: GameState, *, actor_id: str) -> GameState:
     scene = _scene(game)
     scene["status"] = SCENE_STATUS_CLOSED
     game = _replace_scene(game, scene=scene)
+    game = _resolve_scene_endgame(game)
     validate_unique_cards(game)
     return game
 
@@ -901,20 +1138,15 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_CLOSED:
         raise ValueError("A new scene can only be started after the previous one is closed.")
-    if _has_pending_post_scene_requirements(game):
+    if not dict((game.meta or {}).get("endgame") or {}).get("active") and _has_pending_post_scene_requirements(game):
         raise ValueError("All required heal/skip and reward discard decisions must be resolved before starting a new scene.")
 
     game = _apply_pending_scene_wounds(game)
     if _all_non_marshal_players_dead(game):
-        meta = dict(game.meta or {})
-        meta["phase"] = "victory"
-        meta["victory"] = {
-            "winner": "marshal",
-            "winner_label": "Marshal",
-            "reason": "All players are dead.",
-        }
-        validate_unique_cards(game)
-        return GameState(deck=game.deck, zones=game.zones, meta=meta)
+        return _set_marshal_victory(game)
+
+    if dict((game.meta or {}).get("endgame") or {}).get("active"):
+        return _prepare_next_sudden_death_scene(game)
 
     preserved_difficulty = dict(scene.get("difficulty") or {})
     preserved_azzardo = dict(scene.get("azzardo") or {})
@@ -1197,6 +1429,21 @@ def _default_scene_player(game: GameState, player_id: str) -> dict[str, Any]:
     }
 
 
+def _mark_scene_deck_exhausted_if_needed(game: GameState) -> GameState:
+    if game.deck is None or game.deck.draw_pile:
+        return game
+
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_SETUP, SCENE_STATUS_ACTIVE}:
+        return game
+    if scene.get("deck_exhausted"):
+        return game
+
+    scene["deck_exhausted"] = True
+    scene["deck_exhausted_participants"] = list(scene.get("participants") or [])
+    return _replace_scene(game, scene=scene)
+
+
 def _active_scene_player_id(scene: dict[str, Any]) -> str | None:
     if scene["status"] != SCENE_STATUS_ACTIVE:
         return None
@@ -1272,6 +1519,10 @@ def _is_pvp_duel(scene: dict[str, Any]) -> bool:
     return scene.get("mode") == SCENE_MODE_DUEL and dict(scene.get("duel") or {}).get("subtype") == SCENE_DUEL_SUBTYPE_PVP
 
 
+def _is_sudden_death_pvp_duel(scene: dict[str, Any]) -> bool:
+    return _is_pvp_duel(scene) and bool(dict(scene.get("duel") or {}).get("sudden_death"))
+
+
 def _pvp_duel_outcome(scene: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     participant_ids = list(scene.get("participants") or [])
     if len(participant_ids) != 2:
@@ -1298,7 +1549,7 @@ def _pvp_duel_outcome(scene: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         return "resolved", {"winner": p1, "loser": p2, "message": None}
     if p2_distance < p1_distance:
         return "resolved", {"winner": p2, "loser": p1, "message": None}
-    if p1_total == 21 and p2_total == 21:
+    if p1_total == 21 and p2_total == 21 and not _is_sudden_death_pvp_duel(scene):
         return "friends", {
             "message": "Both duelists hit 21. Impressed by each other's ability, they leave the duel as friends.",
         }
@@ -1327,7 +1578,7 @@ def _resolve_pvp_duel_scene(game: GameState, *, actor_id: str) -> GameState:
         else:
             if pid == data["winner"]:
                 pstate["wounds_gained"] = 0
-                pstate["reward_gained"] = True
+                pstate["reward_gained"] = not _is_sudden_death_pvp_duel(scene)
                 pstate["result"] = "duel_win"
                 winners.append(pid)
             else:
@@ -1373,6 +1624,7 @@ def _refresh_pvp_duel_resolution_preview(game: GameState, *, reset_acknowledgeme
         else:
             if pid == data["winner"]:
                 pstate["wounds_gained"] = 0
+                pstate["reward_gained"] = not _is_sudden_death_pvp_duel(scene)
                 pstate["result"] = "duel_win"
                 winners.append(pid)
             else:
@@ -1400,6 +1652,8 @@ def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
     azzardo = dict(scene.get("azzardo") or {})
 
     game = _discard_pvp_duel_play_zones(game)
+    if _is_sudden_death_pvp_duel(scene) and game.deck is not None and not game.deck.draw_pile and game.deck.discard_pile:
+        game = _reshuffle_discard_into_draw(game)
 
     reset_scene = default_scene_state()
     reset_scene["status"] = SCENE_STATUS_SETUP
@@ -1439,8 +1693,13 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             "subtype": duel_in.get("subtype")
             if duel_in.get("subtype") in {SCENE_DUEL_SUBTYPE_NPC, SCENE_DUEL_SUBTYPE_PVP}
             else default["duel"]["subtype"],
+            "sudden_death": bool(duel_in.get("sudden_death", default["duel"]["sudden_death"])),
         },
         "participants": [pid for pid in scene_in.get("participants") or [] if isinstance(pid, str)],
+        "deck_exhausted": bool(scene_in.get("deck_exhausted", default["deck_exhausted"])),
+        "deck_exhausted_participants": [
+            pid for pid in scene_in.get("deck_exhausted_participants") or [] if isinstance(pid, str)
+        ],
         "dark_mode": bool(scene_in.get("dark_mode", default["dark_mode"])),
         "bonus_assignments": {
             pid: bonus
@@ -1535,6 +1794,7 @@ def _draw_to_zone(game: GameState, zone_name: str) -> tuple[GameState, CardID]:
     game = GameState(deck=new_deck, zones=game.zones, meta=game.meta)
     card_id = game.deck.in_play[-1]
     game = claim_from_in_play(game, card_id, zone_name)
+    game = _mark_scene_deck_exhausted_if_needed(game)
     return game, card_id
 
 

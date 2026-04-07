@@ -45,8 +45,13 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
     scene["mode"] = scene_in.get("mode", scene["mode"])
     scene["duel"] = {
         "subtype": duel_in.get("subtype", scene["duel"]["subtype"]),
+        "sudden_death": bool(duel_in.get("sudden_death", scene["duel"]["sudden_death"])),
     }
     scene["participants"] = [pid for pid in scene_in.get("participants", []) if isinstance(pid, str)]
+    scene["deck_exhausted"] = bool(scene_in.get("deck_exhausted", scene["deck_exhausted"]))
+    scene["deck_exhausted_participants"] = [
+        pid for pid in scene_in.get("deck_exhausted_participants", []) if isinstance(pid, str)
+    ]
     scene["dark_mode"] = bool(scene_in.get("dark_mode", scene["dark_mode"]))
     scene["bonus_assignments"] = {
         pid: bonus

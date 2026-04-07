@@ -83,6 +83,48 @@ def _first_available(game: GameState, candidates: list[str]) -> str:
     raise AssertionError(f"No candidate cards available in draw_pile: {candidates}")
 
 
+def _move_card_from_draw_to_zone(game: GameState, card_id: str, zone_name: str) -> GameState:
+    assert game.deck is not None
+    if card_id not in game.deck.draw_pile:
+        raise AssertionError(f"Requested card is not available in draw_pile: {card_id}")
+
+    new_deck = DeckState(
+        version=game.deck.version,
+        schema=game.deck.schema,
+        created_utc=game.deck.created_utc,
+        notes=game.deck.notes,
+        settings=game.deck.settings,
+        draw_pile=[card for card in game.deck.draw_pile if card != card_id],
+        in_play=game.deck.in_play,
+        discard_pile=game.deck.discard_pile,
+        removed=game.deck.removed,
+    )
+    zones = {name: cards.copy() for name, cards in game.zones.items()}
+    zones.setdefault(zone_name, []).append(card_id)
+    return GameState(deck=new_deck, zones=zones, meta=game.meta)
+
+
+def _with_exact_draw_pile(game: GameState, draw_pile: list[str]) -> GameState:
+    assert game.deck is not None
+    missing = [card for card in draw_pile if card not in game.deck.draw_pile]
+    if missing:
+        raise AssertionError(f"Requested draw cards are not available in draw_pile: {missing}")
+
+    discard_pile = game.deck.discard_pile + [card for card in game.deck.draw_pile if card not in draw_pile]
+    new_deck = DeckState(
+        version=game.deck.version,
+        schema=game.deck.schema,
+        created_utc=game.deck.created_utc,
+        notes=game.deck.notes,
+        settings=game.deck.settings,
+        draw_pile=list(reversed(draw_pile)),
+        in_play=game.deck.in_play,
+        discard_pile=discard_pile,
+        removed=game.deck.removed,
+    )
+    return GameState(deck=new_deck, zones=game.zones, meta=game.meta)
+
+
 def test_scene_set_participants_initializes_scene_state():
     game = _ready_table_game()
 
@@ -91,7 +133,7 @@ def test_scene_set_participants_initializes_scene_state():
     scene = game.meta["scene"]
     assert scene["status"] == "setup"
     assert scene["mode"] == "standard"
-    assert scene["duel"] == {"subtype": None}
+    assert scene["duel"] == {"subtype": None, "sudden_death": False}
     assert scene["participants"] == ["p1", "p2"]
     assert scene["dark_mode"] is False
     assert scene["difficulty"] == {
@@ -142,7 +184,7 @@ def test_scene_set_mode_marks_duel_npc():
     game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="npc")
 
     assert game.meta["scene"]["mode"] == "duel"
-    assert game.meta["scene"]["duel"] == {"subtype": "npc"}
+    assert game.meta["scene"]["duel"] == {"subtype": "npc", "sudden_death": False}
 
 
 def test_scene_start_blocks_invalid_npc_duel_participant_count():
@@ -600,7 +642,7 @@ def test_pvp_duel_tie_not_at_21_restarts_duel_with_new_difficulty():
     scene = game.meta["scene"]
     assert scene["status"] == "active"
     assert scene["mode"] == "duel"
-    assert scene["duel"] == {"subtype": "pvp"}
+    assert scene["duel"] == {"subtype": "pvp", "sudden_death": False}
     assert scene["difficulty"]["card_id"] is None
     assert scene["resolution"] == {
         "completed": False,
@@ -652,6 +694,29 @@ def test_pvp_duel_tie_at_21_ends_in_friendship_message():
     assert scene["players"]["p1"]["wounds_gained"] == 0
     assert scene["players"]["p2"]["result"] == "friendship"
     assert scene["players"]["p2"]["wounds_gained"] == 0
+
+
+def test_sudden_death_pvp_duel_tie_at_21_restarts_instead_of_friendship():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["AH", "AS", "2H", "3C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game.meta["scene"]["duel"]["sudden_death"] = True
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "active"
+    assert scene["duel"] == {"subtype": "pvp", "sudden_death": True}
+    assert scene["resolution"] == {
+        "completed": False,
+        "winners": [],
+        "losers": [],
+        "message": None,
+    }
+    assert scene["players"]["p1"]["hand_value"] == 12
+    assert scene["players"]["p2"]["hand_value"] == 13
 
 
 def test_pvp_duel_blocks_difficulty_and_azzardo_actions():
@@ -1244,6 +1309,90 @@ def test_dead_player_cannot_receive_marshal_bonus_card():
         assert "Dead characters cannot receive" in str(exc)
     else:
         raise AssertionError("Expected dead player to be blocked from Marshal bonus assignment")
+
+
+def test_scene_close_enters_victory_phase_when_player_reaches_exactly_21_rewards():
+    game = _ready_table_game()
+    reward_card_id = _first_available(game, ["KH", "KD", "KC", "KS", "10H", "10D", "10C", "10S"])
+    stored_reward_id = _first_available(game, ["AH", "AD", "AC", "AS"])
+    game = _move_card_from_draw_to_zone(game, stored_reward_id, "players.p1.rewards")
+    game = _with_draw_order(game, ["4H", "9H", reward_card_id])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+
+    assert game.meta["scene"]["status"] == "resolved"
+
+    game = scene_close(game, actor_id="host1")
+
+    assert game.meta["phase"] == "victory"
+    assert game.meta["victory"] == {
+        "winner": "p1",
+        "winner_label": "Ash",
+        "reason": "Reached exactly 21 reward points.",
+    }
+
+
+def test_scene_close_enters_victory_phase_when_deck_exhausted_with_single_leader():
+    game = _ready_table_game()
+    stored_reward_id = _first_available(game, ["AH", "AD", "AC", "AS"])
+    game = _move_card_from_draw_to_zone(game, stored_reward_id, "players.p1.rewards")
+    game = _with_exact_draw_pile(game, ["4H", "9H"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+
+    assert game.meta["scene"]["deck_exhausted"] is True
+
+    game = scene_stand(game, player_id="p1")
+    game = scene_close(game, actor_id="host1")
+
+    assert game.meta["phase"] == "victory"
+    assert game.meta["victory"] == {
+        "winner": "p1",
+        "winner_label": "Ash",
+        "reason": "Won with the most reward points after the deck was exhausted.",
+    }
+    assert game.zones["players.p1.rewards"] == [stored_reward_id]
+
+
+def test_scene_new_starts_sudden_death_duel_after_deck_exhausted_tie():
+    game = _ready_table_game()
+    reward_p1 = _first_available(game, ["AH", "AD", "AC", "AS"])
+    game = _move_card_from_draw_to_zone(game, reward_p1, "players.p1.rewards")
+    reward_p2 = _first_available(game, ["2H", "2D", "2C", "2S"])
+    game = _move_card_from_draw_to_zone(game, reward_p2, "players.p2.rewards")
+    game = _with_exact_draw_pile(game, ["4H", "9H", "8C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+    game = scene_close(game, actor_id="host1")
+
+    assert game.meta["phase"] == "table"
+    assert game.meta["endgame"] == {
+        "active": True,
+        "kind": "sudden_death",
+        "reason": "The deck was exhausted with a tie for the most reward points.",
+        "contenders": ["p1", "p2"],
+        "champion": "p1",
+        "cursor": 1,
+    }
+
+    game = scene_new(game, actor_id="host1")
+
+    scene = game.meta["scene"]
+    assert scene["status"] == "setup"
+    assert scene["mode"] == "duel"
+    assert scene["duel"] == {"subtype": "pvp", "sudden_death": True}
+    assert scene["participants"] == ["p1", "p2"]
+    assert game.deck is not None
+    assert len(game.deck.draw_pile) > 0
 
 
 def test_scene_new_enters_victory_phase_when_all_players_are_dead():

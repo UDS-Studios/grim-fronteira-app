@@ -1,11 +1,17 @@
+import CardImg from "../components/CardImg";
+
 type VictoryViewProps = {
   winnerLabel: string;
+  winnerFigureCardId?: string | null;
+  showMarshalPortrait?: boolean;
   reason?: string | null;
   onBackHome: () => void;
 };
 
 export default function VictoryView({
   winnerLabel,
+  winnerFigureCardId = null,
+  showMarshalPortrait = false,
   reason = null,
   onBackHome,
 }: VictoryViewProps) {
@@ -46,6 +52,37 @@ export default function VictoryView({
           <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.7 }}>
             VICTORY
           </div>
+          {winnerFigureCardId ? (
+            <div
+              style={{
+                padding: 8,
+                borderRadius: 16,
+                background: "color-mix(in srgb, var(--surface-strong) 86%, transparent)",
+                boxShadow: "0 10px 22px rgba(0,0,0,0.12)",
+              }}
+            >
+              <CardImg cardId={winnerFigureCardId} width={120} />
+            </div>
+          ) : showMarshalPortrait ? (
+            <div
+              style={{
+                padding: 8,
+                borderRadius: 16,
+                background: "color-mix(in srgb, var(--surface-strong) 86%, transparent)",
+                boxShadow: "0 10px 22px rgba(0,0,0,0.12)",
+              }}
+            >
+              <img
+                src="/ui/marshal.png"
+                alt="Marshal"
+                style={{
+                  display: "block",
+                  width: 120,
+                  height: "auto",
+                }}
+              />
+            </div>
+          ) : null}
           <div style={{ fontSize: 36, fontWeight: 900, lineHeight: 1.05 }}>
             {winnerLabel} Wins
           </div>

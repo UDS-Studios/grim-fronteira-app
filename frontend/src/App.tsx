@@ -103,7 +103,14 @@ export default function App() {
 
   const state = (resp?.state as any) ?? {};
   const meta: MetaAny = state.meta ?? {};
+  const zones = state.zones ?? {};
   const phase = meta.phase ?? "no-game";
+  const victoryWinnerId = meta.victory?.winner ?? null;
+  const victoryWinnerFigureCardId =
+    typeof victoryWinnerId === "string" && victoryWinnerId !== "marshal"
+      ? (zones[`players.${victoryWinnerId}.character`]?.[0] ?? null)
+      : null;
+  const showMarshalVictoryPortrait = victoryWinnerId === "marshal";
   const viewportHeight = "calc(100vh - 32px)";
   const useScrollableGameContent = phase === "lobby";
   const useFixedGameViewport = phase === "lobby";
@@ -319,6 +326,8 @@ export default function App() {
             {resp && phase === "victory" && (
               <VictoryView
                 winnerLabel={meta.victory?.winner_label ?? "Marshal"}
+                winnerFigureCardId={victoryWinnerFigureCardId}
+                showMarshalPortrait={showMarshalVictoryPortrait}
                 reason={meta.victory?.reason ?? null}
                 onBackHome={() => {
                   setResp(null);

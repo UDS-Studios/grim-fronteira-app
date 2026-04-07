@@ -121,7 +121,7 @@ export default function PlayerSummaryCard({
             {rewardPoints} pt{rewardPoints === 1 ? "" : "s"}
           </div>
         </div>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, alignSelf: "start" }}>
           <b>Wounds:</b> {woundsCount}
         </div>
       </div>
