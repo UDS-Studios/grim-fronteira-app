@@ -750,6 +750,7 @@ export default function PlayerTableView({
       scumCount: getPlayerScumCards(pid).length,
       vengeanceCount: getPlayerVengeanceCards(pid).length,
       rewardCount: getPlayerRewardCards(pid).length,
+      rewardPoints: getPlayerRewardPoints(pid),
       inScene: participantIds.includes(pid),
       scenePlayedCards: getPlayerSceneHand(pid),
       sceneTotal: getParticipantTotal(pid),
@@ -783,11 +784,6 @@ export default function PlayerTableView({
         : azzardoStatus !== "unavailable"
           ? `${scene.difficulty.value} + ?`
           : `${scene.difficulty.value}`;
-  const displayedDifficultyCardId = isPvpDuelScene ? null : difficultyCardId;
-  const displayedAzzardoStatus = isPvpDuelScene ? "ignored" : azzardoStatus;
-  const displayedAzzardoCardId = isPvpDuelScene ? null : azzardoCardId;
-  const displayedDifficultyValueLabel = isPvpDuelScene ? "-" : difficultyValueLabel;
-  const displayedTotalBoxLabel = isPvpDuelScene ? "-" : totalBoxLabel;
 
   const isJokerDifficulty =
     difficultyCardId === "BJ" ||
@@ -1369,9 +1365,9 @@ export default function PlayerTableView({
                             {isJokerDifficulty ? "20" : "10 +"}
                           </div>
 
-                          {displayedDifficultyCardId ? (
+                          {difficultyCardId ? (
                               <CardImg
-                                cardId={displayedDifficultyCardId}
+                                cardId={difficultyCardId}
                                 width={ds(86)}
                                 title="Difficulty card"
                               />
@@ -1379,10 +1375,10 @@ export default function PlayerTableView({
                             <div style={{ opacity: 0.6 }}>— no card —</div>
                           )}
 
-                          {displayedAzzardoStatus !== "unavailable" ? (
-                            displayedAzzardoCardId ? (
+                          {azzardoStatus !== "unavailable" ? (
+                            azzardoCardId ? (
                               <CardImg
-                                cardId={displayedAzzardoCardId}
+                                cardId={azzardoCardId}
                                 width={ds(86)}
                                 title="Azzardo"
                               />
@@ -1435,10 +1431,10 @@ export default function PlayerTableView({
                             lineHeight: 1,
                             whiteSpace: "nowrap",
                             opacity: 0.58,
-                            color: isPvpDuelScene ? "inherit" : difficultyTotalColor ?? "inherit",
+                            color: difficultyTotalColor ?? "inherit",
                           }}
                         >
-                          {displayedTotalBoxLabel}
+                          {totalBoxLabel}
                         </div>
                       </div>
 
@@ -1450,10 +1446,10 @@ export default function PlayerTableView({
                           minWidth: 0,
                         }}
                       >
-                        <div><b>difficulty value:</b> {displayedDifficultyValueLabel}</div>
+                        <div><b>difficulty value:</b> {difficultyValueLabel}</div>
                         <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
                         <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                        <div><b>azzardo status:</b> {displayedAzzardoStatus}</div>
+                        <div><b>azzardo status:</b> {azzardoStatus}</div>
                         <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
                         <div><b>participants selected:</b> {participantIds.length}</div>
                         <div><b>scene status:</b> {scene.status ?? "-"}</div>

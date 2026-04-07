@@ -15,6 +15,7 @@ type PlayerSummaryCardProps = {
   scumCount: number;
   vengeanceCount: number;
   rewardCount: number;
+  rewardPoints: number;
   woundsCount?: number;
   figureRotated?: boolean;
   footerNote?: string | null;
@@ -30,6 +31,7 @@ export default function PlayerSummaryCard({
   scumCount,
   vengeanceCount,
   rewardCount,
+  rewardPoints,
   woundsCount = 0,
   figureRotated = false,
   footerNote = null,
@@ -111,8 +113,13 @@ export default function PlayerSummaryCard({
         <div style={{ minWidth: 0 }}>
           <b>Vengeance:</b> {vengeanceCount}
         </div>
-        <div style={{ minWidth: 0 }}>
-          <b>Rewards:</b> {rewardCount}
+        <div style={{ minWidth: 0, display: "grid", gap: 2 * scale }}>
+          <div>
+            <b>Rewards:</b> {rewardCount} card{rewardCount === 1 ? "" : "s"}
+          </div>
+          <div style={{ fontSize: 12 * scale, opacity: 0.8 }}>
+            {rewardPoints} pt{rewardPoints === 1 ? "" : "s"}
+          </div>
         </div>
         <div style={{ minWidth: 0 }}>
           <b>Wounds:</b> {woundsCount}

@@ -924,7 +924,7 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
         scene["status"] = SCENE_STATUS_SETUP
         scene["difficulty"] = preserved_difficulty
         scene["azzardo"] = preserved_azzardo
-        return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones))
+        return _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones, keep_setup_cards=True))
 
     game = _discard_scene_play_zones(game)
     scene = default_scene_state()
@@ -1327,6 +1327,7 @@ def _resolve_pvp_duel_scene(game: GameState, *, actor_id: str) -> GameState:
         else:
             if pid == data["winner"]:
                 pstate["wounds_gained"] = 0
+                pstate["reward_gained"] = True
                 pstate["result"] = "duel_win"
                 winners.append(pid)
             else:
@@ -1408,7 +1409,7 @@ def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
     reset_scene["azzardo"] = azzardo
     reset_scene["participants"] = participant_ids
     reset_scene["players"] = {pid: _default_scene_player(game, pid) for pid in participant_ids}
-    game = _replace_scene(game, scene=reset_scene, zones=_reset_scene_zones(game.zones))
+    game = _replace_scene(game, scene=reset_scene, zones=_reset_scene_zones(game.zones, keep_setup_cards=True))
     game = scene_start(game, actor_id=actor_id)
     return game
 
@@ -1498,10 +1499,15 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
     return scene
 
 
-def _reset_scene_zones(zones: dict[str, list[CardID]], *, keep_hands: bool = False) -> dict[str, list[CardID]]:
+def _reset_scene_zones(
+    zones: dict[str, list[CardID]],
+    *,
+    keep_hands: bool = False,
+    keep_setup_cards: bool = False,
+) -> dict[str, list[CardID]]:
     new_zones: dict[str, list[CardID]] = {}
     for zone_name, cards in zones.items():
-        if zone_name in {SCENE_DIFFICULTY_ZONE, SCENE_AZZARDO_ZONE}:
+        if zone_name in {SCENE_DIFFICULTY_ZONE, SCENE_AZZARDO_ZONE} and not keep_setup_cards:
             continue
         if zone_name.startswith(SCENE_HAND_PREFIX) and not keep_hands:
             continue

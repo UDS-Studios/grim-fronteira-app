@@ -791,12 +791,6 @@ export default function MarshalTableView({
         : hasAzzardo
           ? `${scene.difficulty.value} + ?`
           : `${scene.difficulty.value}`;
-  const displayedDifficultyCardId = isPvpDuelScene ? null : difficultyCardId;
-  const displayedHasAzzardo = isPvpDuelScene ? false : hasAzzardo;
-  const displayedAzzardoCardId = isPvpDuelScene ? null : azzardoCardId;
-  const displayedDifficultyValueLabel = isPvpDuelScene ? "-" : difficultyValueLabel;
-  const displayedAzzardoStatus = isPvpDuelScene ? "ignored" : azzardoStatus;
-  const displayedTotalBoxLabel = isPvpDuelScene ? "-" : totalBoxLabel;
 
   const isJokerDifficulty =
     difficultyCardId === "BJ" ||
@@ -1516,9 +1510,9 @@ export default function MarshalTableView({
                     {isJokerDifficulty ? "20" : "10 +"}
                   </div>
 
-                  {displayedDifficultyCardId ? (
+                  {difficultyCardId ? (
                     <CardImg
-                      cardId={displayedDifficultyCardId}
+                      cardId={difficultyCardId}
                       width={ds(86)}
                       title="Difficulty card"
                     />
@@ -1526,7 +1520,7 @@ export default function MarshalTableView({
                     <div style={{ opacity: 0.6 }}>— no card —</div>
                   )}
 
-                  {displayedHasAzzardo ? (
+                  {hasAzzardo ? (
                     <button
                       type="button"
                       onClick={handleAzzardoUndo}
@@ -1544,8 +1538,8 @@ export default function MarshalTableView({
                           : "Click to return azzardo to the deck"
                       }
                     >
-                      {displayedAzzardoCardId ? (
-                        <CardImg cardId={displayedAzzardoCardId} width={ds(86)} title="Azzardo" />
+                      {azzardoCardId ? (
+                        <CardImg cardId={azzardoCardId} width={ds(86)} title="Azzardo" />
                       ) : (
                         <CardImg
                           cardId="BACK"
@@ -1607,10 +1601,10 @@ export default function MarshalTableView({
                     lineHeight: 1,
                     whiteSpace: "nowrap",
                     opacity: 0.58,
-                    color: isPvpDuelScene ? "inherit" : difficultyTotalColor ?? "inherit",
+                    color: difficultyTotalColor ?? "inherit",
                   }}
                 >
-                  {displayedTotalBoxLabel}
+                  {totalBoxLabel}
                 </div>
               </div>
 
@@ -1622,10 +1616,10 @@ export default function MarshalTableView({
                   minWidth: 0,
                 }}
               >
-                <div><b>difficulty value:</b> {displayedDifficultyValueLabel}</div>
+                <div><b>difficulty value:</b> {difficultyValueLabel}</div>
                 <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
                 <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                <div><b>azzardo status:</b> {displayedAzzardoStatus}</div>
+                <div><b>azzardo status:</b> {azzardoStatus}</div>
                 <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
                 <div><b>participants selected:</b> {participantIds.length}</div>
                 <div>
@@ -1782,6 +1776,7 @@ export default function MarshalTableView({
                           scumCount={getPlayerScumCount(pid)}
                           vengeanceCount={getPlayerVengeanceCount(pid)}
                           rewardCount={getPlayerRewardCount(pid)}
+                          rewardPoints={getPlayerRewardPoints(pid)}
                           woundsCount={getDisplayedWounds(pid)}
                           figureRotated={getFigureRotated(pid)}
                           figureDead={dead}

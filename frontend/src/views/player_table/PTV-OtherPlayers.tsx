@@ -14,6 +14,7 @@ export type PTVOtherPlayersEntry = {
   scumCount: number;
   vengeanceCount: number;
   rewardCount: number;
+  rewardPoints: number;
   inScene?: boolean;
   scenePlayedCards?: string[];
   sceneTotal?: number | null;
@@ -242,7 +243,7 @@ function OtherPlayerMini({
           opacity: 0.85,
         }}
       >
-        <b>Rewards:</b> {player.rewardCount}
+        <b>Rewards:</b> {player.rewardCount} card{player.rewardCount === 1 ? "" : "s"} / {player.rewardPoints} pt{player.rewardPoints === 1 ? "" : "s"}
       </div>
 
       {player.inScene ? (

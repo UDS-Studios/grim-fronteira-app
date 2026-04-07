@@ -563,7 +563,7 @@ def test_pvp_duel_winner_inflicts_wound_on_loser():
     }
     assert scene["players"]["p1"]["result"] == "duel_win"
     assert scene["players"]["p1"]["wounds_gained"] == 0
-    assert scene["players"]["p1"]["reward_gained"] is False
+    assert scene["players"]["p1"]["reward_gained"] is True
     assert scene["players"]["p2"]["result"] == "wound"
     assert scene["players"]["p2"]["wounds_gained"] == 1
     assert scene["players"]["p2"]["reward_gained"] is False
@@ -585,6 +585,7 @@ def test_pvp_duel_bust_ends_duel_immediately():
     assert scene["players"]["p1"]["wounds_gained"] == 1
     assert scene["players"]["p2"]["result"] == "duel_win"
     assert scene["players"]["p2"]["wounds_gained"] == 0
+    assert scene["players"]["p2"]["reward_gained"] is True
 
 
 def test_pvp_duel_tie_not_at_21_restarts_duel_with_new_difficulty():
@@ -613,6 +614,21 @@ def test_pvp_duel_tie_not_at_21_restarts_duel_with_new_difficulty():
     assert "9S" in game.deck.discard_pile
     assert "9D" in game.zones["scene.hand.p1"]
     assert "5C" in game.zones["scene.hand.p2"]
+
+
+def test_pvp_duel_tie_restart_keeps_preserved_setup_card_zones():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["7H", "9H", "9S", "9D", "5C"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+
+    assert game.meta["scene"]["status"] == "active"
+    assert game.meta["scene"]["difficulty"]["card_id"] == "7H"
+    assert game.zones["scene.difficulty"] == ["7H"]
 
 
 def test_pvp_duel_tie_at_21_ends_in_friendship_message():
@@ -688,6 +704,21 @@ def test_pvp_duel_preserves_drawn_difficulty_and_azzardo_for_next_standard_scene
     }
     assert game.zones["scene.difficulty"] == ["5H"]
     assert game.zones["scene.azzardo"] == ["6C"]
+
+
+def test_pvp_duel_new_scene_keeps_preserved_setup_cards_in_zones():
+    game = _ready_table_game()
+    game = _with_draw_order(game, ["AH", "9C", "5H"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_set_mode(game, actor_id="host1", mode="duel", duel_subtype="pvp")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = scene_stand(game, player_id="p2")
+    game = scene_close(game, actor_id="host1")
+    game = scene_new(game, actor_id="host1")
+
+    assert game.zones["scene.difficulty"] == ["AH"]
 
 
 def test_scene_auto_acknowledges_when_no_post_resolution_actions_exist():
