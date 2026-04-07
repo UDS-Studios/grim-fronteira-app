@@ -60,19 +60,26 @@ from backend.engine.rules.grim_fronteira.lobby import (
     begin_table,
 )
 
-app = FastAPI(title="Grim Fronteira API", version="0.1.0")
+app = FastAPI(
+    title="Grim Fronteira API",
+    version="0.1.0",
+    root_path="/grim-fronteira",
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
+)
 
 # --- Dev CORS: Vite + localhost variants ---
-DEV_ORIGINS = [
+ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://lupoegatta.site",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=DEV_ORIGINS,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
