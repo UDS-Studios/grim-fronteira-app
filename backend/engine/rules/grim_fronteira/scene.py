@@ -528,6 +528,17 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     if scene["status"] != SCENE_STATUS_ACTIVE:
         raise ValueError("Scene can only be resolved while active.")
 
+    if _is_pvp_duel(scene):
+        unresolved = [
+            pid
+            for pid in scene["participants"]
+            if not bool((scene["players"].get(pid) or {}).get("standing"))
+            and not bool((scene["players"].get(pid) or {}).get("busted"))
+        ]
+        if unresolved and not any(bool((scene["players"].get(pid) or {}).get("busted")) for pid in scene["participants"]):
+            raise ValueError(f"All participants must stand or bust before resolution: {', '.join(unresolved)}")
+        return _resolve_pvp_duel_scene(game, actor_id=actor_id)
+
     unresolved = [
         pid
         for pid in scene["participants"]
@@ -536,9 +547,6 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     ]
     if unresolved:
         raise ValueError(f"All participants must stand or bust before resolution: {', '.join(unresolved)}")
-
-    if _is_pvp_duel(scene):
-        return _resolve_pvp_duel_scene(game, actor_id=actor_id)
 
     azzardo = dict(scene["azzardo"])
     if azzardo["status"] == "drawn":
