@@ -1,3 +1,6 @@
+fastapi==0.135.2
+python-multipart==0.0.22
+uvicorn[standard]==0.43.0
 iniconfig==2.3.0
 packaging==26.0
 pluggy==1.6.0
