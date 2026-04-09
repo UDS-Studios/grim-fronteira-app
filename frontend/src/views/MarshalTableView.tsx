@@ -4,6 +4,7 @@ import IconButton from "../components/IconButton";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import TableZone from "../components/TableZone";
 import PlayerSummaryCard from "../components/PlayerSummaryCard";
+import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
 import type { ActionResponse, View } from "../api/types";
 import {
@@ -1144,9 +1145,9 @@ export default function MarshalTableView({
         return scene.resolution.message;
       }
       if (pendingBonusType) {
-        return `Scene resolved. Click a player to assign one bonus ${pendingBonusType} card, or click the same assign button again to cancel.`;
+        return `Scene resolved. Click a player to assign one bonus ${pendingBonusType} card, or\nclick the same assign button again to cancel.`;
       }
-      return "Scene resolved. You can assign one bonus Scum or Vengeance card per player, or click Close Scene to discard the cards in play and distribute rewards.";
+      return "Scene resolved. You can assign one bonus Scum or Vengeance card per player,\nor click Close Scene to discard the cards in play and distribute rewards.";
     }
 
     if (scene.status === "closed") {
@@ -1187,7 +1188,7 @@ export default function MarshalTableView({
           }}
         >
           <IconButton
-            src="/ui/home.png"
+            src={publicAsset("ui/home.png")}
             alt="Home"
             title="Return to Home"
             onClick={onBackHome}
@@ -1205,7 +1206,7 @@ export default function MarshalTableView({
           </h1>
 
           <IconButton
-            src="/ui/refresh.png"
+            src={publicAsset("ui/refresh.png")}
             alt="Refresh"
             title="Refresh Table"
             onClick={() => run(getGame(resp.game_id, view))}
@@ -1625,7 +1626,16 @@ export default function MarshalTableView({
                 <div>
                   <b>scene status:</b> {scene.status ?? "-"}
                 </div>
-                <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
+                <div
+                  style={{
+                    opacity: 0.72,
+                    whiteSpace: "pre-line",
+                    overflowWrap: "break-word",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {getSceneInstruction()}
+                </div>
               </div>
             </div>
           </TableZone>
