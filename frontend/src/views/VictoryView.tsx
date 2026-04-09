@@ -1,3 +1,4 @@
+import { publicAsset } from "../app/assets";
 import CardImg from "../components/CardImg";
 
 type VictoryViewProps = {
@@ -73,7 +74,7 @@ export default function VictoryView({
               }}
             >
               <img
-                src="/ui/marshal.png"
+                src={publicAsset("ui/marshal.png")}
                 alt="Marshal"
                 style={{
                   display: "block",

@@ -1,3 +1,4 @@
+import { publicAsset } from "../app/assets";
 import type { ActionResponse } from "../api/types";
 
 type ErrorViewProps = {
@@ -31,7 +32,7 @@ export default function ErrorView({ error, onBackHome }: ErrorViewProps) {
         }}
       >
         <img
-          src="/ui/error-404.png"
+          src={publicAsset("ui/error-404.png")}
           alt="Error 404"
           style={{
             width: "min(300px, 100%)",

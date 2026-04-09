@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import CardImg from "../../components/CardImg";
+import { publicAsset } from "../../app/assets";
 import { getTwentyOneColor } from "./sceneResolution";
 
 export type PTVPlayerBoardProps = {
@@ -38,10 +39,10 @@ type PowerArtKey =
 
 function getPowerArtSrc(powerLabel: string): string | null {
   const map: Record<PowerArtKey, string> = {
-    "Children of the Earth": "/ui/powers/children_of_the_earth.png",
-    "Heart of Shadow": "/ui/powers/heart_of_shadow.png",
-    "Law of Lead": "/ui/powers/law_of_lead.png",
-    "Order and Profit": "/ui/powers/order_and_profit.png",
+    "Children of the Earth": publicAsset("ui/powers/children_of_the_earth.png"),
+    "Heart of Shadow": publicAsset("ui/powers/heart_of_shadow.png"),
+    "Law of Lead": publicAsset("ui/powers/law_of_lead.png"),
+    "Order and Profit": publicAsset("ui/powers/order_and_profit.png"),
   };
 
   return (map as Record<string, string>)[powerLabel] ?? null;
