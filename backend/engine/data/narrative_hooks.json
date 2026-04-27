@@ -7,7 +7,12 @@
     "contagion_panic": "Fear-driven isolation, skin disease, plague suspicion, and mob reactions.",
     "vermin_rot": "Rats, insects, filth, foul storage, rot, infestation, and survival squalor.",
     "frontier_greed": "Rewards, land grabs, salvage claims, trespass, fraud, and opportunism.",
-    "classic_western": "More traditional western-style openings adapted to Grim Fronteira tone."
+    "classic_western": "More traditional western-style openings adapted to Grim Fronteira tone.",
+    "sacred_frontier": "Rare beasts, protected crossings, clan taboos, and contested wilderness claims.",
+    "buried_infrastructure": "Old maps, tunnels, vaults, civic works, and hidden passages under settled places.",
+    "unanswered_blood": "Murders, duels, vendettas, and official refusals that leave justice to the table.",
+    "infernal_accusation": "Priests, devils, masks of authority, and public accusations of supernatural corruption.",
+    "contraband_lure": "Abandoned vice goods, faction scrambles, baited prizes, and watching outsiders."
   },
   "site_references": [
     {
@@ -69,6 +74,24 @@
       "name": "Segovia Aqueduct",
       "region": "Spain",
       "angle": "monument to vanished water"
+    },
+    {
+      "key": "alba_meseta",
+      "name": "Alba Meseta",
+      "region": "Frontier",
+      "angle": "white grass, sealed passes, and sacred game"
+    },
+    {
+      "key": "lu_portu",
+      "name": "Lu Portu",
+      "region": "Frontier",
+      "angle": "harbor ledgers, contraband squares, and buried stonework"
+    },
+    {
+      "key": "valentia",
+      "name": "Valentia",
+      "region": "Frontier",
+      "angle": "dusty authority under a preacher's accusation"
     }
   ],
   "hooks": [
@@ -225,6 +248,41 @@
       "category": "heritage_defilement",
       "weight": 2,
       "text": "A Boss plans to open a luxury gambling house inside a half-collapsed convent and wants the local holy women 'relocated quietly.' The job sounds easy until one nun offers a higher price to make the Boss disappear instead."
+    },
+    {
+      "id": "H025",
+      "category": "sacred_frontier",
+      "weight": 3,
+      "site_key": "alba_meseta",
+      "text": "The Great White Bison is sighted crossing the Alba Meseta, drawing hunters from the Free Caravans while the Chichimeca Clans seal the passes to protect it."
+    },
+    {
+      "id": "H026",
+      "category": "buried_infrastructure",
+      "weight": 2,
+      "site_key": "lu_portu",
+      "text": "An old troglos survey map reveals a hidden passage running beneath the central bank of Lu Portu, and every mark on the map suggests someone has used it recently."
+    },
+    {
+      "id": "H027",
+      "category": "unanswered_blood",
+      "weight": 2,
+      "site_key": "toledo",
+      "text": "Three rival Yankee gunslingers are found dead in Toledo, their bodies marked by precise slashing wounds, and the Paisà authorities refuse to investigate."
+    },
+    {
+      "id": "H028",
+      "category": "infernal_accusation",
+      "weight": 2,
+      "site_key": "valentia",
+      "text": "A vagabond priest comes into Valentia claiming he has proof the sheriff is the Devil in disguise, and the jail fills before anyone sees the evidence."
+    },
+    {
+      "id": "H029",
+      "category": "contraband_lure",
+      "weight": 3,
+      "site_key": "lu_portu",
+      "text": "A crate of agua ardiente is left in the main square of Lu Portu, drawing locals and factions into the open while a shadowed Yankee deserter watches from the edge, smiling."
     }
   ]
 }
