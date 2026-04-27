@@ -11,8 +11,6 @@ VENV_DIR="/opt/grim-fronteira/venv"
 FRONTEND_DIST="/opt/grim-fronteira/frontend-dist"
 SERVICE_NAME="grim-fronteira.service"
 BUILD_PATH="/usr/bin:/bin:/usr/local/bin"
-SYSTEM_NODE="/usr/bin/node"
-NPM_CLI="/usr/local/lib/node_modules/npm/bin/npm-cli.js"
 
 # --------------------------------------------------
 # HELPERS
@@ -22,7 +20,13 @@ run_as_app_owner() {
 }
 
 run_npm_as_app_owner() {
-  sudo -u "$APP_OWNER" -H env PATH="$BUILD_PATH" "$SYSTEM_NODE" "$NPM_CLI" --prefix "$APP_ROOT/frontend" "$@"
+  sudo -u "$APP_OWNER" -H bash -lc "
+export NVM_DIR=\"\$HOME/.nvm\"
+[ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+nvm use 22 >/dev/null
+cd \"$APP_ROOT/frontend\"
+npm $*
+"
 }
 
 # --------------------------------------------------
@@ -53,16 +57,6 @@ if [[ ! -x "$VENV_DIR/bin/python" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$SYSTEM_NODE" ]]; then
-  echo "[ERROR] Expected system Node at $SYSTEM_NODE"
-  exit 1
-fi
-
-if [[ ! -f "$NPM_CLI" ]]; then
-  echo "[ERROR] Expected npm CLI at $NPM_CLI"
-  exit 1
-fi
-
 APP_OWNER="${SUDO_USER:-$(stat -c '%U' "$APP_ROOT")}"
 APP_GROUP="$(id -gn "$APP_OWNER")"
 
@@ -79,9 +73,13 @@ echo "Build user: $APP_OWNER"
 echo "Build PATH: $BUILD_PATH"
 
 echo "-- Build toolchain"
-run_as_app_owner "command -v node"
-"$SYSTEM_NODE" -v
-"$SYSTEM_NODE" "$NPM_CLI" -v
+run_as_app_owner "
+export NVM_DIR=\"\$HOME/.nvm\"
+[ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
+nvm use 22 >/dev/null
+echo Node: \$(node -v)
+echo NPM: \$(npm -v)
+"
 
 # --------------------------------------------------
 # BACKEND
