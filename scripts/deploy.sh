@@ -91,17 +91,17 @@ cd "$APP_ROOT"
 source "$VENV_DIR/bin/activate"
 
 # NOTE: adjust once requirements are cleaned up
-pip install -r requirements.txt
-pip install fastapi uvicorn[standard] python-multipart
+pip install --upgrade -r requirements.txt
 
 # --------------------------------------------------
 # FRONTEND
 # --------------------------------------------------
-echo "-- Frontend build"
+echo "-- Frontend build (clean)"
 rm -rf "$APP_ROOT/frontend/dist"
 chown -R "$APP_OWNER:$APP_GROUP" "$APP_ROOT/frontend"
 run_npm_as_app_owner ci
 run_npm_as_app_owner run build
+echo "-- Frontend build completed"
 
 # --------------------------------------------------
 # DEPLOY FRONTEND
