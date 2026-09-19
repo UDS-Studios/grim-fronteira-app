@@ -30,3 +30,5 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+# KDE directory metadata
+.directory
