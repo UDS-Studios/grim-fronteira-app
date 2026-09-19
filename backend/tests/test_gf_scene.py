@@ -1822,3 +1822,22 @@ def test_scene_setup_actions_lock_after_start():
             pass
         else:
             raise AssertionError("setup action should fail after scene_start")
+
+
+def test_pending_interaction_does_not_gate_scene_actions():
+    from backend.engine.state.pending_interaction import begin_pending_interaction
+
+    game = _ready_table_game()
+    interaction = {
+        "kind": "synthetic",
+        "actor_id": "p2",
+        "allowed_actions": [],
+        "continuation": {"opaque": "do not execute"},
+        "payload": {},
+    }
+    pending_game = begin_pending_interaction(game, interaction)
+    normal = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
+    pending = scene_set_participants(pending_game, actor_id="host1", participant_ids=["p1", "p2"])
+    assert pending.deck == normal.deck
+    assert pending.zones == normal.zones
+    assert pending.meta == {**normal.meta, "pending_interaction": interaction}

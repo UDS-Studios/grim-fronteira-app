@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Iterable
 
 from .game_state import GameState
+from .pending_interaction import validate_pending_interaction
 
 
 def _all_cards(state: GameState) -> list[str]:
@@ -97,10 +98,11 @@ def validate_game_state(
     expected_total: int | None = None,
 ) -> None:
     """
-    Convenience wrapper: enforce both invariants.
+    Convenience wrapper: enforce card and pending-interaction invariants.
 
     - Uniqueness: no card appears in multiple places.
     - Conservation: total cards matches expected_total (or inferred).
     """
     validate_unique_cards(state)
     validate_card_conservation(state, expected_total=expected_total, enforce_unique=False)
+    validate_pending_interaction(state.meta.get("pending_interaction"))
