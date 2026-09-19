@@ -1824,20 +1824,33 @@ def test_scene_setup_actions_lock_after_start():
             raise AssertionError("setup action should fail after scene_start")
 
 
-def test_pending_interaction_does_not_gate_scene_actions():
+def test_pending_interaction_blocks_scene_action_at_dispatch():
+    from copy import deepcopy
+
+    import pytest
+    from fastapi import HTTPException
+    from backend.app.main import action
+    from backend.app.schemas import ActionRequest
+    from backend.app.store import GAMES, StoredGame
     from backend.engine.state.pending_interaction import begin_pending_interaction
 
-    game = _ready_table_game()
-    interaction = {
+    game = begin_pending_interaction(_ready_table_game(), {
         "kind": "synthetic",
         "actor_id": "p2",
         "allowed_actions": [],
         "continuation": {"opaque": "do not execute"},
         "payload": {},
-    }
-    pending_game = begin_pending_interaction(game, interaction)
-    normal = scene_set_participants(game, actor_id="host1", participant_ids=["p1", "p2"])
-    pending = scene_set_participants(pending_game, actor_id="host1", participant_ids=["p1", "p2"])
-    assert pending.deck == normal.deck
-    assert pending.zones == normal.zones
-    assert pending.meta == {**normal.meta, "pending_interaction": interaction}
+    })
+    snapshot = deepcopy(game)
+    game_id = "pending-scene-regression"
+    GAMES[game_id] = StoredGame(state=game)
+    try:
+        with pytest.raises(HTTPException, match="Action not permitted"):
+            action(ActionRequest(
+                game_id=game_id, action="gf.scene_set_participants",
+                params={"actor_id": "host1", "participant_ids": ["p1", "p2"]},
+            ))
+        assert GAMES[game_id].state is game
+        assert game == snapshot
+    finally:
+        GAMES.pop(game_id)

@@ -25,6 +25,9 @@ class ActionRequest(BaseModel):
         "gf.get_state",
         "gf.setup_players",  # legacy/debug only
         "gf.debug_stack_top_card",
+        "gf.debug_begin_pending_interaction",
+        "gf.debug_resolve_pending_interaction",
+        "gf.pending_reclaim",
         "gf.roll_difficulty",
         "gf.set_character_assignment_mode",
         "gf.claim_character",

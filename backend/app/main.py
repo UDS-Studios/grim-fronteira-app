@@ -11,6 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
 from backend.app.serializers import game_state_to_dict
+from backend.app.pending_interactions import (
+    DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM, PENDING_STATE_ACTIONS,
+    effective_actor, enforce_pending_action_gate,
+)
+from backend.engine.state.pending_interaction import (
+    begin_pending_interaction, clear_pending_interaction, get_pending_interaction,
+)
 
 from backend.engine.grimdeck.deck_io import load_deck
 from backend.engine.grimdeck.deck_ops import shuffle as shuffle_deck
@@ -225,6 +232,8 @@ def action(req: ActionRequest) -> ActionResponse:
     g = _get_game(req.game_id)
     game = g.state
 
+    enforce_pending_action_gate(game, req.action, req.params)
+
     events: List[Dict[str, Any]] = []  # keep, even if empty (future Unreal-friendly)
     result: Dict[str, Any] = {}
     mutated = False
@@ -232,6 +241,38 @@ def action(req: ActionRequest) -> ActionResponse:
     if req.action == "gf.get_state":
         # no-op
         result = {"ok": True, "action": req.action}
+
+    elif req.action == DEBUG_BEGIN:
+        if req.view != "debug":
+            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
+        actor_id = effective_actor(req.params)
+        if actor_id is None:
+            raise HTTPException(status_code=400, detail="A non-empty actor_id or player_id is required")
+        game = begin_pending_interaction(game, {
+            "kind": "debug_test",
+            "actor_id": actor_id,
+            "allowed_actions": [DEBUG_RESOLVE],
+            "payload": {"test": True},
+            "continuation": {"opaque_debug_data": ["inert", 1]},
+        })
+        mutated = True
+        result = {"ok": True, "action": req.action}
+
+    elif req.action in {DEBUG_RESOLVE, RECLAIM}:
+        if req.action == DEBUG_RESOLVE and req.view != "debug":
+            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
+        pending = get_pending_interaction(game)
+        if pending is None:
+            raise HTTPException(status_code=400, detail="No pending interaction to resolve")
+        game = clear_pending_interaction(game)
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "reclaimed" if req.action == RECLAIM else "resolved": True,
+            "kind": pending["kind"],
+            "actor_id": pending["actor_id"],
+        }
 
     elif req.action == "gf.setup_players":
         params = req.params
@@ -745,10 +786,13 @@ def action(req: ActionRequest) -> ActionResponse:
     if mutated:
         game = _bump_revision(game)
 
-    game = enrich_meta_for_ui(game)
-    game = ensure_scene_state(game)
+    # Pending-state actions only change the interaction and revision, never scene flow.
+    if req.action not in PENDING_STATE_ACTIONS:
+        game = enrich_meta_for_ui(game)
+        game = ensure_scene_state(game)
     validate_game_state(game)
-    g.state = game
+    if mutated:
+        g.state = game
 
     return ActionResponse(
         game_id=req.game_id,
