@@ -39,6 +39,7 @@ def default_scene_state() -> dict[str, Any]:
             "sudden_death": False,
         },
         "participants": [],
+        "faction_power_usage": {},
         "deck_exhausted": False,
         "deck_exhausted_participants": [],
         "dark_mode": False,
@@ -1685,7 +1686,19 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
     resolution_in = dict(scene_in.get("resolution") or {})
     players_in = dict(scene_in.get("players") or {})
 
+    usage_in = scene_in.get("faction_power_usage") or {}
+    if not isinstance(usage_in, dict):
+        raise ValueError("scene.faction_power_usage must be a mapping.")
+    usage = {}
+    for pid, powers in usage_in.items():
+        if (not isinstance(pid, str) or not isinstance(powers, dict)
+                or any(not isinstance(power, str) or not isinstance(used, bool)
+                       for power, used in powers.items())):
+            raise ValueError("Faction usage must map player IDs to boolean power flags.")
+        usage[pid] = dict(powers)
+
     scene = {
+        "faction_power_usage": usage,
         "status": scene_in.get("status") if scene_in.get("status") in {
             SCENE_STATUS_IDLE,
             SCENE_STATUS_SETUP,

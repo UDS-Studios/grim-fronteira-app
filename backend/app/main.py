@@ -27,6 +27,7 @@ from backend.engine.state.game_state import GameState
 from backend.engine.state.debug_ops import stack_card_on_top
 from backend.engine.state.validators import validate_game_state
 
+from backend.engine.rules.grim_fronteira.factions import paisa_claim_reward, criollo_convert_resource
 from backend.engine.rules.grim_fronteira.setup import setup_players
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
 from backend.engine.rules.grim_fronteira.meta_enrich import enrich_meta_for_ui
@@ -628,6 +629,26 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         )
         mutated = True
         result = {"ok": True, "action": req.action, **scum_result}
+
+    elif req.action in {"gf.faction_paisa_claim_reward", "gf.faction_criollo_convert_resource"}:
+        player_id = req.params.get("player_id")
+        if not isinstance(player_id, str) or not player_id.strip():
+            raise HTTPException(status_code=400, detail="params.player_id must be a non-empty string")
+        if req.action == "gf.faction_paisa_claim_reward":
+            cards = req.params.get("vengeance_card_ids")
+            if not isinstance(cards, list) or any(not isinstance(card, str) for card in cards):
+                raise HTTPException(status_code=400, detail="params.vengeance_card_ids must be a list of strings")
+            game, power_result = paisa_claim_reward(game, player_id=player_id, vengeance_card_ids=cards)
+        else:
+            card_id = req.params.get("card_id")
+            resource = req.params.get("from_resource")
+            if not isinstance(card_id, str) or not isinstance(resource, str):
+                raise HTTPException(status_code=400, detail="params.card_id and from_resource must be strings")
+            game, power_result = criollo_convert_resource(
+                game, player_id=player_id, card_id=card_id, from_resource=resource,
+            )
+        mutated = True
+        result = {"ok": True, "action": req.action, **power_result}
 
     elif req.action == "gf.scene_play_vengeance":
         params = req.params

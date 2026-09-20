@@ -52,6 +52,8 @@ class ActionRequest(BaseModel):
         "gf.scene_stand",
         "gf.scene_play_scum",
         "gf.scene_play_vengeance",
+        "gf.faction_paisa_claim_reward",
+        "gf.faction_criollo_convert_resource",
         "gf.scene_acknowledge_resolution",
         "gf.scene_force_acknowledge_resolution",
         "gf.scene_skip_heal",
