@@ -35,7 +35,13 @@ def _serialize_full(game: GameState) -> Dict[str, Any]:
     return {"deck": deck_dict, "zones": zones, "meta": meta}
 
 
-def game_state_to_dict(game: GameState, *, view: str = "debug") -> Dict[str, Any]:
+def can_view_yankee_inspection(*, view: str, viewer_id: str | None, actor_id: str) -> bool:
+    return view == "debug" or (
+        view == "player" and isinstance(viewer_id, str) and bool(viewer_id.strip()) and viewer_id == actor_id
+    )
+
+
+def game_state_to_dict(game: GameState, *, view: str = "debug", viewer_id: str | None = None) -> Dict[str, Any]:
     data = _serialize_full(game)
 
     if view == "debug":
@@ -50,6 +56,12 @@ def game_state_to_dict(game: GameState, *, view: str = "debug") -> Dict[str, Any
         }
 
     meta = data.get("meta") or {}
+    pending = meta.get("pending_interaction")
+    if pending and pending["kind"] == "yankee_inspect_top_card" and not can_view_yankee_inspection(
+        view=view, viewer_id=viewer_id, actor_id=pending["actor_id"],
+    ):
+        # Yankees currently has no public payload fields. Fail closed for previews.
+        pending["payload"] = {}
     scene = meta.get("scene") or {}
     azzardo = scene.get("azzardo") or {}
     if not bool(azzardo.get("revealed", False)):

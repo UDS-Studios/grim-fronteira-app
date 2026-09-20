@@ -3,7 +3,7 @@ from __future__ import annotations
 from backend.engine.state.game_state import GameState
 from backend.engine.rules.grim_fronteira.reward_points import compute_reward_points, infer_player_ids
 from backend.engine.rules.grim_fronteira.lobby import FIGURE_POOL_ZONE
-from backend.engine.rules.grim_fronteira.scene import default_scene_state
+from backend.engine.rules.grim_fronteira.scene import default_scene_state, _normalized_scene
 
 def _compute_all_players_ready(game: GameState, meta: dict) -> bool:
     marshal_id = meta.get("marshal_id")
@@ -47,6 +47,7 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
         "subtype": duel_in.get("subtype", scene["duel"]["subtype"]),
         "sudden_death": bool(duel_in.get("sudden_death", scene["duel"]["sudden_death"])),
     }
+    scene["faction_power_usage"] = _normalized_scene(scene_in)["faction_power_usage"]
     scene["participants"] = [pid for pid in scene_in.get("participants", []) if isinstance(pid, str)]
     scene["deck_exhausted"] = bool(scene_in.get("deck_exhausted", scene["deck_exhausted"]))
     scene["deck_exhausted_participants"] = [

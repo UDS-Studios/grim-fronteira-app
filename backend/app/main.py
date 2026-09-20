@@ -10,7 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
-from backend.app.serializers import game_state_to_dict
+from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection
+from backend.app.pending_interactions import (
+    DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM, PENDING_STATE_ACTIONS,
+    effective_actor, enforce_pending_action_gate,
+)
+from backend.engine.state.pending_interaction import (
+    begin_pending_interaction, get_pending_interaction,
+)
+
+from backend.engine.state.continuations import complete_pending_interaction
 
 from backend.engine.grimdeck.deck_io import load_deck
 from backend.engine.grimdeck.deck_ops import shuffle as shuffle_deck
@@ -18,6 +27,10 @@ from backend.engine.state.game_state import GameState
 from backend.engine.state.debug_ops import stack_card_on_top
 from backend.engine.state.validators import validate_game_state
 
+from backend.engine.rules.grim_fronteira.factions import (
+    paisa_claim_reward, criollo_convert_resource, chichimeca_choose_target, CHICHIMECA_CHOOSE_TARGET,
+    yankee_choose_top_card, YANKEE_CHOOSE_TOP_CARD,
+)
 from backend.engine.rules.grim_fronteira.setup import setup_players
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
 from backend.engine.rules.grim_fronteira.meta_enrich import enrich_meta_for_ui
@@ -196,14 +209,16 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     return ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view),
+        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
         events=[],
         result={"created": True},
         error=None,
     )
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
-def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug") -> ActionResponse:
+def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug", viewer_id: str | None = None) -> ActionResponse:
+    if view == "player" and (not isinstance(viewer_id, str) or not viewer_id.strip()):
+        raise HTTPException(status_code=422, detail="viewer_id is required for player view")
     g = _get_game(game_id)
     game = g.state
     validate_game_state(game)
@@ -213,7 +228,7 @@ def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug"
     return ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=view),
+        state=game_state_to_dict(game, view=view, viewer_id=viewer_id),
         events=[],
         result={},
         error=None,
@@ -223,7 +238,14 @@ def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug"
 @app.post("/api/gf/action", response_model=ActionResponse)
 def action(req: ActionRequest) -> ActionResponse:
     g = _get_game(req.game_id)
+    with g.lock:
+        return _action_transition(req, g)
+
+
+def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
     game = g.state
+
+    enforce_pending_action_gate(game, req.action, req.params)
 
     events: List[Dict[str, Any]] = []  # keep, even if empty (future Unreal-friendly)
     result: Dict[str, Any] = {}
@@ -232,6 +254,43 @@ def action(req: ActionRequest) -> ActionResponse:
     if req.action == "gf.get_state":
         # no-op
         result = {"ok": True, "action": req.action}
+
+    elif req.action == DEBUG_BEGIN:
+        if req.view != "debug":
+            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
+        actor_id = effective_actor(req.params)
+        if actor_id is None:
+            raise HTTPException(status_code=400, detail="A non-empty actor_id or player_id is required")
+        game = begin_pending_interaction(game, {
+            "kind": "debug_test",
+            "actor_id": actor_id,
+            "allowed_actions": [DEBUG_RESOLVE],
+            "payload": {"test": True},
+            "continuation": {
+                "on_resolve": {"kind": "debug_resume_marker", "payload": {"marker": "resolved"}},
+                "on_reclaim": {"kind": "debug_resume_marker", "payload": {"marker": "reclaimed"}},
+            },
+        })
+        mutated = True
+        result = {"ok": True, "action": req.action}
+
+    elif req.action in {DEBUG_RESOLVE, RECLAIM}:
+        if req.action == DEBUG_RESOLVE and req.view != "debug":
+            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
+        pending = get_pending_interaction(game)
+        if pending is None:
+            raise HTTPException(status_code=400, detail="No pending interaction to resolve")
+        game = complete_pending_interaction(
+            game, outcome="reclaim" if req.action == RECLAIM else "resolve",
+        )
+        mutated = True
+        result = {
+            "ok": True,
+            "action": req.action,
+            "reclaimed" if req.action == RECLAIM else "resolved": True,
+            "kind": pending["kind"],
+            "actor_id": pending["actor_id"],
+        }
 
     elif req.action == "gf.setup_players":
         params = req.params
@@ -576,6 +635,48 @@ def action(req: ActionRequest) -> ActionResponse:
         mutated = True
         result = {"ok": True, "action": req.action, **scum_result}
 
+    elif req.action == YANKEE_CHOOSE_TOP_CARD:
+        player_id = req.params.get("player_id")
+        choice = req.params.get("choice")
+        if not isinstance(player_id, str) or not player_id.strip() or not isinstance(choice, str):
+            raise HTTPException(status_code=400, detail="player_id and choice must be strings")
+        game, power_result = yankee_choose_top_card(game, player_id=player_id, choice=choice)
+        if not can_view_yankee_inspection(view=req.view, viewer_id=req.viewer_id, actor_id=player_id):
+            power_result.pop("inspected_card_id", None)
+        mutated = True
+        result = {"ok": True, "action": req.action, **power_result}
+
+    elif req.action == CHICHIMECA_CHOOSE_TARGET:
+        player_id = req.params.get("player_id")
+        target_player_id = req.params.get("target_player_id")
+        if not all(isinstance(pid, str) and pid.strip() for pid in (player_id, target_player_id)):
+            raise HTTPException(status_code=400, detail="player_id and target_player_id must be non-empty strings")
+        game, power_result = chichimeca_choose_target(
+            game, player_id=player_id, target_player_id=target_player_id,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **power_result}
+
+    elif req.action in {"gf.faction_paisa_claim_reward", "gf.faction_criollo_convert_resource"}:
+        player_id = req.params.get("player_id")
+        if not isinstance(player_id, str) or not player_id.strip():
+            raise HTTPException(status_code=400, detail="params.player_id must be a non-empty string")
+        if req.action == "gf.faction_paisa_claim_reward":
+            cards = req.params.get("vengeance_card_ids")
+            if not isinstance(cards, list) or any(not isinstance(card, str) for card in cards):
+                raise HTTPException(status_code=400, detail="params.vengeance_card_ids must be a list of strings")
+            game, power_result = paisa_claim_reward(game, player_id=player_id, vengeance_card_ids=cards)
+        else:
+            card_id = req.params.get("card_id")
+            resource = req.params.get("from_resource")
+            if not isinstance(card_id, str) or not isinstance(resource, str):
+                raise HTTPException(status_code=400, detail="params.card_id and from_resource must be strings")
+            game, power_result = criollo_convert_resource(
+                game, player_id=player_id, card_id=card_id, from_resource=resource,
+            )
+        mutated = True
+        result = {"ok": True, "action": req.action, **power_result}
+
     elif req.action == "gf.scene_play_vengeance":
         params = req.params
         player_id = params.get("player_id")
@@ -745,15 +846,18 @@ def action(req: ActionRequest) -> ActionResponse:
     if mutated:
         game = _bump_revision(game)
 
-    game = enrich_meta_for_ui(game)
-    game = ensure_scene_state(game)
+    # Synthetic pending actions and their continuations never advance scene flow.
+    if req.action not in PENDING_STATE_ACTIONS:
+        game = enrich_meta_for_ui(game)
+        game = ensure_scene_state(game)
     validate_game_state(game)
-    g.state = game
+    if mutated:
+        g.state = game
 
     return ActionResponse(
         game_id=req.game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view),
+        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
         events=events,
         result=result,
         error=None,

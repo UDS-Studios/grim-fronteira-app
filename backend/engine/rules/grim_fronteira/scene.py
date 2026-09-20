@@ -6,6 +6,7 @@ from backend.engine.grimdeck.deck_ops import play, shuffle as shuffle_deck
 from backend.engine.grimdeck.models import CardID, DeckState
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
 from backend.engine.state.game_state import GameState
+from backend.engine.state.pending_interaction import get_pending_interaction
 from backend.engine.state.validators import validate_unique_cards
 from backend.engine.state.zone_ops import claim_from_in_play
 from backend.engine.rules.grim_fronteira.reward_points import reward_card_points
@@ -39,6 +40,7 @@ def default_scene_state() -> dict[str, Any]:
             "sudden_death": False,
         },
         "participants": [],
+        "faction_power_usage": {},
         "deck_exhausted": False,
         "deck_exhausted_participants": [],
         "dark_mode": False,
@@ -315,7 +317,16 @@ def scene_skip_azzardo(game: GameState, *, actor_id: str) -> GameState:
 def scene_start(game: GameState, *, actor_id: str) -> GameState:
     _require_table_phase(game)
     _require_marshal(game, actor_id)
+    return resume_scene_start(game)
 
+
+def resume_scene_start(game: GameState) -> GameState:
+    """Discover one pre-duel inspection, or perform the shared initial deal."""
+    from .factions import begin_next_yankee_inspection
+
+    _require_table_phase(game)
+    if get_pending_interaction(game) is not None:
+        raise ValueError("Consume the pending interaction before resuming scene-start.")
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_SETUP:
         raise ValueError("Scene can only start from setup.")
@@ -326,6 +337,10 @@ def scene_start(game: GameState, *, actor_id: str) -> GameState:
     if not _is_pvp_duel(scene) and scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
         raise ValueError("Azzardo is in an invalid state for starting the scene.")
     _validate_scene_configuration(scene)
+
+    game = begin_next_yankee_inspection(game)
+    if get_pending_interaction(game) is not None:
+        return game
 
     initiative_order: list[tuple[str, int, int]] = []
     for original_idx, pid in enumerate(scene["participants"]):
@@ -874,21 +889,22 @@ def _grant_resolved_scene_rewards(game: GameState) -> GameState:
 
 
 def _apply_pending_scene_wounds(game: GameState) -> GameState:
-    scene = _scene(game)
-    updated_players = dict(scene["players"])
+    # Import locally: faction effects use the same scene/card movement helpers.
+    from .factions import begin_chichimeca_wound_interaction
 
+    scene = _scene(game)
     for pid in scene["participants"]:
-        pstate = dict(updated_players.get(pid) or {})
-        pending_wounds = int(pstate.get("wounds_gained", 0) or 0)
-        if pending_wounds <= 0:
-            continue
-        game = _increment_player_wounds(game, pid, pending_wounds)
-        pstate["wounds_gained"] = 0
-        updated_players[pid] = pstate
-
-    scene = _scene(game)
-    scene["players"] = updated_players
-    return _replace_scene(game, scene=scene)
+        pstate = dict(scene["players"].get(pid) or {})
+        while int(pstate.get("wounds_gained", 0) or 0) > 0:
+            game = _increment_player_wounds(game, pid, 1)
+            # Consume debt in the same derived transition as the persistent wound.
+            pstate["wounds_gained"] -= 1
+            scene["players"][pid] = pstate
+            game = _replace_scene(game, scene=scene)
+            game = begin_chichimeca_wound_interaction(game, player_id=pid)
+            if get_pending_interaction(game) is not None:
+                return game
+    return game
 
 
 def _reward_points_for_player(game: GameState, player_id: str) -> int:
@@ -1149,7 +1165,24 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
     if not dict((game.meta or {}).get("endgame") or {}).get("active") and _has_pending_post_scene_requirements(game):
         raise ValueError("All required heal/skip and reward discard decisions must be resolved before starting a new scene.")
 
+    return resume_scene_new(game)
+
+
+def resume_scene_new(game: GameState) -> GameState:
+    """Advance committed wound debt until one interrupt or a fresh scene/victory.
+
+    Authorization and post-scene choices are checked by scene_new before entry.
+    A consumed interaction resumes here without re-entering the external action.
+    """
+    _require_table_phase(game)
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Scene-new resumption requires a closed scene.")
+    if get_pending_interaction(game) is not None:
+        raise ValueError("Consume the pending interaction before resuming scene-new.")
     game = _apply_pending_scene_wounds(game)
+    if get_pending_interaction(game) is not None:
+        return game
     if _all_non_marshal_players_dead(game):
         return _set_marshal_victory(game)
 
@@ -1669,6 +1702,8 @@ def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
     reset_scene["duel"] = duel
     reset_scene["difficulty"] = difficulty
     reset_scene["azzardo"] = azzardo
+    # A tied hand restarts within the same scene; faction uses remain spent.
+    reset_scene["faction_power_usage"] = scene["faction_power_usage"]
     reset_scene["participants"] = participant_ids
     reset_scene["players"] = {pid: _default_scene_player(game, pid) for pid in participant_ids}
     game = _replace_scene(game, scene=reset_scene, zones=_reset_scene_zones(game.zones, keep_setup_cards=True))
@@ -1685,7 +1720,19 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
     resolution_in = dict(scene_in.get("resolution") or {})
     players_in = dict(scene_in.get("players") or {})
 
+    usage_in = scene_in.get("faction_power_usage") or {}
+    if not isinstance(usage_in, dict):
+        raise ValueError("scene.faction_power_usage must be a mapping.")
+    usage = {}
+    for pid, powers in usage_in.items():
+        if (not isinstance(pid, str) or not isinstance(powers, dict)
+                or any(not isinstance(power, str) or not isinstance(used, bool)
+                       for power, used in powers.items())):
+            raise ValueError("Faction usage must map player IDs to boolean power flags.")
+        usage[pid] = dict(powers)
+
     scene = {
+        "faction_power_usage": usage,
         "status": scene_in.get("status") if scene_in.get("status") in {
             SCENE_STATUS_IDLE,
             SCENE_STATUS_SETUP,
