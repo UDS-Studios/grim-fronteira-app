@@ -27,7 +27,9 @@ from backend.engine.state.game_state import GameState
 from backend.engine.state.debug_ops import stack_card_on_top
 from backend.engine.state.validators import validate_game_state
 
-from backend.engine.rules.grim_fronteira.factions import paisa_claim_reward, criollo_convert_resource
+from backend.engine.rules.grim_fronteira.factions import (
+    paisa_claim_reward, criollo_convert_resource, chichimeca_choose_target, CHICHIMECA_CHOOSE_TARGET,
+)
 from backend.engine.rules.grim_fronteira.setup import setup_players
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
 from backend.engine.rules.grim_fronteira.meta_enrich import enrich_meta_for_ui
@@ -629,6 +631,17 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         )
         mutated = True
         result = {"ok": True, "action": req.action, **scum_result}
+
+    elif req.action == CHICHIMECA_CHOOSE_TARGET:
+        player_id = req.params.get("player_id")
+        target_player_id = req.params.get("target_player_id")
+        if not all(isinstance(pid, str) and pid.strip() for pid in (player_id, target_player_id)):
+            raise HTTPException(status_code=400, detail="player_id and target_player_id must be non-empty strings")
+        game, power_result = chichimeca_choose_target(
+            game, player_id=player_id, target_player_id=target_player_id,
+        )
+        mutated = True
+        result = {"ok": True, "action": req.action, **power_result}
 
     elif req.action in {"gf.faction_paisa_claim_reward", "gf.faction_criollo_convert_resource"}:
         player_id = req.params.get("player_id")

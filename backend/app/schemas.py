@@ -54,6 +54,7 @@ class ActionRequest(BaseModel):
         "gf.scene_play_vengeance",
         "gf.faction_paisa_claim_reward",
         "gf.faction_criollo_convert_resource",
+        "gf.faction_chichimeca_choose_target",
         "gf.scene_acknowledge_resolution",
         "gf.scene_force_acknowledge_resolution",
         "gf.scene_skip_heal",

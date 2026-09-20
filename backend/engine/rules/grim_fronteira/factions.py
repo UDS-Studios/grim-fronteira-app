@@ -99,3 +99,55 @@ def criollo_convert_resource(game: GameState, *, player_id: str, card_id: str, f
     validate_game_state(derived)
     return derived, {"player_id": player_id, "card_id": card_id,
                      "from_resource": from_resource, "to_resource": to_resource}
+
+
+CHICHIMECA_CHOOSE_TARGET = "gf.faction_chichimeca_choose_target"
+CHICHIMECA_INTERACTION = "chichimeca_choose_target"
+
+
+def _chichimeca_targets(game: GameState, player_id: str) -> list[str]:
+    return [pid for pid in _non_marshal_players(game)
+            if pid != player_id and not _player_is_dead(game, pid)
+            and game.zones.get(f"players.{pid}.scum")]
+
+
+def begin_chichimeca_wound_interaction(game: GameState, *, player_id: str) -> GameState:
+    """Called only immediately after committing one wound (including a lethal one)."""
+    from backend.engine.state.pending_interaction import begin_pending_interaction
+
+    if player_faction(game, player_id) != CHICHIMECA:
+        return game
+    targets = _chichimeca_targets(game, player_id)
+    if not targets:
+        return game
+    return begin_pending_interaction(game, {
+        "kind": CHICHIMECA_INTERACTION,
+        "actor_id": player_id,
+        "allowed_actions": [CHICHIMECA_CHOOSE_TARGET],
+        "payload": {"eligible_target_ids": targets},
+        "continuation": {
+            "on_resolve": {"kind": "resume_scene_new", "payload": {}},
+            "on_reclaim": {"kind": "resume_scene_new", "payload": {}},
+        },
+    })
+
+
+def chichimeca_choose_target(game: GameState, *, player_id: str, target_player_id: str) -> tuple[GameState, dict[str, Any]]:
+    from backend.engine.state.pending_interaction import get_pending_interaction
+    from backend.engine.state.continuations import complete_pending_interaction
+    from .scene import _move_zone_top_card_to_discard
+
+    pending = get_pending_interaction(game)
+    if pending is None or pending["kind"] != CHICHIMECA_INTERACTION:
+        raise ValueError("No Chichimeca target-selection interaction is pending.")
+    if player_id != pending["actor_id"]:
+        raise ValueError("Only the pending Chichimeca may choose a target.")
+    if (target_player_id not in pending["payload"].get("eligible_target_ids", [])
+            or target_player_id not in _chichimeca_targets(game, player_id)):
+        raise ValueError("Target must be an eligible living enemy with Scum.")
+    zone = f"players.{target_player_id}.scum"
+    discarded = game.zones[zone][-1]
+    derived = _move_zone_top_card_to_discard(game, zone)
+    derived = complete_pending_interaction(derived, outcome="resolve")
+    return derived, {"player_id": player_id, "target_player_id": target_player_id,
+                     "discarded_scum_card_id": discarded}

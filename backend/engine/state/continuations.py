@@ -23,7 +23,7 @@ def _normalize_destination(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, Mapping) or set(raw) != {"kind", "payload"}:
         raise ValueError("continuation destination must contain exactly kind and payload.")
     kind, payload = raw["kind"], raw["payload"]
-    if not isinstance(kind, str) or kind not in {"debug_resume_marker", "debug_raise"}:
+    if not isinstance(kind, str) or kind not in {"debug_resume_marker", "debug_raise", "resume_scene_new"}:
         raise ValueError(f"Unknown continuation kind: {kind!r}")
     if not isinstance(payload, Mapping):
         raise ValueError("continuation payload must be a mapping.")
@@ -32,7 +32,7 @@ def _normalize_destination(raw: Any) -> dict[str, Any] | None:
                 or not payload["marker"].strip()):
             raise ValueError("debug_resume_marker payload requires exactly a non-empty marker string.")
     elif payload:
-        raise ValueError("debug_raise payload must be empty.")
+        raise ValueError(f"{kind} payload must be empty.")
     return {"kind": kind, "payload": dict(payload)}
 
 
@@ -46,6 +46,9 @@ def _dispatch_continuation(game: GameState, destination: dict[str, Any] | None) 
         return replace(game, meta={**game.meta, "debug_continuation_trace": [
             *trace, destination["payload"]["marker"],
         ]})
+    if destination["kind"] == "resume_scene_new":
+        from backend.engine.rules.grim_fronteira.scene import resume_scene_new
+        return resume_scene_new(game)
     if destination["kind"] == "debug_raise":
         raise ValueError("debug continuation failure")
     raise ValueError(f"Unknown continuation kind: {destination['kind']!r}")
