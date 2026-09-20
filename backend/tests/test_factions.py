@@ -295,3 +295,51 @@ def test_criollo_awaiting_ack_preserves_existing_acknowledgements():
     dispatch(CRIOLLO_ACTION)
     assert GAMES["test"].state.meta["scene"]["players"] == original.meta["scene"]["players"]
     assert GAMES["test"].state.meta["scene"]["status"] == "awaiting_ack"
+
+
+@pytest.mark.parametrize("card", ["AD", "7C", "10H", "2S", "RJ", "BJ"])
+def test_player_faction_rejects_non_face_characters(card):
+    with pytest.raises(ValueError, match="Invalid character card"):
+        player_faction(make_game(character=card), "p1")
+
+
+@pytest.mark.parametrize("rank", ["J", "Q", "K"])
+@pytest.mark.parametrize("suit,faction", [("D", "criollo"), ("C", "paisa"), ("H", "yankee"), ("S", "chichimeca")])
+def test_player_faction_accepts_each_face_card(rank, suit, faction):
+    game = make_game()
+    # Identity validation is independent of the rest of the deck layout.
+    game = replace(game, zones={**game.zones, "players.p1.character": [rank + suit]})
+    assert player_faction(game, "p1") == faction
+
+
+def test_criollo_usage_survives_real_pvp_rematch_but_not_new_scene():
+    game = make_game(character="QD", status="setup")
+    sequence = ["9H", "9S", "9D", "5C", "2D"]
+    draw = [card for card in game.deck.draw_pile if card not in sequence] + list(reversed(sequence))
+    install(replace(game, deck=replace(game.deck, draw_pile=draw)))
+    dispatch("gf.scene_set_participants", actor_id="host", participant_ids=["p1", "p2"])
+    dispatch("gf.scene_set_mode", actor_id="host", mode="duel", duel_subtype="pvp")
+    dispatch("gf.scene_start", actor_id="host")
+    dispatch(CRIOLLO_ACTION)
+    dispatch("gf.scene_stand", player_id="p1")
+    dispatch("gf.scene_stand", player_id="p2")
+
+    rematch = GAMES["test"].state
+    assert rematch.meta["scene"]["status"] == "active"
+    assert rematch.zones["scene.hand.p1"] == ["9D"]
+    assert rematch.zones["scene.hand.p2"] == ["5C"]
+    assert {"9H", "9S"}.issubset(rematch.deck.discard_pile)
+    assert rematch.meta["scene"]["faction_power_usage"] == {"p1": {"criollo": True}}
+    assert not rematch.meta["scene"]["players"]["p1"]["standing"]
+    rejected(CRIOLLO_ACTION, from_resource="vengeance", card_id="8D")
+
+    dispatch("gf.scene_stand", player_id="p1")
+    dispatch("gf.scene_stand", player_id="p2")
+    for player in ["p1", "p2"]:
+        dispatch("gf.scene_acknowledge_resolution", player_id=player)
+    dispatch("gf.scene_close", actor_id="host")
+    dispatch("gf.scene_new", actor_id="host")
+    assert GAMES["test"].state.meta["scene"]["faction_power_usage"] == {}
+    dispatch("gf.scene_set_participants", actor_id="host", participant_ids=["p1", "p2"])
+    dispatch(CRIOLLO_ACTION, from_resource="vengeance", card_id="8D")
+    assert GAMES["test"].state.zones["players.p1.scum"] == ["8D"]

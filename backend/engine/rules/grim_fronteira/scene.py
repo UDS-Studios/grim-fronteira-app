@@ -1670,6 +1670,8 @@ def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
     reset_scene["duel"] = duel
     reset_scene["difficulty"] = difficulty
     reset_scene["azzardo"] = azzardo
+    # A tied hand restarts within the same scene; faction uses remain spent.
+    reset_scene["faction_power_usage"] = scene["faction_power_usage"]
     reset_scene["participants"] = participant_ids
     reset_scene["players"] = {pid: _default_scene_player(game, pid) for pid in participant_ids}
     game = _replace_scene(game, scene=reset_scene, zones=_reset_scene_zones(game.zones, keep_setup_cards=True))

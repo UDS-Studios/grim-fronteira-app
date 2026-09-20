@@ -5,6 +5,7 @@ from typing import Any
 from backend.engine.state.game_state import GameState
 from backend.engine.state.validators import validate_game_state
 from .reward_points import reward_card_points
+from .setup import is_face
 from .scene import (
     _draw_to_zone, _non_marshal_players, _player_is_dead,
     _require_table_phase, _scene, _replace_scene,
@@ -26,7 +27,7 @@ def player_faction(game: GameState, player_id: str) -> str:
     if not isinstance(cards, list) or len(cards) != 1:
         raise ValueError("Player must own exactly one character card.")
     card = cards[0]
-    if (not isinstance(card, str) or card[:-1] not in {"A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"}
+    if (not isinstance(card, str) or not is_face(card)
             or card[-1:] not in _FACTION_BY_SUIT):
         raise ValueError("Invalid character card for faction identification.")
     return _FACTION_BY_SUIT[card[-1]]
