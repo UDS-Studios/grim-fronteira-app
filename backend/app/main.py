@@ -16,8 +16,10 @@ from backend.app.pending_interactions import (
     effective_actor, enforce_pending_action_gate,
 )
 from backend.engine.state.pending_interaction import (
-    begin_pending_interaction, clear_pending_interaction, get_pending_interaction,
+    begin_pending_interaction, get_pending_interaction,
 )
+
+from backend.engine.state.continuations import complete_pending_interaction
 
 from backend.engine.grimdeck.deck_io import load_deck
 from backend.engine.grimdeck.deck_ops import shuffle as shuffle_deck
@@ -230,6 +232,11 @@ def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug"
 @app.post("/api/gf/action", response_model=ActionResponse)
 def action(req: ActionRequest) -> ActionResponse:
     g = _get_game(req.game_id)
+    with g.lock:
+        return _action_transition(req, g)
+
+
+def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
     game = g.state
 
     enforce_pending_action_gate(game, req.action, req.params)
@@ -253,7 +260,10 @@ def action(req: ActionRequest) -> ActionResponse:
             "actor_id": actor_id,
             "allowed_actions": [DEBUG_RESOLVE],
             "payload": {"test": True},
-            "continuation": {"opaque_debug_data": ["inert", 1]},
+            "continuation": {
+                "on_resolve": {"kind": "debug_resume_marker", "payload": {"marker": "resolved"}},
+                "on_reclaim": {"kind": "debug_resume_marker", "payload": {"marker": "reclaimed"}},
+            },
         })
         mutated = True
         result = {"ok": True, "action": req.action}
@@ -264,7 +274,9 @@ def action(req: ActionRequest) -> ActionResponse:
         pending = get_pending_interaction(game)
         if pending is None:
             raise HTTPException(status_code=400, detail="No pending interaction to resolve")
-        game = clear_pending_interaction(game)
+        game = complete_pending_interaction(
+            game, outcome="reclaim" if req.action == RECLAIM else "resolve",
+        )
         mutated = True
         result = {
             "ok": True,
@@ -786,7 +798,7 @@ def action(req: ActionRequest) -> ActionResponse:
     if mutated:
         game = _bump_revision(game)
 
-    # Pending-state actions only change the interaction and revision, never scene flow.
+    # Synthetic pending actions and their continuations never advance scene flow.
     if req.action not in PENDING_STATE_ACTIONS:
         game = enrich_meta_for_ui(game)
         game = ensure_scene_state(game)

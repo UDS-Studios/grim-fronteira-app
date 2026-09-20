@@ -105,14 +105,17 @@ def test_allowed_action_requires_owner(game_id, params, message):
     ("p1", {"actor_id": "p1"}),
     ("host", {"actor_id": "host", "player_id": "p1"}),
 ])
-def test_synthetic_begin_and_resolve_change_only_pending_and_revision(game_id, owner, params):
+def test_synthetic_begin_and_resolve_preserve_scene_flow(game_id, owner, params):
     original = deepcopy(GAMES[game_id].state)
     response = begin(game_id, owner)
     pending = GAMES[game_id].state
     assert response.revision == original.meta["revision"] + 1
     assert pending.meta["pending_interaction"] == {
         "kind": "debug_test", "actor_id": owner, "allowed_actions": [DEBUG_RESOLVE],
-        "payload": {"test": True}, "continuation": {"opaque_debug_data": ["inert", 1]},
+        "payload": {"test": True}, "continuation": {
+            "on_resolve": {"kind": "debug_resume_marker", "payload": {"marker": "resolved"}},
+            "on_reclaim": {"kind": "debug_resume_marker", "payload": {"marker": "reclaimed"}},
+        },
     }
     assert pending == replace(original, meta={**original.meta,
         "pending_interaction": pending.meta["pending_interaction"], "revision": response.revision})
@@ -120,7 +123,7 @@ def test_synthetic_begin_and_resolve_change_only_pending_and_revision(game_id, o
     assert response.result["resolved"] is True
     assert response.result["actor_id"] == owner
     assert GAMES[game_id].state == replace(original, meta={**original.meta,
-        "revision": original.meta["revision"] + 2})
+        "revision": original.meta["revision"] + 2, "debug_continuation_trace": ["resolved"]})
 
 
 @pytest.mark.parametrize("view", ["public", "player"])
@@ -149,13 +152,12 @@ def test_reclaim_requires_current_marshal(game_id, params):
     (RECLAIM, {"player_id": "host"}, "player"),
     (DEBUG_RESOLVE, {"player_id": "p1"}, "debug"),
 ])
-def test_clear_discards_opaque_continuation_and_preserves_everything_else(game_id, name, params, view):
+def test_completion_without_continuation_preserves_everything_else(game_id, name, params, view):
     original = GAMES[game_id].state
     pending = begin_pending_interaction(original, {
         "kind": "test_opaque", "actor_id": "p1", "allowed_actions": [DEBUG_RESOLVE],
         "payload": {"nested": [1, 2]},
-        "continuation": {"action": "gf.join_lobby", "params": {"player_id": "unexpected"},
-                         "unknown_kind": [False, None, {"invalid_future_format": True}]},
+        "continuation": None,
     })
     GAMES[game_id].state = pending
     response = dispatch(game_id, name, params, view)

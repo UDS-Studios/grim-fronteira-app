@@ -1838,7 +1838,7 @@ def test_pending_interaction_blocks_scene_action_at_dispatch():
         "kind": "synthetic",
         "actor_id": "p2",
         "allowed_actions": [],
-        "continuation": {"opaque": "do not execute"},
+        "continuation": None,
         "payload": {},
     })
     snapshot = deepcopy(game)

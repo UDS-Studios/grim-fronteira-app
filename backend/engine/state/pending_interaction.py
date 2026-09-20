@@ -1,10 +1,12 @@
-"""State-only support for a single pending interaction; no action or continuation logic."""
+"""State-only support for a single pending interaction; typed continuation validation."""
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
 import math
 from typing import TYPE_CHECKING, Any
+
+from .continuations import normalize_continuation
 
 if TYPE_CHECKING:
     from .game_state import GameState
@@ -29,7 +31,7 @@ def _json_copy(value: Any) -> Any:
 def normalize_pending_interaction(raw: Any) -> dict[str, Any] | None:
     """Validate and return a detached canonical dictionary, or None for absent state.
 
-    All five fields are required. Payload and continuation are opaque JSON data;
+    All five fields are required. Payload is JSON data; continuation is typed;
     mappings become dictionaries, and unknown top-level fields are rejected.
     """
     if raw is None:
@@ -47,7 +49,9 @@ def normalize_pending_interaction(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw["payload"], Mapping):
         raise ValueError("pending_interaction.payload must be a mapping.")
     try:
-        return _json_copy(raw)
+        normalized = _json_copy(raw)
+        normalized["continuation"] = normalize_continuation(normalized["continuation"])
+        return normalized
     except RecursionError as exc:
         raise ValueError("pending_interaction must be acyclic JSON data within nesting limits.") from exc
 

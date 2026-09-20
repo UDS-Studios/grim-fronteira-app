@@ -29,7 +29,8 @@ def interaction():
         "kind": "test_choice",
         "actor_id": "p1",
         "allowed_actions": ["choose", "decline"],
-        "continuation": {"future_data": [None, True, 3, 1.5, "opaque"]},
+        "continuation": {"on_resolve": {"kind": "debug_resume_marker", "payload": {"marker": "resolved"}},
+                         "on_reclaim": None},
         "payload": {"choices": ["a", "b"]},
     }
 
