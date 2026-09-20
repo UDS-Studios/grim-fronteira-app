@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 
 class ErrorPayload(BaseModel):
@@ -11,15 +12,25 @@ class ErrorPayload(BaseModel):
     details: Optional[Dict[str, Any]] = None
 
 
-class NewGameRequest(BaseModel):
+class ViewRequest(BaseModel):
+    view: Literal["public", "player", "debug"] = "debug"
+    viewer_id: str | None = None
+
+    @model_validator(mode="after")
+    def require_player_viewer(self):
+        if self.view == "player" and (not self.viewer_id or not self.viewer_id.strip()):
+            raise PydanticCustomError("player_viewer_required", "viewer_id is required for player view")
+        return self
+
+
+class NewGameRequest(ViewRequest):
     template_path: str = Field(default="data/templates/standard_54.json")
     meta: Dict[str, Any] = Field(default_factory=dict)
     seed: int | None = None
-    view: Literal["public", "player", "debug"] = "debug"
     creator_id: str = "marshal"
 
 
-class ActionRequest(BaseModel):
+class ActionRequest(ViewRequest):
     game_id: str
     action: Literal[
         "gf.get_state",
@@ -55,6 +66,7 @@ class ActionRequest(BaseModel):
         "gf.faction_paisa_claim_reward",
         "gf.faction_criollo_convert_resource",
         "gf.faction_chichimeca_choose_target",
+        "gf.faction_yankee_choose_top_card",
         "gf.scene_acknowledge_resolution",
         "gf.scene_force_acknowledge_resolution",
         "gf.scene_skip_heal",
@@ -65,7 +77,6 @@ class ActionRequest(BaseModel):
         "gf.scene_assign_bonus_card",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)
-    view: Literal["public", "player", "debug"] = "debug"
 
 
 class ActionResponse(BaseModel):

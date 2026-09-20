@@ -317,7 +317,16 @@ def scene_skip_azzardo(game: GameState, *, actor_id: str) -> GameState:
 def scene_start(game: GameState, *, actor_id: str) -> GameState:
     _require_table_phase(game)
     _require_marshal(game, actor_id)
+    return resume_scene_start(game)
 
+
+def resume_scene_start(game: GameState) -> GameState:
+    """Discover one pre-duel inspection, or perform the shared initial deal."""
+    from .factions import begin_next_yankee_inspection
+
+    _require_table_phase(game)
+    if get_pending_interaction(game) is not None:
+        raise ValueError("Consume the pending interaction before resuming scene-start.")
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_SETUP:
         raise ValueError("Scene can only start from setup.")
@@ -328,6 +337,10 @@ def scene_start(game: GameState, *, actor_id: str) -> GameState:
     if not _is_pvp_duel(scene) and scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
         raise ValueError("Azzardo is in an invalid state for starting the scene.")
     _validate_scene_configuration(scene)
+
+    game = begin_next_yankee_inspection(game)
+    if get_pending_interaction(game) is not None:
+        return game
 
     initiative_order: list[tuple[str, int, int]] = []
     for original_idx, pid in enumerate(scene["participants"]):

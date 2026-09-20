@@ -1,4 +1,4 @@
-"""Synchronous faction powers, with identity derived only from character ownership."""
+"""Faction powers, with identity derived only from character ownership."""
 from dataclasses import replace
 from typing import Any
 
@@ -151,3 +151,66 @@ def chichimeca_choose_target(game: GameState, *, player_id: str, target_player_i
     derived = complete_pending_interaction(derived, outcome="resolve")
     return derived, {"player_id": player_id, "target_player_id": target_player_id,
                      "discarded_scum_card_id": discarded}
+
+
+YANKEE_CHOOSE_TOP_CARD = "gf.faction_yankee_choose_top_card"
+YANKEE_INTERACTION = "yankee_inspect_top_card"
+
+
+def begin_next_yankee_inspection(game: GameState) -> GameState:
+    """Discover only the next eligible participant, using the current real top."""
+    from backend.engine.state.pending_interaction import begin_pending_interaction
+
+    scene = _scene(game)
+    if scene["mode"] != "duel" or game.deck is None or not game.deck.draw_pile:
+        return game
+    usage = scene["faction_power_usage"]
+    for pid in scene["participants"]:
+        if (_player_is_dead(game, pid) or usage.get(pid, {}).get(YANKEE)
+                or player_faction(game, pid) != YANKEE):
+            continue
+        scene["faction_power_usage"] = {**usage, pid: {**usage.get(pid, {}), YANKEE: True}}
+        derived = _replace_scene(game, scene=scene)
+        return begin_pending_interaction(derived, {
+            "kind": YANKEE_INTERACTION,
+            "actor_id": pid,
+            "allowed_actions": [YANKEE_CHOOSE_TOP_CARD],
+            "payload": {"inspected_card_id": game.deck.draw_pile[-1]},
+            "continuation": {
+                "on_resolve": {"kind": "resume_scene_start", "payload": {}},
+                "on_reclaim": {"kind": "resume_scene_start", "payload": {}},
+            },
+        })
+    return game
+
+
+def validate_yankee_inspection(game: GameState) -> str:
+    from backend.engine.state.pending_interaction import get_pending_interaction
+
+    pending = get_pending_interaction(game)
+    if pending is None or pending["kind"] != YANKEE_INTERACTION:
+        raise ValueError("No Yankee top-card inspection is pending.")
+    inspected = pending["payload"].get("inspected_card_id")
+    if (not isinstance(inspected, str) or not inspected or game.deck is None
+            or not game.deck.draw_pile or game.deck.draw_pile[-1] != inspected):
+        raise ValueError("Inspected card is missing or is no longer the top card.")
+    return inspected
+
+
+def yankee_choose_top_card(game: GameState, *, player_id: str, choice: str) -> tuple[GameState, dict[str, Any]]:
+    from backend.engine.state.pending_interaction import get_pending_interaction
+    from backend.engine.state.continuations import complete_pending_interaction
+
+    inspected = validate_yankee_inspection(game)
+    pending = get_pending_interaction(game)
+    if player_id != pending["actor_id"]:
+        raise ValueError("Only the pending Yankee may choose keep or bury.")
+    require_faction(game, player_id, YANKEE)
+    if not isinstance(choice, str) or choice not in {"keep", "bury"}:
+        raise ValueError("choice must be keep or bury.")
+    derived = game
+    if choice == "bury":
+        deck = replace(game.deck, draw_pile=[inspected, *game.deck.draw_pile[:-1]])
+        derived = replace(game, deck=deck)
+    derived = complete_pending_interaction(derived, outcome="resolve")
+    return derived, {"player_id": player_id, "choice": choice, "inspected_card_id": inspected}

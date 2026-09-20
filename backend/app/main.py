@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
-from backend.app.serializers import game_state_to_dict
+from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection
 from backend.app.pending_interactions import (
     DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM, PENDING_STATE_ACTIONS,
     effective_actor, enforce_pending_action_gate,
@@ -29,6 +29,7 @@ from backend.engine.state.validators import validate_game_state
 
 from backend.engine.rules.grim_fronteira.factions import (
     paisa_claim_reward, criollo_convert_resource, chichimeca_choose_target, CHICHIMECA_CHOOSE_TARGET,
+    yankee_choose_top_card, YANKEE_CHOOSE_TOP_CARD,
 )
 from backend.engine.rules.grim_fronteira.setup import setup_players
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
@@ -208,14 +209,16 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     return ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view),
+        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
         events=[],
         result={"created": True},
         error=None,
     )
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
-def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug") -> ActionResponse:
+def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug", viewer_id: str | None = None) -> ActionResponse:
+    if view == "player" and (not isinstance(viewer_id, str) or not viewer_id.strip()):
+        raise HTTPException(status_code=422, detail="viewer_id is required for player view")
     g = _get_game(game_id)
     game = g.state
     validate_game_state(game)
@@ -225,7 +228,7 @@ def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug"
     return ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=view),
+        state=game_state_to_dict(game, view=view, viewer_id=viewer_id),
         events=[],
         result={},
         error=None,
@@ -632,6 +635,17 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         mutated = True
         result = {"ok": True, "action": req.action, **scum_result}
 
+    elif req.action == YANKEE_CHOOSE_TOP_CARD:
+        player_id = req.params.get("player_id")
+        choice = req.params.get("choice")
+        if not isinstance(player_id, str) or not player_id.strip() or not isinstance(choice, str):
+            raise HTTPException(status_code=400, detail="player_id and choice must be strings")
+        game, power_result = yankee_choose_top_card(game, player_id=player_id, choice=choice)
+        if not can_view_yankee_inspection(view=req.view, viewer_id=req.viewer_id, actor_id=player_id):
+            power_result.pop("inspected_card_id", None)
+        mutated = True
+        result = {"ok": True, "action": req.action, **power_result}
+
     elif req.action == CHICHIMECA_CHOOSE_TARGET:
         player_id = req.params.get("player_id")
         target_player_id = req.params.get("target_player_id")
@@ -843,7 +857,7 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
     return ActionResponse(
         game_id=req.game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view),
+        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
         events=events,
         result=result,
         error=None,

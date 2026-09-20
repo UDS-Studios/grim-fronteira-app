@@ -22,7 +22,7 @@ def game_id():
 
 
 def dispatch(game_id, name, params=None, view="debug"):
-    return action(ActionRequest(game_id=game_id, action=name, params=params or {}, view=view))
+    return action(ActionRequest(game_id=game_id, action=name, params=params or {}, view=view, viewer_id="p1"))
 
 
 def begin(game_id, actor="p1"):
@@ -68,7 +68,7 @@ def test_read_only_routes_remain_available_without_mutation(game_id, view):
     begin(game_id)
     original = GAMES[game_id].state
     snapshot = deepcopy(original)
-    for response in (dispatch(game_id, "gf.get_state", view=view), get_state(game_id, view)):
+    for response in (dispatch(game_id, "gf.get_state", view=view), get_state(game_id, view, viewer_id="p1")):
         assert response.revision == original.meta["revision"]
         assert response.state["meta"]["pending_interaction"] == original.meta["pending_interaction"]
     assert GAMES[game_id].state is original

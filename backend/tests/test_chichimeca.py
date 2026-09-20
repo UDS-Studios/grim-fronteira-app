@@ -358,7 +358,7 @@ def test_gate_rejects_before_faction_engine(action, handler, params, monkeypatch
 def test_pending_scene_continuation_serializes_and_reloads(view, tmp_path):
     from backend.engine.state.game_state_io import save_game_state, load_game_state
     start()
-    response = main.action(ActionRequest(game_id="test", action="gf.get_state", view=view))
+    response = main.action(ActionRequest(game_id="test", action="gf.get_state", view=view, viewer_id="p1"))
     assert response.state["meta"]["pending_interaction"] == current().meta["pending_interaction"]
     path = tmp_path / "interrupted.json"
     save_game_state(current(), path)
