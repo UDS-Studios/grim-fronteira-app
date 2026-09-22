@@ -17,7 +17,7 @@ export default function TableRouterView({
   run,
   onBackHome,
 }: TableRouterViewProps) {
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const meta = state.meta ?? {};
   const marshalId = meta.marshal_id ?? "";
 

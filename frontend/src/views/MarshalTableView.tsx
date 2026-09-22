@@ -582,23 +582,23 @@ export default function MarshalTableView({
   const playersRailScale = 1.6;
   const [pendingBonusType, setPendingBonusType] = useState<"scum" | "vengeance" | null>(null);
   const ds = (value: number) => value * deckScale;
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const meta = state.meta ?? {};
   const zones: Record<string, string[]> = state.zones ?? {};
   const deck = state.deck ?? {};
 
   const playersOrder: string[] = meta.players_order ?? [];
   const marshalId = meta.marshal_id ?? "";
-  const scene: SceneState = meta.scene ?? {};
+  const scene = (meta.scene ?? {}) as SceneState;
   const scenePlayers = scene.players ?? {};
   const metaPlayers: Record<string, MetaPlayerState> = meta.players ?? {};
   const lobby = meta.lobby ?? {};
-  const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
+  const lobbyPlayers = (lobby.players ?? {}) as Record<string, LobbyPlayerState>;
 
   const nonMarshalPlayers = playersOrder.filter((pid) => pid !== marshalId);
 
   const deckCount =
-    typeof deck?.draw_pile?.count === "number"
+    deck.draw_pile != null && "count" in deck.draw_pile && typeof deck.draw_pile.count === "number"
       ? deck.draw_pile.count
       : Array.isArray(deck?.draw_pile)
         ? deck.draw_pile.length
@@ -653,7 +653,7 @@ export default function MarshalTableView({
   function getDisplayedWounds(pid: string): number {
     const persistentWounds = getPersistentWounds(pid);
     const pendingWounds =
-      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : !!scenePlayers?.[pid]?.busted ? 1 : 0;
+      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : scenePlayers?.[pid]?.busted ? 1 : 0;
     return persistentWounds + pendingWounds;
   }
 
@@ -1376,7 +1376,7 @@ export default function MarshalTableView({
                       : "Click to draw azzardo"
                 }
               >
-                {deckCount > 0 ? (
+                {typeof deckCount === "number" && deckCount > 0 ? (
                   <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
                 ) : (
                   <div

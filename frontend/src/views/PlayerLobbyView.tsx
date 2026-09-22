@@ -144,13 +144,13 @@ export default function PlayerLobbyView({
   const [customFeature, setCustomFeature] = useState("");
   const isWaitingMessageVisible = useBlink(700);
 
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const meta: MetaAny = state.meta ?? {};
   const zones: Zones = state.zones ?? {};
 
   const marshalId = meta.marshal_id ?? "";
   const lobby = meta.lobby ?? {};
-  const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
+  const lobbyPlayers = (lobby.players ?? {}) as Record<string, LobbyPlayerState>;
   const availableFigures: string[] = zones["lobby.figure_pool.available"] ?? [];
 
   const assignmentMode = lobby.character_assignment_mode ?? "choice";

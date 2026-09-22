@@ -8,10 +8,14 @@ type StartedViewProps = {
 };
 
 export default function StartedView({ resp, view }: StartedViewProps) {
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const zones: Zones = state.zones ?? {};
   const meta: MetaAny = state.meta ?? {};
-  const sceneMeta = meta.scene ?? {};
+  const sceneMeta = (meta.scene ?? {}) as {
+    dark_mode?: boolean;
+    difficulty_value?: number;
+    difficulty_rule?: string;
+  };
   const playersMeta = meta.players ?? {};
 
   const zoneEntries = Object.entries(zones).sort(([a], [b]) => a.localeCompare(b));
@@ -40,7 +44,7 @@ export default function StartedView({ resp, view }: StartedViewProps) {
         <div style={{ marginTop: 12, padding: 12, border: "1px solid #ddd", borderRadius: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 6 }}>Players</div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-            {Object.entries(playersMeta).map(([pid, info]: any) => (
+            {Object.entries(playersMeta).map(([pid, info]) => (
               <div key={pid} style={{ padding: 8, border: "1px solid #ccc", borderRadius: 10 }}>
                 <div style={{ fontWeight: 700 }}>{pid}</div>
                 <div style={{ opacity: 0.85, fontSize: 14 }}>
