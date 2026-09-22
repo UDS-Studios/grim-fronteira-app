@@ -519,21 +519,21 @@ export default function PlayerTableView({
   const [rewardSelectionMode, setRewardSelectionMode] = useState<"heal" | "discard" | null>(null);
   const [selectedRewardCardKeys, setSelectedRewardCardKeys] = useState<string[]>([]);
   const [sceneActionPending, setSceneActionPending] = useState(false);
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
   const zones: Record<string, string[]> = state.zones ?? {};
 
-  const scene: SceneState = meta.scene ?? {};
+  const scene = (meta.scene ?? {}) as SceneState;
   const isDuelScene = scene.mode === "duel";
   const scenePlayers: Record<string, ScenePlayerState> = scene.players ?? {};
   const metaPlayers: Record<string, MetaPlayerState> = meta.players ?? {};
   const lobby = meta.lobby ?? {};
-  const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
+  const lobbyPlayers = (lobby.players ?? {}) as Record<string, LobbyPlayerState>;
   const marshalId: string = meta.marshal_id ?? "";
 
   const deckCount =
-    typeof deck?.draw_pile?.count === "number"
+    deck.draw_pile != null && "count" in deck.draw_pile && typeof deck.draw_pile.count === "number"
       ? deck.draw_pile.count
       : Array.isArray(deck?.draw_pile)
         ? deck.draw_pile.length
@@ -669,7 +669,7 @@ export default function PlayerTableView({
   function getDisplayedWounds(pid: string): number {
     const persistentWounds = getPersistentWounds(pid);
     const pendingWounds =
-      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : !!scenePlayers?.[pid]?.busted ? 1 : 0;
+      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : scenePlayers?.[pid]?.busted ? 1 : 0;
     return persistentWounds + pendingWounds;
   }
 
@@ -1247,7 +1247,7 @@ export default function PlayerTableView({
                 }}
                 title={deckTooltip}
               >
-                {deckCount > 0 ? (
+                {typeof deckCount === "number" && deckCount > 0 ? (
                   <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
                 ) : (
                   <div

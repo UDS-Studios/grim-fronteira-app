@@ -82,7 +82,7 @@ export default function App() {
         // stay on the current screen so we can inspect the real error
       }
       return r;
-    } catch (e: any) {
+    } catch (e: unknown) {
       const errResp: ActionResponse = {
         game_id: gameId,
         revision: 0,
@@ -91,7 +91,7 @@ export default function App() {
         result: {},
         error: {
           code: "CLIENT_FETCH_ERROR",
-          message: e?.message ?? String(e),
+          message: e instanceof Error ? e.message : String(e),
           details: null,
         },
       };
@@ -101,7 +101,7 @@ export default function App() {
     }
   }
 
-  const state = (resp?.state as any) ?? {};
+  const state = resp?.state ?? {};
   const meta: MetaAny = state.meta ?? {};
   const zones = state.zones ?? {};
   const phase = meta.phase ?? "no-game";
@@ -153,7 +153,7 @@ export default function App() {
               const r = await run(getGame(joinGameId, view, view === "player" ? currentActorId : undefined));
               if (r.error) return;
 
-              const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
+              const loadedMeta = (r.state?.meta ?? {}) as MetaAny;
               const lobby = loadedMeta.lobby ?? {};
               const marshalId = loadedMeta.marshal_id ?? "";
 

@@ -17,7 +17,7 @@ export default function HookSelectionView({
   currentActorId,
   run,
 }: HookSelectionViewProps) {
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const meta = state.meta ?? {};
   const marshalId = meta.marshal_id ?? "";
   const hooks = meta.hooks ?? {};
@@ -28,7 +28,7 @@ export default function HookSelectionView({
   const isMarshal = currentActorId === marshalId;
 
   async function beginTable() {
-    const params: Record<string, any> = {
+    const params: Record<string, unknown> = {
       actor_id: currentActorId,
     };
 

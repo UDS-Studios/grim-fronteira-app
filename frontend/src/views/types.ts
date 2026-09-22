@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { ActionResponse, View } from "../api/types";
+import type { ActionResponse, GameMeta, View } from "../api/types";
 
-export type MetaAny = Record<string, any>;
+export type MetaAny = GameMeta;
 export type Zones = Record<string, string[]>;
 export type RunAction = (p: Promise<ActionResponse>) => Promise<ActionResponse>;
 
