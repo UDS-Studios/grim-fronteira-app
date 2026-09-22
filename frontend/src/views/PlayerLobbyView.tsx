@@ -192,6 +192,7 @@ export default function PlayerLobbyView({
           seed,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -210,6 +211,7 @@ export default function PlayerLobbyView({
           feature: trimmed,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -502,6 +504,7 @@ export default function PlayerLobbyView({
                       action: "gf.draw_character",
                       params: { player_id: currentPlayerId, seed: 321 + idx },
                       view,
+                      viewer_id: view === "player" ? currentActorId : undefined,
                     })
                   );
                 }}
@@ -535,6 +538,7 @@ export default function PlayerLobbyView({
                       action: "gf.claim_character",
                       params: { player_id: currentPlayerId, card_id: c },
                       view,
+                      viewer_id: view === "player" ? currentActorId : undefined,
                     })
                   );
                 }}

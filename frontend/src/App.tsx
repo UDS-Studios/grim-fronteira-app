@@ -45,7 +45,7 @@ export default function App() {
 
     const sync = async () => {
       try {
-        const r = await getGame(gameId, view);
+        const r = await getGame(gameId, view, view === "player" ? currentActorId : undefined);
         if (cancelled) return;
 
         if (!r.error) {
@@ -68,7 +68,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [screen, gameId, view]);
+  }, [screen, gameId, view, currentActorId]);
 
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
@@ -145,11 +145,12 @@ export default function App() {
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
                   view,
+                  viewer_id: view === "player" ? currentActorId : undefined,
                 })
               )
             }
             onJoinGame={async () => {
-              const r = await run(getGame(joinGameId, view));
+              const r = await run(getGame(joinGameId, view, view === "player" ? currentActorId : undefined));
               if (r.error) return;
 
               const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
@@ -171,6 +172,7 @@ export default function App() {
                   action: "gf.join_lobby",
                   params: { player_id: freshPlayerId },
                   view,
+                  viewer_id: view === "player" ? freshPlayerId : undefined,
                 })
               );
               if (joinResp.error) return;
@@ -235,7 +237,7 @@ export default function App() {
 
             <button onClick={() => setScreen("home")}>Home</button>
 
-            <button disabled={!gameId} onClick={() => run(getGame(gameId, view))}>
+            <button disabled={!gameId} onClick={() => run(getGame(gameId, view, view === "player" ? currentActorId : undefined))}>
               Refresh
             </button>
 

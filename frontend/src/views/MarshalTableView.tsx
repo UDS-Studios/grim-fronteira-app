@@ -866,6 +866,7 @@ export default function MarshalTableView({
           participant_ids: nextParticipantIds,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -893,6 +894,7 @@ export default function MarshalTableView({
           duel_subtype: nextDuelSubtype,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -910,6 +912,7 @@ export default function MarshalTableView({
             actor_id: currentActorId,
           },
           view,
+          viewer_id: view === "player" ? currentActorId : undefined,
         })
       );
       return;
@@ -924,6 +927,7 @@ export default function MarshalTableView({
             actor_id: currentActorId,
           },
           view,
+          viewer_id: view === "player" ? currentActorId : undefined,
         })
       );
     }
@@ -939,6 +943,7 @@ export default function MarshalTableView({
           player_id: pid,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -953,6 +958,7 @@ export default function MarshalTableView({
           player_id: pid,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -967,6 +973,7 @@ export default function MarshalTableView({
           player_id: pid,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -981,6 +988,7 @@ export default function MarshalTableView({
           actor_id: currentActorId,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -995,6 +1003,7 @@ export default function MarshalTableView({
           actor_id: currentActorId,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -1011,6 +1020,7 @@ export default function MarshalTableView({
           bonus_type: pendingBonusType,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
     setPendingBonusType(null);
@@ -1028,6 +1038,7 @@ export default function MarshalTableView({
           actor_id: currentActorId,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -1043,6 +1054,7 @@ export default function MarshalTableView({
           actor_id: currentActorId,
         },
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }
@@ -1209,7 +1221,7 @@ export default function MarshalTableView({
             src={publicAsset("ui/refresh.png")}
             alt="Refresh"
             title="Refresh Table"
-            onClick={() => run(getGame(resp.game_id, view))}
+            onClick={() => run(getGame(resp.game_id, view, view === "player" ? currentActorId : undefined))}
           />
         </div>
 

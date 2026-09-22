@@ -42,6 +42,7 @@ export default function HookSelectionView({
         action: "gf.begin_table",
         params,
         view,
+        viewer_id: view === "player" ? currentActorId : undefined,
       })
     );
   }

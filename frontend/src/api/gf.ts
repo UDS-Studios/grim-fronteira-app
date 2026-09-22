@@ -9,6 +9,8 @@ export function gfAction(req: ActionRequest) {
   return api("/api/gf/action", "POST", req);
 }
 
-export function getGame(gameId: string, view: View) {
-  return api(`/api/game/${encodeURIComponent(gameId)}?view=${view}`, "GET");
+export function getGame(gameId: string, view: View, viewerId?: string | null) {
+  const query = new URLSearchParams({ view });
+  if (viewerId) query.set("viewer_id", viewerId);
+  return api(`/api/game/${encodeURIComponent(gameId)}?${query}`, "GET");
 }

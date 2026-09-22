@@ -152,7 +152,7 @@ export default function MarshalLobbyView({
           src={publicAsset("ui/refresh.png")}
           alt="Refresh"
           title="Refresh Lobby"
-          onClick={() => run(getGame(resp.game_id, view))}
+          onClick={() => run(getGame(resp.game_id, view, view === "player" ? currentActorId : undefined))}
         />
       </div>
 
@@ -244,6 +244,7 @@ export default function MarshalLobbyView({
                         action: "gf.set_character_assignment_mode",
                         params: { actor_id: effectiveActorId, mode: "choice" },
                         view,
+                        viewer_id: view === "player" ? currentActorId : undefined,
                       })
                     )
                   }
@@ -284,6 +285,7 @@ export default function MarshalLobbyView({
                         action: "gf.set_character_assignment_mode",
                         params: { actor_id: effectiveActorId, mode: "random" },
                         view,
+                        viewer_id: view === "player" ? currentActorId : undefined,
                       })
                     )
                   }
@@ -348,6 +350,7 @@ export default function MarshalLobbyView({
                       action: "gf.set_registration_open",
                       params: { actor_id: effectiveActorId, is_open: !registrationOpen },
                       view,
+                      viewer_id: view === "player" ? currentActorId : undefined,
                     })
                   )
                 }
@@ -376,6 +379,7 @@ export default function MarshalLobbyView({
                       action: "gf.start_game",
                       params: { actor_id: effectiveActorId },
                       view,
+                      viewer_id: view === "player" ? currentActorId : undefined,
                     })
                   )
                 }
