@@ -16,12 +16,25 @@ export type PendingInteraction = {
 };
 
 // Only the state fields consumed by the current frontend are described here.
+export type FactionName = "criollo" | "paisa" | "yankee" | "chichimeca";
+
+export type SceneFactionPowerUsage =
+  Record<string, Partial<Record<FactionName, boolean>>>;
+
+export type SceneState = {
+  status?: string;
+  mode?: string;
+  participants?: string[];
+  faction_power_usage?: SceneFactionPowerUsage;
+};
+
 export type GameMeta = {
   phase?: string;
   marshal_id?: string;
   players_order?: string[];
   players?: Record<string, { reward_points?: number; wounds?: number }>;
-  scene?: unknown;
+  scene?: SceneState;
+  pending_interaction?: PendingInteraction | null;
   lobby?: {
     registration_open?: boolean;
     character_assignment_mode?: string;
