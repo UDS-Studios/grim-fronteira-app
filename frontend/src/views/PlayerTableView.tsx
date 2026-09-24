@@ -6,6 +6,7 @@ import TableZone from "../components/TableZone";
 import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
 import type { ActionResponse, View } from "../api/types";
+import { isCriolloAvailable, isCriolloSelectionOwned, type CriolloSelection } from "./player_table/criollo";
 import PTVPlayerBoard from "./player_table/PTV-PlayerBoard";
 import PTVOtherPlayers from "./player_table/PTV-OtherPlayers";
 import {
@@ -512,6 +513,8 @@ export default function PlayerTableView({
   run,
   onBackHome,
 }: PlayerTableViewProps) {
+  const [criolloSelecting, setCriolloSelecting] = useState(false);
+  const [criolloSelection, setCriolloSelection] = useState<CriolloSelection | null>(null);
   const deckScale = 1.6;
   const ds = (value: number) => value * deckScale;
   const [scumTargetingActive, setScumTargetingActive] = useState(false);
@@ -1018,6 +1021,43 @@ export default function PlayerTableView({
     );
   }
 
+  const criolloAvailable = isCriolloAvailable(state, currentActorId) && !getIsDead(currentActorId);
+  const criolloActive = criolloSelecting && criolloAvailable;
+  const validCriolloSelection = isCriolloSelectionOwned(state, currentActorId, criolloSelection)
+    ? criolloSelection : null;
+
+  // A response, refresh, or viewer change invalidates this local interaction.
+  useEffect(() => {
+    setCriolloSelecting(false);
+    setCriolloSelection(null);
+  }, [resp, currentActorId, view]);
+
+  function cancelCriolloSelection() {
+    setCriolloSelecting(false);
+    setCriolloSelection(null);
+  }
+
+  async function handleConfirmCriollo() {
+    if (!criolloActive || !validCriolloSelection || sceneActionPending) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: "gf.faction_criollo_convert_resource",
+        params: {
+          player_id: currentActorId,
+          card_id: validCriolloSelection.cardId,
+          from_resource: validCriolloSelection.resource,
+        },
+        view,
+        viewer_id: view === "player" ? currentActorId : undefined,
+      }));
+    } finally {
+      cancelCriolloSelection();
+      setSceneActionPending(false);
+    }
+  }
+
   const canPlayScum =
     ((scene.status === "active" &&
       !sceneResolved &&
@@ -1092,13 +1132,13 @@ export default function PlayerTableView({
   }, [currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode]);
 
   async function handleToggleScumTargeting() {
-    if (!canPlayScum) return;
+    if (!canPlayScum || criolloActive || sceneActionPending) return;
     setScumTargetingActive((prev) => !prev);
     setSelectedScumTargetId(null);
   }
 
   async function handlePlayVengeance() {
-    if (!canPlayVengeance) return;
+    if (!canPlayVengeance || criolloActive || sceneActionPending) return;
     setScumTargetingActive(false);
     setSelectedScumTargetId(null);
 
@@ -1116,7 +1156,7 @@ export default function PlayerTableView({
   }
 
   async function handleSelectScumTarget(targetPlayerId: string) {
-    if (!canPlayScum || !scumTargetingActive) return;
+    if (!canPlayScum || !scumTargetingActive || criolloActive || sceneActionPending) return;
     setSelectedScumTargetId(targetPlayerId);
 
     await run(
@@ -1537,9 +1577,40 @@ export default function PlayerTableView({
                     mustDiscardRewards={currentPlayerNeedsDiscardRewards}
                     powerLabel={getPowerFromCardId(currentPlayerFigureCardId)}
                     inScene={currentPlayerInScene}
-                    onClickScum={canPlayScum ? handleToggleScumTargeting : undefined}
-                    onClickVengeance={canPlayVengeance ? handlePlayVengeance : undefined}
+                    onClickScum={!criolloActive && !sceneActionPending && canPlayScum ? handleToggleScumTargeting : undefined}
+                    onClickVengeance={!criolloActive && !sceneActionPending && canPlayVengeance ? handlePlayVengeance : undefined}
                     onClickRewardCard={rewardSelectionMode ? handleToggleRewardCard : undefined}
+                    criolloSelecting={criolloActive}
+                    criolloSelection={validCriolloSelection}
+                    criolloSelectionLocked={sceneActionPending}
+                    onSelectCriolloCard={setCriolloSelection}
+                    resourceActions={criolloAvailable ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {!criolloActive ? (
+                          <button type="button" disabled={sceneActionPending} onClick={() => {
+                            setScumTargetingActive(false);
+                            setSelectedScumTargetId(null);
+                            setCriolloSelection(null);
+                            setCriolloSelecting(true);
+                          }}>Law of Lead · Convert</button>
+                        ) : (
+                          <>
+                            <div role="status">
+                              {validCriolloSelection
+                                ? `Convert ${validCriolloSelection.cardId}: ${validCriolloSelection.resource === "scum" ? "Scum → Vengeance" : "Vengeance → Scum"}`
+                                : "Choose one Scum or Vengeance card to convert."}
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button type="button" disabled={!validCriolloSelection || sceneActionPending}
+                                onClick={handleConfirmCriollo}>
+                                {sceneActionPending ? "Converting…" : "Confirm conversion"}
+                              </button>
+                              <button type="button" disabled={sceneActionPending} onClick={cancelCriolloSelection}>Cancel</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
                     rewardActions={
                       currentPlayerNeedsHealOrSkip || currentPlayerNeedsDiscardRewards ? (
                         <div

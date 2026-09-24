@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { CriolloSelection } from "./criollo";
 import CardImg from "../../components/CardImg";
 import { publicAsset } from "../../app/assets";
 import { getTwentyOneColor } from "./sceneResolution";
@@ -29,6 +30,11 @@ export type PTVPlayerBoardProps = {
   onClickPower?: () => void;
   onClickRewardCard?: (cardId: string, index: number) => void;
   rewardActions?: React.ReactNode;
+  resourceActions?: React.ReactNode;
+  criolloSelecting?: boolean;
+  criolloSelection?: CriolloSelection | null;
+  criolloSelectionLocked?: boolean;
+  onSelectCriolloCard?: (selection: CriolloSelection) => void;
 };
 
 type PowerArtKey =
@@ -346,6 +352,11 @@ export default function PTVPlayerBoard({
   onClickPower,
   onClickRewardCard,
   rewardActions,
+  resourceActions,
+  criolloSelecting = false,
+  criolloSelection = null,
+  criolloSelectionLocked = false,
+  onSelectCriolloCard,
 }: PTVPlayerBoardProps) {
   const { ref, scale } = useResponsiveScale(780, 1.4, 0.7);
   const s = (value: number) => value * scale;
@@ -444,15 +455,37 @@ export default function PTVPlayerBoard({
                   paddingTop: s(20),
                 }}
               >
-                <FixedWidthFaceDownStack
-                  cardIds={scumCardIds}
-                  revealedTopCardId={revealedScumCardId}
-                  title="SCUM"
-                  scale={scale}
-                  interactive={typeof onClickScum === "function"}
-                  disabled={typeof onClickScum !== "function"}
-                  onClick={onClickScum}
-                />
+                {criolloSelecting ? (
+                  <div style={{ display: "grid", gap: s(8), justifyItems: "center", maxHeight: s(250), overflowY: "auto" }}>
+                    <div>SCUM : {scumCardIds.length}</div>
+                    {scumCardIds.map((cardId) => (
+                      <button key={cardId} type="button"
+                        disabled={criolloSelectionLocked}
+                        aria-label={`Convert SCUM card ${cardId}`}
+                        aria-pressed={criolloSelection?.resource === "scum" && criolloSelection.cardId === cardId}
+                        onClick={() => onSelectCriolloCard?.({ cardId, resource: "scum" })}
+                        style={{
+                          padding: 3, borderRadius: s(12),
+                          border: criolloSelection?.resource === "scum" && criolloSelection.cardId === cardId
+                            ? "3px solid #d11f1f" : "3px solid transparent",
+                          background: "var(--surface-bg)",
+                          cursor: criolloSelectionLocked ? "default" : "pointer",
+                        }}>
+                        <CardImg cardId={cardId} width={s(88)} />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <FixedWidthFaceDownStack
+                    cardIds={scumCardIds}
+                    revealedTopCardId={revealedScumCardId}
+                    title="SCUM"
+                    scale={scale}
+                    interactive={typeof onClickScum === "function"}
+                    disabled={typeof onClickScum !== "function"}
+                    onClick={onClickScum}
+                  />
+                )}
               </div>
 
               <div
@@ -498,16 +531,39 @@ export default function PTVPlayerBoard({
                   paddingTop: s(20),
                 }}
               >
-                <FixedWidthFaceDownStack
-                  cardIds={vengeanceCardIds}
-                  title="VENGEANCE"
-                  scale={scale}
-                  interactive={typeof onClickVengeance === "function"}
-                  disabled={typeof onClickVengeance !== "function"}
-                  onClick={onClickVengeance}
-                />
+                {criolloSelecting ? (
+                  <div style={{ display: "grid", gap: s(8), justifyItems: "center", maxHeight: s(250), overflowY: "auto" }}>
+                    <div>VENGEANCE : {vengeanceCardIds.length}</div>
+                    {vengeanceCardIds.map((cardId) => (
+                      <button key={cardId} type="button"
+                        disabled={criolloSelectionLocked}
+                        aria-label={`Convert VENGEANCE card ${cardId}`}
+                        aria-pressed={criolloSelection?.resource === "vengeance" && criolloSelection.cardId === cardId}
+                        onClick={() => onSelectCriolloCard?.({ cardId, resource: "vengeance" })}
+                        style={{
+                          padding: 3, borderRadius: s(12),
+                          border: criolloSelection?.resource === "vengeance" && criolloSelection.cardId === cardId
+                            ? "3px solid #d11f1f" : "3px solid transparent",
+                          background: "var(--surface-bg)",
+                          cursor: criolloSelectionLocked ? "default" : "pointer",
+                        }}>
+                        <CardImg cardId={cardId} width={s(88)} />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <FixedWidthFaceDownStack
+                    cardIds={vengeanceCardIds}
+                    title="VENGEANCE"
+                    scale={scale}
+                    interactive={typeof onClickVengeance === "function"}
+                    disabled={typeof onClickVengeance !== "function"}
+                    onClick={onClickVengeance}
+                  />
+                )}
               </div>
             </div>
+            {resourceActions}
           </div>
 
           <div
