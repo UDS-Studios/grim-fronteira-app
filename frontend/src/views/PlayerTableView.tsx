@@ -1026,11 +1026,24 @@ export default function PlayerTableView({
   const validCriolloSelection = isCriolloSelectionOwned(state, currentActorId, criolloSelection)
     ? criolloSelection : null;
 
-  // A response, refresh, or viewer change invalidates this local interaction.
+  // Polling preserves valid interactions; changing the viewer always resets them.
   useEffect(() => {
     setCriolloSelecting(false);
     setCriolloSelection(null);
-  }, [resp, currentActorId, view]);
+  }, [currentActorId, view]);
+
+  useEffect(() => {
+    if (!criolloAvailable) {
+      setCriolloSelecting(false);
+      setCriolloSelection(null);
+    }
+  }, [criolloAvailable]);
+
+  useEffect(() => {
+    if (criolloSelection !== null && validCriolloSelection === null) {
+      setCriolloSelection(null);
+    }
+  }, [criolloSelection, validCriolloSelection]);
 
   function cancelCriolloSelection() {
     setCriolloSelecting(false);
