@@ -13,3 +13,9 @@ export function isPendingInteractionActionAllowed(state: GameState, action: stri
   const actions = getPendingInteraction(state)?.allowed_actions;
   return Array.isArray(actions) && actions.includes(action);
 }
+
+// Stable across polling copies; only public routing fields identify a local UI transition.
+export function getPendingInteractionIdentity(state: GameState): string | null {
+  const pending = getPendingInteraction(state);
+  return pending ? JSON.stringify([pending.kind, pending.actor_id]) : null;
+}

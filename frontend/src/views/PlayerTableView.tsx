@@ -6,6 +6,7 @@ import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import TableZone from "../components/TableZone";
 import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
+import { getPendingInteraction, getPendingInteractionIdentity, isPendingInteractionActor } from "../utils/pendingInteractions";
 import type { ActionResponse, View } from "../api/types";
 import { isCriolloAvailable, isCriolloSelectionOwned, type CriolloSelection } from "./player_table/criollo";
 import PTVPlayerBoard from "./player_table/PTV-PlayerBoard";
@@ -526,6 +527,22 @@ export default function PlayerTableView({
   const [selectedRewardCardKeys, setSelectedRewardCardKeys] = useState<string[]>([]);
   const [sceneActionPending, setSceneActionPending] = useState(false);
   const state = resp.state ?? {};
+  const pendingInteraction = getPendingInteraction(state);
+  const hasPendingInteraction = pendingInteraction !== null;
+  const isPendingActor = isPendingInteractionActor(state, currentActorId);
+  const pendingIdentity = getPendingInteractionIdentity(state);
+
+  useEffect(() => {
+    if (pendingIdentity === null) return;
+    setCriolloSelecting(false);
+    setCriolloSelection(null);
+    setPaisaSelecting(false);
+    setPaisaSelection([]);
+    setScumTargetingActive(false);
+    setSelectedScumTargetId(null);
+    setRewardSelectionMode(null);
+    setSelectedRewardCardKeys([]);
+  }, [pendingIdentity]);
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
   const zones: Record<string, string[]> = state.zones ?? {};
@@ -637,8 +654,8 @@ export default function PlayerTableView({
     scene.status === "closed" &&
     (currentPlayerRewardPoints > 21 ||
       (!!currentPlayerState.reward_discard_started && currentPlayerRewardPoints > 20));
-  const healSelectionActive = rewardSelectionMode === "heal";
-  const discardSelectionActive = rewardSelectionMode === "discard";
+  const healSelectionActive = !hasPendingInteraction && rewardSelectionMode === "heal";
+  const discardSelectionActive = !hasPendingInteraction && rewardSelectionMode === "discard";
   const selectedRewardPoints = selectedRewardCardKeys.reduce((sum, key) => {
     const [cardId] = key.split(":");
     return sum + getRewardCardPoints(cardId);
@@ -879,6 +896,7 @@ export default function PlayerTableView({
   }
 
   async function handleSceneDraw() {
+    if (hasPendingInteraction) return;
     if (!isCurrentViewerActive || sceneActionPending) return;
 
     setSceneActionPending(true);
@@ -900,6 +918,7 @@ export default function PlayerTableView({
   }
 
   async function handleSceneStay() {
+    if (hasPendingInteraction) return;
     if (!isCurrentViewerActive || sceneActionPending) return;
 
     setSceneActionPending(true);
@@ -921,6 +940,7 @@ export default function PlayerTableView({
   }
 
   async function handleAcknowledgeResolution() {
+    if (hasPendingInteraction) return;
     if (sceneActionPending) return;
 
     setSceneActionPending(true);
@@ -942,6 +962,7 @@ export default function PlayerTableView({
   }
 
   async function handleSkipHeal() {
+    if (hasPendingInteraction) return;
     if (!currentPlayerNeedsHealOrSkip) return;
 
     setRewardSelectionMode(null);
@@ -960,6 +981,7 @@ export default function PlayerTableView({
   }
 
   async function handleConfirmHeal() {
+    if (hasPendingInteraction) return;
     if (!canConfirmHeal) return;
 
     await run(
@@ -980,12 +1002,14 @@ export default function PlayerTableView({
   }
 
   function handleToggleHealSelection() {
+    if (hasPendingInteraction) return;
     if (!currentPlayerNeedsHealOrSkip) return;
     setRewardSelectionMode((prev) => (prev === "heal" ? null : "heal"));
     setSelectedRewardCardKeys([]);
   }
 
   async function handleConfirmDiscardReward() {
+    if (hasPendingInteraction) return;
     if (!canConfirmDiscard) return;
 
     await run(
@@ -1006,12 +1030,14 @@ export default function PlayerTableView({
   }
 
   function handleToggleDiscardSelection() {
+    if (hasPendingInteraction) return;
     if (!currentPlayerNeedsDiscardRewards) return;
     setRewardSelectionMode((prev) => (prev === "discard" ? null : "discard"));
     setSelectedRewardCardKeys([]);
   }
 
   function handleToggleRewardCard(cardId: string, index: number) {
+    if (hasPendingInteraction) return;
     if (rewardSelectionMode === null) return;
     const key = `${cardId}:${index}`;
     if (rewardSelectionMode === "discard") {
@@ -1025,7 +1051,7 @@ export default function PlayerTableView({
   }
 
   const paisaAvailable = isPaisaAvailable(state, currentActorId) && !getIsDead(currentActorId);
-  const paisaActive = paisaSelecting && paisaAvailable;
+  const paisaActive = !hasPendingInteraction && paisaSelecting && paisaAvailable;
   const validPaisaSelection = reconcilePaisaSelection(paisaSelection, currentPlayerVengeanceCards);
   const canConfirmPaisa = isPaisaSelectionValid(state, currentActorId, paisaSelection);
 
@@ -1056,11 +1082,13 @@ export default function PlayerTableView({
   }
 
   function handleSelectPaisaCard(cardId: string) {
+    if (hasPendingInteraction) return;
     if (!paisaActive || sceneActionPending) return;
     setPaisaSelection(previous => togglePaisaSelection(previous, cardId, currentPlayerVengeanceCards));
   }
 
   async function handleConfirmPaisa() {
+    if (hasPendingInteraction) return;
     if (!paisaActive || !canConfirmPaisa || sceneActionPending) return;
     setSceneActionPending(true);
     try {
@@ -1078,7 +1106,7 @@ export default function PlayerTableView({
   }
 
   const criolloAvailable = isCriolloAvailable(state, currentActorId) && !getIsDead(currentActorId);
-  const criolloActive = criolloSelecting && criolloAvailable;
+  const criolloActive = !hasPendingInteraction && criolloSelecting && criolloAvailable;
   const validCriolloSelection = isCriolloSelectionOwned(state, currentActorId, criolloSelection)
     ? criolloSelection : null;
 
@@ -1107,6 +1135,7 @@ export default function PlayerTableView({
   }
 
   async function handleConfirmCriollo() {
+    if (hasPendingInteraction) return;
     if (!criolloActive || !validCriolloSelection || sceneActionPending) return;
     setSceneActionPending(true);
     try {
@@ -1128,6 +1157,7 @@ export default function PlayerTableView({
   }
 
   const canPlayScum =
+    !hasPendingInteraction &&
     ((scene.status === "active" &&
       !sceneResolved &&
       (currentPlayerInScene
@@ -1140,6 +1170,7 @@ export default function PlayerTableView({
     currentPlayerScumCards.length > 0;
 
   const canPlayVengeance =
+    !hasPendingInteraction &&
     currentPlayerInScene &&
     ((scene.status === "active" &&
       isCurrentViewerActive &&
@@ -1152,6 +1183,7 @@ export default function PlayerTableView({
     currentPlayerVengeanceCards.length > 0;
 
   const canDrawFromDeck =
+    !hasPendingInteraction &&
     scene.status === "active" &&
     isCurrentViewerActive &&
     !currentPlayerState.standing &&
@@ -1160,6 +1192,7 @@ export default function PlayerTableView({
     !sceneResolved;
 
   const canStay =
+    !hasPendingInteraction &&
     currentPlayerInScene &&
     scene.status === "active" &&
     isCurrentViewerActive &&
@@ -1169,6 +1202,7 @@ export default function PlayerTableView({
     !sceneResolved;
 
   const canAcknowledge =
+    !hasPendingInteraction &&
     currentPlayerInScene &&
     scene.status === "awaiting_ack" &&
     !!currentPlayerState.resolved &&
@@ -1201,12 +1235,14 @@ export default function PlayerTableView({
   }, [currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode]);
 
   async function handleToggleScumTargeting() {
+    if (hasPendingInteraction) return;
     if (!canPlayScum || criolloActive || paisaActive || sceneActionPending) return;
     setScumTargetingActive((prev) => !prev);
     setSelectedScumTargetId(null);
   }
 
   async function handlePlayVengeance() {
+    if (hasPendingInteraction) return;
     if (!canPlayVengeance || criolloActive || paisaActive || sceneActionPending) return;
     setScumTargetingActive(false);
     setSelectedScumTargetId(null);
@@ -1225,6 +1261,7 @@ export default function PlayerTableView({
   }
 
   async function handleSelectScumTarget(targetPlayerId: string) {
+    if (hasPendingInteraction) return;
     if (!canPlayScum || !scumTargetingActive || criolloActive || paisaActive || sceneActionPending) return;
     setSelectedScumTargetId(targetPlayerId);
 
@@ -1296,6 +1333,14 @@ export default function PlayerTableView({
             onClick={() => run(getGame(resp.game_id, view, view === "player" ? currentActorId : undefined))}
           />
         </div>
+
+        {hasPendingInteraction && (
+          <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
+            {isPendingActor
+              ? "An interaction is waiting for you. Other gameplay actions are paused."
+              : `Waiting for ${lobbyPlayers[pendingInteraction.actor_id]?.chosen_name ?? "another player"} to resolve an interaction. Gameplay actions are paused.`}
+          </div>
+        )}
 
         <div
           style={{
@@ -1616,15 +1661,15 @@ export default function PlayerTableView({
                     figureDead={getIsDead(currentActorId)}
                     scumCardIds={currentPlayerScumCards}
                     revealedScumCardId={
-                      scumTargetingActive && currentPlayerScumCards.length > 0
+                      !hasPendingInteraction && scumTargetingActive && currentPlayerScumCards.length > 0
                         ? currentPlayerScumCards[currentPlayerScumCards.length - 1]
                         : null
                     }
                     vengeanceCardIds={currentPlayerVengeanceCards}
                     rewardCardIds={currentPlayerRewardCards}
                     rewardPoints={currentPlayerRewardPoints}
-                    selectedRewardCardIds={selectedRewardCardKeys}
-                    rewardSelectionEnabled={rewardSelectionMode !== null}
+                    selectedRewardCardIds={hasPendingInteraction ? [] : selectedRewardCardKeys}
+                    rewardSelectionEnabled={!hasPendingInteraction && rewardSelectionMode !== null}
                     rewardSelectionLocked={
                       rewardSelectionMode === "heal"
                         ? !currentPlayerNeedsHealOrSkip
@@ -1648,19 +1693,20 @@ export default function PlayerTableView({
                     inScene={currentPlayerInScene}
                     onClickScum={!criolloActive && !paisaActive && !sceneActionPending && canPlayScum ? handleToggleScumTargeting : undefined}
                     onClickVengeance={!criolloActive && !paisaActive && !sceneActionPending && canPlayVengeance ? handlePlayVengeance : undefined}
-                    onClickRewardCard={rewardSelectionMode ? handleToggleRewardCard : undefined}
+                    onClickRewardCard={!hasPendingInteraction && rewardSelectionMode ? handleToggleRewardCard : undefined}
                     criolloSelecting={criolloActive}
                     criolloSelection={validCriolloSelection}
-                    criolloSelectionLocked={sceneActionPending}
-                    onSelectCriolloCard={setCriolloSelection}
+                    criolloSelectionLocked={hasPendingInteraction || sceneActionPending}
+                    onSelectCriolloCard={(selection) => { if (!hasPendingInteraction) setCriolloSelection(selection); }}
                     paisaSelecting={paisaActive}
                     paisaSelection={validPaisaSelection}
-                    paisaSelectionLocked={sceneActionPending}
+                    paisaSelectionLocked={hasPendingInteraction || sceneActionPending}
                     onSelectPaisaCard={handleSelectPaisaCard}
                     resourceActions={paisaAvailable ? (
                       <div style={{ display: "grid", gap: 8 }}>
                         {!paisaActive ? (
-                          <button type="button" disabled={sceneActionPending} onClick={() => {
+                          <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={() => {
+                            if (hasPendingInteraction) return;
                             setScumTargetingActive(false);
                             setSelectedScumTargetId(null);
                             setPaisaSelection([]);
@@ -1670,11 +1716,11 @@ export default function PlayerTableView({
                           <>
                             <div role="status">Choose 3 Vengeance cards · {validPaisaSelection.length} / 3 selected</div>
                             <div style={{ display: "flex", gap: 8 }}>
-                              <button type="button" disabled={!canConfirmPaisa || sceneActionPending}
+                              <button type="button" disabled={hasPendingInteraction || !canConfirmPaisa || sceneActionPending}
                                 onClick={handleConfirmPaisa}>
                                 {sceneActionPending ? "Claiming…" : "Discard 3 · Claim Reward"}
                               </button>
-                              <button type="button" disabled={sceneActionPending} onClick={cancelPaisaSelection}>Cancel</button>
+                              <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={cancelPaisaSelection}>Cancel</button>
                             </div>
                           </>
                         )}
@@ -1682,7 +1728,8 @@ export default function PlayerTableView({
                     ) : criolloAvailable ? (
                       <div style={{ display: "grid", gap: 8 }}>
                         {!criolloActive ? (
-                          <button type="button" disabled={sceneActionPending} onClick={() => {
+                          <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={() => {
+                            if (hasPendingInteraction) return;
                             setScumTargetingActive(false);
                             setSelectedScumTargetId(null);
                             setCriolloSelection(null);
@@ -1696,11 +1743,11 @@ export default function PlayerTableView({
                                 : "Choose one Scum or Vengeance card to convert."}
                             </div>
                             <div style={{ display: "flex", gap: 8 }}>
-                              <button type="button" disabled={!validCriolloSelection || sceneActionPending}
+                              <button type="button" disabled={hasPendingInteraction || !validCriolloSelection || sceneActionPending}
                                 onClick={handleConfirmCriollo}>
                                 {sceneActionPending ? "Converting…" : "Confirm conversion"}
                               </button>
-                              <button type="button" disabled={sceneActionPending} onClick={cancelCriolloSelection}>Cancel</button>
+                              <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={cancelCriolloSelection}>Cancel</button>
                             </div>
                           </>
                         )}
@@ -1726,6 +1773,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleToggleHealSelection}
+                                disabled={hasPendingInteraction}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1744,6 +1792,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleSkipHeal}
+                                disabled={hasPendingInteraction}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1793,6 +1842,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleToggleDiscardSelection}
+                                disabled={hasPendingInteraction}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1849,15 +1899,15 @@ export default function PlayerTableView({
               >
                 <PTVOtherPlayers
                   players={otherPlayers}
-                  sceneTargetingActive={scumTargetingActive}
+                  sceneTargetingActive={!hasPendingInteraction && scumTargetingActive}
                   selectableTargetPlayerIds={
-                    scumTargetingActive
+                    !hasPendingInteraction && scumTargetingActive
                       ? otherPlayers
                           .filter((player) => player.inScene && !player.busted)
                           .map((player) => player.playerId)
                       : []
                   }
-                  selectedTargetPlayerId={selectedScumTargetId}
+                  selectedTargetPlayerId={hasPendingInteraction ? null : selectedScumTargetId}
                   onSelectSceneTarget={handleSelectScumTarget}
                 />
               </div>
