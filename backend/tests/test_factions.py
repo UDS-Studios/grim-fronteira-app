@@ -369,7 +369,7 @@ def test_paisa_cannot_claim_after_acknowledging_while_awaiting_others():
     meta["scene"]["players"] = {"p1": {"acknowledged": True}, "p2": {"acknowledged": False}}
     original = install(replace(game, meta=meta))
     snapshot = deepcopy(original)
-    with pytest.raises((ValueError, HTTPException), match="Heart of Ombra cannot be used after acknowledging"):
+    with pytest.raises((ValueError, HTTPException), match="Heart of Shadow cannot be used after acknowledging"):
         dispatch()
     assert GAMES["test"].state is original
     assert original == snapshot

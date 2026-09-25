@@ -545,7 +545,7 @@ export default function PTVPlayerBoard({
                     {vengeanceCardIds.map(cardId => (
                       <button key={cardId} type="button"
                         disabled={paisaSelectionLocked || (!paisaSelection.includes(cardId) && paisaSelection.length >= 3)}
-                        aria-label={`Select Vengeance card ${cardId} for Heart of Ombra`}
+                        aria-label={`Select Vengeance card ${cardId} for Heart of Shadow`}
                         aria-pressed={paisaSelection.includes(cardId)}
                         onClick={() => onSelectPaisaCard?.(cardId)}
                         style={{

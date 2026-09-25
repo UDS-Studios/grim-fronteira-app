@@ -57,7 +57,7 @@ def paisa_claim_reward(game: GameState, *, player_id: str, vengeance_card_ids: l
     })
     if (scene["status"] == SCENE_STATUS_AWAITING_ACK
             and (scene["players"].get(player_id) or {}).get("acknowledged")):
-        raise ValueError("Heart of Ombra cannot be used after acknowledging while the scene awaits acknowledgements.")
+        raise ValueError("Heart of Shadow cannot be used after acknowledging while the scene awaits acknowledgements.")
     if (not isinstance(vengeance_card_ids, list) or len(vengeance_card_ids) != 3
             or any(not isinstance(card, str) or not card.strip() for card in vengeance_card_ids)
             or len(set(vengeance_card_ids)) != 3):

@@ -1665,7 +1665,7 @@ export default function PlayerTableView({
                             setSelectedScumTargetId(null);
                             setPaisaSelection([]);
                             setPaisaSelecting(true);
-                          }}>Heart of Ombra · Claim Reward</button>
+                          }}>Heart of Shadow · Claim Reward</button>
                         ) : (
                           <>
                             <div role="status">Choose 3 Vengeance cards · {validPaisaSelection.length} / 3 selected</div>
