@@ -10,14 +10,14 @@ function eligible(): GameState {
   };
 }
 
-test("Paisà requires resolved participation, correct faction and three owned cards", () => {
+test("Paisà requires eligible timing, participation, correct faction and three owned cards", () => {
   assert.equal(isPaisaAvailable(eligible(), "p1"), true);
   assert.equal(isPaisaAvailable({}, "p1"), false);
   assert.equal(isPaisaAvailable(eligible(), "p2"), false);
   const changes: ((state: GameState) => void)[] = [
     s => { s.zones!["players.p1.character"] = ["QD"]; },
     s => { s.meta!.scene!.participants = []; },
-    ...["setup", "active", "awaiting_ack", "closed", undefined].map(status => (s: GameState) => { s.meta!.scene!.status = status; }),
+    ...["setup", "active", "closed", undefined].map(status => (s: GameState) => { s.meta!.scene!.status = status; }),
     ...[[], ["AS", "2H"], ["AS", "AS", "2H"], ["AS", "2H", ""]].map(cards => (s: GameState) => { s.zones!["players.p1.vengeance"] = cards; }),
   ];
   for (const change of changes) {
@@ -83,4 +83,22 @@ test("repeated card clicks toggle without introducing duplicate IDs", () => {
   assert.deepEqual(selected, ["AS"]);
   assert.deepEqual(togglePaisaSelection(selected, "AS", owned), []);
   assert.deepEqual(togglePaisaSelection(["AS", "AS"], "2H", owned), ["AS", "2H"]);
+});
+
+
+test("Paisà is available before acknowledgement and again once resolved", () => {
+  const state = eligible();
+  state.meta!.scene!.status = "awaiting_ack";
+  state.meta!.scene!.players = { p1: { acknowledged: false }, p2: { acknowledged: true } };
+  assert.equal(isPaisaAvailable(state, "p1"), true);
+  state.meta!.scene!.players!.p1.acknowledged = true;
+  assert.equal(isPaisaAvailable(state, "p1"), false);
+  state.meta!.scene!.status = "resolved";
+  assert.equal(isPaisaAvailable(state, "p1"), true);
+});
+
+test("missing acknowledgement defaults to unacknowledged", () => {
+  const state = eligible();
+  state.meta!.scene!.status = "awaiting_ack";
+  assert.equal(isPaisaAvailable(state, "p1"), true);
 });

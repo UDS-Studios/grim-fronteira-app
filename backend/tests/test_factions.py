@@ -106,8 +106,9 @@ def test_paisa_exchange_selected_cards_and_repeat():
 
 @pytest.mark.parametrize("cards", [["2H", "2H", "3H"], [], SPEND[:2], SPEND + ["5H"],
                                    ["2H", "3H", "8D"], ["2H", "3H", ""], [None, "2H", "3H"], None])
-def test_invalid_paisa_selection(cards):
-    install(make_game())
+@pytest.mark.parametrize("status", ["awaiting_ack", "resolved"])
+def test_invalid_paisa_selection(cards, status):
+    install(make_game(status=status))
     rejected(PAISA_ACTION, vengeance_card_ids=cards)
 
 
@@ -133,7 +134,7 @@ def test_activation_rejections(action, character, invalid):
     rejected(action)
 
 
-@pytest.mark.parametrize("status", ["idle", "setup", "active", "awaiting_ack", "closed"])
+@pytest.mark.parametrize("status", ["idle", "setup", "active", "closed"])
 def test_paisa_wrong_status(status):
     install(make_game(status=status))
     rejected(PAISA_ACTION)
@@ -343,3 +344,32 @@ def test_criollo_usage_survives_real_pvp_rematch_but_not_new_scene():
     dispatch("gf.scene_set_participants", actor_id="host", participant_ids=["p1", "p2"])
     dispatch(CRIOLLO_ACTION, from_resource="vengeance", card_id="8D")
     assert GAMES["test"].state.zones["players.p1.scum"] == ["8D"]
+
+
+@pytest.mark.parametrize("status,acknowledged", [
+    ("awaiting_ack", False), ("resolved", False), ("resolved", True),
+])
+def test_paisa_post_resolution_timing(status, acknowledged):
+    game = make_game(status=status)
+    meta = deepcopy(game.meta)
+    meta["scene"]["players"] = {
+        "p1": {"acknowledged": acknowledged}, "p2": {"acknowledged": True},
+    }
+    install(replace(game, meta=meta))
+    response = dispatch()
+    assert response.result["reward_card_id"] == "5D"
+    assert GAMES["test"].state.zones["players.p1.vengeance"] == ["5H", "6H", "7H"]
+    assert GAMES["test"].state.meta["scene"]["status"] == status
+    assert GAMES["test"].state.meta["scene"]["players"]["p1"]["acknowledged"] == acknowledged
+
+
+def test_paisa_cannot_claim_after_acknowledging_while_awaiting_others():
+    game = make_game(status="awaiting_ack")
+    meta = deepcopy(game.meta)
+    meta["scene"]["players"] = {"p1": {"acknowledged": True}, "p2": {"acknowledged": False}}
+    original = install(replace(game, meta=meta))
+    snapshot = deepcopy(original)
+    with pytest.raises((ValueError, HTTPException), match="Heart of Ombra cannot be used after acknowledging"):
+        dispatch()
+    assert GAMES["test"].state is original
+    assert original == snapshot

@@ -3,9 +3,11 @@ import { getPlayerFaction, isSceneParticipant } from "../../utils/factions.ts";
 
 // Presentation only; the backend remains the final legality authority.
 export function isPaisaAvailable(state: GameState, playerId: string): boolean {
+  const scene = state.meta?.scene;
   return getPlayerFaction(state, playerId) === "paisa" &&
     isSceneParticipant(state, playerId) &&
-    state.meta?.scene?.status === "resolved" &&
+    (scene?.status === "resolved" ||
+      (scene?.status === "awaiting_ack" && !scene.players?.[playerId]?.acknowledged)) &&
     new Set((state.zones?.[`players.${playerId}.vengeance`] ?? []).filter(id => id.trim())).size >= 3;
 }
 

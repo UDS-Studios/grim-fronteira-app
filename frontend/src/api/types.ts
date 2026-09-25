@@ -25,6 +25,7 @@ export type SceneState = {
   status?: string;
   mode?: string;
   participants?: string[];
+  players?: Record<string, { acknowledged?: boolean }>;
   faction_power_usage?: SceneFactionPowerUsage;
 };
 
