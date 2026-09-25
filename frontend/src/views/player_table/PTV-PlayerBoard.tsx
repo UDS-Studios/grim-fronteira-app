@@ -31,6 +31,10 @@ export type PTVPlayerBoardProps = {
   onClickRewardCard?: (cardId: string, index: number) => void;
   rewardActions?: React.ReactNode;
   resourceActions?: React.ReactNode;
+  paisaSelecting?: boolean;
+  paisaSelection?: string[];
+  paisaSelectionLocked?: boolean;
+  onSelectPaisaCard?: (cardId: string) => void;
   criolloSelecting?: boolean;
   criolloSelection?: CriolloSelection | null;
   criolloSelectionLocked?: boolean;
@@ -353,6 +357,10 @@ export default function PTVPlayerBoard({
   onClickRewardCard,
   rewardActions,
   resourceActions,
+  paisaSelecting = false,
+  paisaSelection = [],
+  paisaSelectionLocked = false,
+  onSelectPaisaCard,
   criolloSelecting = false,
   criolloSelection = null,
   criolloSelectionLocked = false,
@@ -531,7 +539,26 @@ export default function PTVPlayerBoard({
                   paddingTop: s(20),
                 }}
               >
-                {criolloSelecting ? (
+                {paisaSelecting ? (
+                  <div style={{ display: "grid", gap: s(8), justifyItems: "center", maxHeight: s(250), overflowY: "auto" }}>
+                    <div>VENGEANCE : {vengeanceCardIds.length}</div>
+                    {vengeanceCardIds.map(cardId => (
+                      <button key={cardId} type="button"
+                        disabled={paisaSelectionLocked || (!paisaSelection.includes(cardId) && paisaSelection.length >= 3)}
+                        aria-label={`Select Vengeance card ${cardId} for Heart of Ombra`}
+                        aria-pressed={paisaSelection.includes(cardId)}
+                        onClick={() => onSelectPaisaCard?.(cardId)}
+                        style={{
+                          padding: 3, borderRadius: s(12),
+                          border: paisaSelection.includes(cardId) ? "3px solid #d11f1f" : "3px solid transparent",
+                          background: "var(--surface-bg)",
+                          cursor: paisaSelectionLocked ? "default" : "pointer",
+                        }}>
+                        <CardImg cardId={cardId} width={s(88)} />
+                      </button>
+                    ))}
+                  </div>
+                ) : criolloSelecting ? (
                   <div style={{ display: "grid", gap: s(8), justifyItems: "center", maxHeight: s(250), overflowY: "auto" }}>
                     <div>VENGEANCE : {vengeanceCardIds.length}</div>
                     {vengeanceCardIds.map((cardId) => (

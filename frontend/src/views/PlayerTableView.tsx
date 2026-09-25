@@ -1,3 +1,4 @@
+import { isPaisaAvailable, isPaisaSelectionValid, reconcilePaisaSelection, togglePaisaSelection } from "./player_table/paisa";
 import { useEffect, useState } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
@@ -513,6 +514,8 @@ export default function PlayerTableView({
   run,
   onBackHome,
 }: PlayerTableViewProps) {
+  const [paisaSelecting, setPaisaSelecting] = useState(false);
+  const [paisaSelection, setPaisaSelection] = useState<string[]>([]);
   const [criolloSelecting, setCriolloSelecting] = useState(false);
   const [criolloSelection, setCriolloSelection] = useState<CriolloSelection | null>(null);
   const deckScale = 1.6;
@@ -1021,6 +1024,59 @@ export default function PlayerTableView({
     );
   }
 
+  const paisaAvailable = isPaisaAvailable(state, currentActorId) && !getIsDead(currentActorId);
+  const paisaActive = paisaSelecting && paisaAvailable;
+  const validPaisaSelection = reconcilePaisaSelection(paisaSelection, currentPlayerVengeanceCards);
+  const canConfirmPaisa = isPaisaSelectionValid(state, currentActorId, paisaSelection);
+
+  useEffect(() => {
+    setPaisaSelecting(false);
+    setPaisaSelection([]);
+  }, [currentActorId, view, resp.game_id]);
+
+  useEffect(() => {
+    if (!paisaAvailable) {
+      setPaisaSelecting(false);
+      setPaisaSelection([]);
+    }
+  }, [paisaAvailable]);
+
+  // New polling objects do not reset the mode or still-owned card IDs.
+  useEffect(() => {
+    setPaisaSelection(previous => {
+      const next = reconcilePaisaSelection(previous, currentPlayerVengeanceCards);
+      return next.length === previous.length && next.every((id, i) => id === previous[i])
+        ? previous : next;
+    });
+  }, [currentPlayerVengeanceCards]);
+
+  function cancelPaisaSelection() {
+    setPaisaSelecting(false);
+    setPaisaSelection([]);
+  }
+
+  function handleSelectPaisaCard(cardId: string) {
+    if (!paisaActive || sceneActionPending) return;
+    setPaisaSelection(previous => togglePaisaSelection(previous, cardId, currentPlayerVengeanceCards));
+  }
+
+  async function handleConfirmPaisa() {
+    if (!paisaActive || !canConfirmPaisa || sceneActionPending) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: "gf.faction_paisa_claim_reward",
+        params: { player_id: currentActorId, vengeance_card_ids: validPaisaSelection },
+        view,
+        viewer_id: view === "player" ? currentActorId : undefined,
+      }));
+    } finally {
+      cancelPaisaSelection();
+      setSceneActionPending(false);
+    }
+  }
+
   const criolloAvailable = isCriolloAvailable(state, currentActorId) && !getIsDead(currentActorId);
   const criolloActive = criolloSelecting && criolloAvailable;
   const validCriolloSelection = isCriolloSelectionOwned(state, currentActorId, criolloSelection)
@@ -1145,13 +1201,13 @@ export default function PlayerTableView({
   }, [currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode]);
 
   async function handleToggleScumTargeting() {
-    if (!canPlayScum || criolloActive || sceneActionPending) return;
+    if (!canPlayScum || criolloActive || paisaActive || sceneActionPending) return;
     setScumTargetingActive((prev) => !prev);
     setSelectedScumTargetId(null);
   }
 
   async function handlePlayVengeance() {
-    if (!canPlayVengeance || criolloActive || sceneActionPending) return;
+    if (!canPlayVengeance || criolloActive || paisaActive || sceneActionPending) return;
     setScumTargetingActive(false);
     setSelectedScumTargetId(null);
 
@@ -1169,7 +1225,7 @@ export default function PlayerTableView({
   }
 
   async function handleSelectScumTarget(targetPlayerId: string) {
-    if (!canPlayScum || !scumTargetingActive || criolloActive || sceneActionPending) return;
+    if (!canPlayScum || !scumTargetingActive || criolloActive || paisaActive || sceneActionPending) return;
     setSelectedScumTargetId(targetPlayerId);
 
     await run(
@@ -1590,14 +1646,40 @@ export default function PlayerTableView({
                     mustDiscardRewards={currentPlayerNeedsDiscardRewards}
                     powerLabel={getPowerFromCardId(currentPlayerFigureCardId)}
                     inScene={currentPlayerInScene}
-                    onClickScum={!criolloActive && !sceneActionPending && canPlayScum ? handleToggleScumTargeting : undefined}
-                    onClickVengeance={!criolloActive && !sceneActionPending && canPlayVengeance ? handlePlayVengeance : undefined}
+                    onClickScum={!criolloActive && !paisaActive && !sceneActionPending && canPlayScum ? handleToggleScumTargeting : undefined}
+                    onClickVengeance={!criolloActive && !paisaActive && !sceneActionPending && canPlayVengeance ? handlePlayVengeance : undefined}
                     onClickRewardCard={rewardSelectionMode ? handleToggleRewardCard : undefined}
                     criolloSelecting={criolloActive}
                     criolloSelection={validCriolloSelection}
                     criolloSelectionLocked={sceneActionPending}
                     onSelectCriolloCard={setCriolloSelection}
-                    resourceActions={criolloAvailable ? (
+                    paisaSelecting={paisaActive}
+                    paisaSelection={validPaisaSelection}
+                    paisaSelectionLocked={sceneActionPending}
+                    onSelectPaisaCard={handleSelectPaisaCard}
+                    resourceActions={paisaAvailable ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {!paisaActive ? (
+                          <button type="button" disabled={sceneActionPending} onClick={() => {
+                            setScumTargetingActive(false);
+                            setSelectedScumTargetId(null);
+                            setPaisaSelection([]);
+                            setPaisaSelecting(true);
+                          }}>Heart of Ombra · Claim Reward</button>
+                        ) : (
+                          <>
+                            <div role="status">Choose 3 Vengeance cards · {validPaisaSelection.length} / 3 selected</div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button type="button" disabled={!canConfirmPaisa || sceneActionPending}
+                                onClick={handleConfirmPaisa}>
+                                {sceneActionPending ? "Claiming…" : "Discard 3 · Claim Reward"}
+                              </button>
+                              <button type="button" disabled={sceneActionPending} onClick={cancelPaisaSelection}>Cancel</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : criolloAvailable ? (
                       <div style={{ display: "grid", gap: 8 }}>
                         {!criolloActive ? (
                           <button type="button" disabled={sceneActionPending} onClick={() => {
