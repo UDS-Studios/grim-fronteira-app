@@ -10,14 +10,12 @@ function eligible(): GameState {
   };
 }
 
-test("Paisà requires eligible timing, participation, correct faction and three owned cards", () => {
+test("Paisà requires correct faction and three distinct non-empty owned cards", () => {
   assert.equal(isPaisaAvailable(eligible(), "p1"), true);
   assert.equal(isPaisaAvailable({}, "p1"), false);
   assert.equal(isPaisaAvailable(eligible(), "p2"), false);
   const changes: ((state: GameState) => void)[] = [
     s => { s.zones!["players.p1.character"] = ["QD"]; },
-    s => { s.meta!.scene!.participants = []; },
-    ...["setup", "active", "closed", undefined].map(status => (s: GameState) => { s.meta!.scene!.status = status; }),
     ...[[], ["AS", "2H"], ["AS", "AS", "2H"], ["AS", "2H", ""]].map(cards => (s: GameState) => { s.zones!["players.p1.vengeance"] = cards; }),
   ];
   for (const change of changes) {
@@ -86,19 +84,20 @@ test("repeated card clicks toggle without introducing duplicate IDs", () => {
 });
 
 
-test("Paisà is available before acknowledgement and again once resolved", () => {
-  const state = eligible();
-  state.meta!.scene!.status = "awaiting_ack";
-  state.meta!.scene!.players = { p1: { acknowledged: false }, p2: { acknowledged: true } };
-  assert.equal(isPaisaAvailable(state, "p1"), true);
-  state.meta!.scene!.players!.p1.acknowledged = true;
-  assert.equal(isPaisaAvailable(state, "p1"), false);
-  state.meta!.scene!.status = "resolved";
-  assert.equal(isPaisaAvailable(state, "p1"), true);
+test("Paisà availability ignores scene status, participation and acknowledgement", () => {
+  for (const status of ["setup", "active", "awaiting_ack", "resolved", "closed", "idle"]) {
+    for (const acknowledged of [false, true]) {
+      const state = eligible();
+      state.meta!.scene = { status, participants: ["p2"], players: { p1: { acknowledged } } };
+      assert.equal(isPaisaAvailable(state, "p1"), true);
+    }
+  }
 });
 
-test("missing acknowledgement defaults to unacknowledged", () => {
+test("Paisà is available with no scene or meta state", () => {
   const state = eligible();
-  state.meta!.scene!.status = "awaiting_ack";
+  delete state.meta!.scene;
+  assert.equal(isPaisaAvailable(state, "p1"), true);
+  delete state.meta;
   assert.equal(isPaisaAvailable(state, "p1"), true);
 });

@@ -8,7 +8,7 @@ from backend.app import main
 from backend.app.schemas import ActionRequest
 from backend.app.store import GAMES, StoredGame
 from backend.engine.grimdeck.deck_io import load_deck
-from backend.engine.rules.grim_fronteira.factions import player_faction
+from backend.engine.rules.grim_fronteira.factions import paisa_claim_reward, player_faction
 from backend.engine.rules.grim_fronteira.scene import default_scene_state, ensure_scene_state
 from backend.engine.state.game_state import GameState
 from backend.engine.state.pending_interaction import begin_pending_interaction
@@ -120,13 +120,11 @@ def test_wrong_faction_cannot_be_overridden(action, character):
 
 
 @pytest.mark.parametrize("action,character", [(PAISA_ACTION, "QC"), (CRIOLLO_ACTION, "QD")])
-@pytest.mark.parametrize("invalid", ["nonparticipant", "dead", "wrong_phase"])
+@pytest.mark.parametrize("invalid", ["dead", "wrong_phase"])
 def test_activation_rejections(action, character, invalid):
     game = make_game(character=character)
     meta = deepcopy(game.meta)
-    if invalid == "nonparticipant":
-        meta["scene"]["participants"] = ["p2"]
-    elif invalid == "dead":
+    if invalid == "dead":
         meta["players"]["p1"]["wounds"] = 2
     else:
         meta["phase"] = "lobby"
@@ -134,10 +132,12 @@ def test_activation_rejections(action, character, invalid):
     rejected(action)
 
 
-@pytest.mark.parametrize("status", ["idle", "setup", "active", "closed"])
-def test_paisa_wrong_status(status):
-    install(make_game(status=status))
-    rejected(PAISA_ACTION)
+def test_criollo_still_requires_participation():
+    game = make_game(character="QD")
+    meta = deepcopy(game.meta)
+    meta["scene"]["participants"] = ["p2"]
+    install(replace(game, meta=meta))
+    rejected(CRIOLLO_ACTION)
 
 
 @pytest.mark.parametrize("failure", ["empty_deck", "insufficient"])
@@ -221,19 +221,22 @@ def test_criollo_usage_survives_setup_edits_and_resets_with_new_scene():
     dispatch(CRIOLLO_ACTION, from_resource="vengeance", card_id="8D")
 
 
-def test_paisa_reward_reaches_21_through_normal_close():
+def test_paisa_reward_reaches_21_immediately():
     install(make_game(rewards=["10S"], top="AD"))
     response = dispatch()
     assert response.result["reward_points_total"] == 21
-    assert GAMES["test"].state.meta["phase"] == "table"
-    dispatch("gf.scene_close", actor_id="host")
+    assert GAMES["test"].state.meta["phase"] == "victory"
+    assert response.state["meta"]["phase"] == "victory"
     assert GAMES["test"].state.meta["victory"]["winner"] == "p1"
     assert GAMES["test"].state.meta["victory"]["reason"] == "Reached exactly 21 reward points."
 
 
 def test_paisa_above_21_uses_existing_discard_pipeline():
     install(make_game(rewards=["10S", "9S"], top="5D"))
-    dispatch()
+    assert dispatch().result["reward_points_total"] == 24
+    assert GAMES["test"].state.meta["phase"] == "table"
+    assert not GAMES["test"].state.meta.get("victory")
+    assert GAMES["test"].state.zones["players.p1.rewards"] == ["10S", "9S", "5D"]
     dispatch("gf.scene_close", actor_id="host")
     rejected("gf.scene_new", actor_id="host")
     dispatch("gf.scene_discard_reward", player_id="p1", reward_card_id="5D")
@@ -346,15 +349,13 @@ def test_criollo_usage_survives_real_pvp_rematch_but_not_new_scene():
     assert GAMES["test"].state.zones["players.p1.scum"] == ["8D"]
 
 
-@pytest.mark.parametrize("status,acknowledged", [
-    ("awaiting_ack", False), ("resolved", False), ("resolved", True),
-])
-def test_paisa_post_resolution_timing(status, acknowledged):
+@pytest.mark.parametrize("status", ["idle", "setup", "active", "awaiting_ack", "resolved", "closed"])
+@pytest.mark.parametrize("acknowledged", [False, True])
+def test_paisa_ignores_scene_timing_and_participation(status, acknowledged):
     game = make_game(status=status)
     meta = deepcopy(game.meta)
-    meta["scene"]["players"] = {
-        "p1": {"acknowledged": acknowledged}, "p2": {"acknowledged": True},
-    }
+    meta["scene"]["participants"] = ["p2"]
+    meta["scene"]["players"] = {"p1": {"acknowledged": acknowledged}}
     install(replace(game, meta=meta))
     response = dispatch()
     assert response.result["reward_card_id"] == "5D"
@@ -363,13 +364,40 @@ def test_paisa_post_resolution_timing(status, acknowledged):
     assert GAMES["test"].state.meta["scene"]["players"]["p1"]["acknowledged"] == acknowledged
 
 
-def test_paisa_cannot_claim_after_acknowledging_while_awaiting_others():
-    game = make_game(status="awaiting_ack")
+def test_paisa_needs_no_scene_state():
+    game = make_game()
     meta = deepcopy(game.meta)
-    meta["scene"]["players"] = {"p1": {"acknowledged": True}, "p2": {"acknowledged": False}}
-    original = install(replace(game, meta=meta))
-    snapshot = deepcopy(original)
-    with pytest.raises((ValueError, HTTPException), match="Heart of Shadow cannot be used after acknowledging"):
-        dispatch()
-    assert GAMES["test"].state is original
-    assert original == snapshot
+    del meta["scene"]
+    game = replace(game, meta=meta)
+    derived, result = paisa_claim_reward(game, player_id="p1", vengeance_card_ids=SPEND)
+    assert result["reward_card_id"] == "5D"
+    assert "scene" not in derived.meta
+    install(game)
+    assert dispatch().result["reward_card_id"] == "5D"
+
+
+@pytest.mark.parametrize("other_already_at_21", [False, True])
+def test_paisa_wins_before_pending_scene_rewards(other_already_at_21):
+    game = make_game(status="awaiting_ack", rewards=["10S"], top="AD")
+    meta = deepcopy(game.meta)
+    meta["lobby"] = {"players": {"p1": {"chosen_name": "Paisa player"}}}
+    meta["scene"]["players"] = {
+        "p1": {"reward_gained": True, "acknowledged": False},
+        "p2": {"reward_gained": True, "acknowledged": False},
+    }
+    if other_already_at_21:
+        game = replace(game, zones={**game.zones, "players.p2.rewards": ["10C", "AH"]},
+                       deck=replace(game.deck, draw_pile=[c for c in game.deck.draw_pile if c not in {"10C", "AH"}]))
+    original = install(ensure_scene_state(replace(game, meta=meta)))
+    response = dispatch()
+    derived = GAMES["test"].state
+    expected = {"winner": "p1", "winner_label": "Paisa player", "reason": "Reached exactly 21 reward points."}
+    assert response.state["meta"]["phase"] == "victory"
+    assert response.state["meta"]["victory"] == expected
+    assert derived.meta["victory"] == expected
+    assert not derived.meta.get("endgame", {}).get("active")
+    assert derived.meta["scene"] == original.meta["scene"]
+    assert derived.zones["players.p1.rewards"] == ["10S", "AD"]
+    assert derived.zones.get("players.p2.rewards", []) == original.zones.get("players.p2.rewards", [])
+    assert derived.deck.draw_pile == original.deck.draw_pile[:-1]
+    rejected("gf.scene_close", actor_id="host")

@@ -8,7 +8,7 @@ from .reward_points import reward_card_points
 from .setup import is_face
 from .scene import (
     _draw_to_zone, _non_marshal_players, _player_is_dead,
-    _require_table_phase, _scene, _replace_scene,
+    _require_table_phase, _scene, _replace_scene, set_exact_reward_victory,
     SCENE_STATUS_SETUP, SCENE_STATUS_ACTIVE, SCENE_STATUS_AWAITING_ACK,
     SCENE_STATUS_RESOLVED,
 )
@@ -52,12 +52,8 @@ def _activation_scene(game: GameState, player_id: str, faction: str, statuses: s
 
 
 def paisa_claim_reward(game: GameState, *, player_id: str, vengeance_card_ids: list[str]) -> tuple[GameState, dict[str, Any]]:
-    scene = _activation_scene(game, player_id, PAISA, {
-        SCENE_STATUS_AWAITING_ACK, SCENE_STATUS_RESOLVED,
-    })
-    if (scene["status"] == SCENE_STATUS_AWAITING_ACK
-            and (scene["players"].get(player_id) or {}).get("acknowledged")):
-        raise ValueError("Heart of Shadow cannot be used after acknowledging while the scene awaits acknowledgements.")
+    _require_table_phase(game)
+    require_faction(game, player_id, PAISA)
     if (not isinstance(vengeance_card_ids, list) or len(vengeance_card_ids) != 3
             or any(not isinstance(card, str) or not card.strip() for card in vengeance_card_ids)
             or len(set(vengeance_card_ids)) != 3):
@@ -72,12 +68,15 @@ def paisa_claim_reward(game: GameState, *, player_id: str, vengeance_card_ids: l
     deck = replace(game.deck, discard_pile=[*game.deck.discard_pile, *vengeance_card_ids])
     derived = replace(game, deck=deck, zones=zones)
     derived, reward = _draw_to_zone(derived, f"players.{player_id}.rewards")
+    reward_points = sum(reward_card_points(c) for c in derived.zones[f"players.{player_id}.rewards"])
+    if reward_points == 21:
+        derived = set_exact_reward_victory(derived, player_id)
     validate_game_state(derived)
     return derived, {
         "player_id": player_id,
         "discarded_vengeance_card_ids": list(vengeance_card_ids),
         "reward_card_id": reward,
-        "reward_points_total": sum(reward_card_points(c) for c in derived.zones[f"players.{player_id}.rewards"]),
+        "reward_points_total": reward_points,
     }
 
 

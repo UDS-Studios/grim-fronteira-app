@@ -929,6 +929,16 @@ def _set_victory(game: GameState, *, winner: str, winner_label: str, reason: str
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
 
 
+def set_exact_reward_victory(game: GameState, player_id: str) -> GameState:
+    """Declare the selected exact-21 winner using the normal victory state."""
+    return _set_victory(
+        game,
+        winner=player_id,
+        winner_label=_player_display_name(game, player_id),
+        reason="Reached exactly 21 reward points.",
+    )
+
+
 def _set_marshal_victory(game: GameState) -> GameState:
     return _set_victory(
         game,
@@ -1017,12 +1027,7 @@ def _resolve_scene_endgame(game: GameState) -> GameState:
     if exact_twenty_one_players:
         if len(exact_twenty_one_players) == 1:
             winner_id = exact_twenty_one_players[0]
-            return _set_victory(
-                game,
-                winner=winner_id,
-                winner_label=_player_display_name(game, winner_id),
-                reason="Reached exactly 21 reward points.",
-            )
+            return set_exact_reward_victory(game, winner_id)
         return _start_sudden_death(
             game,
             contender_ids=exact_twenty_one_players,
