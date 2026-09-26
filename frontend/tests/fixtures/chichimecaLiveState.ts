@@ -14,7 +14,14 @@ export const chichimecaLiveResponse: ActionResponse = {
       players_order: ["player-nnu30f", "player-o2o9sa"],
       players: { "player-nnu30f": { wounds: 1 }, "player-o2o9sa": { wounds: 0 } },
       lobby: { players: {
-        "player-nnu30f": { chosen_name: "Chichimeca" },
+        "player-nnu30f": {
+          chosen_name: "Chichimeca",
+          ability_name: "Children of the Earth",
+          ability_text: "Whenever you take a wound, steal 1 Scum card from an opponent.",
+          character_rules: [
+            "As a Chichimeca, you'll have the ability Children of the Earth: Whenever you take a wound, steal 1 Scum card from an opponent.",
+          ],
+        },
         "player-o2o9sa": { chosen_name: "Paisà" },
       } },
       scene: { status: "closed", participants: ["player-nnu30f", "player-o2o9sa"] },

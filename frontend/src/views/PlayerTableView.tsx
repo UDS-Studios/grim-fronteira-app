@@ -1371,7 +1371,7 @@ export default function PlayerTableView({
             {chichimecaActive ? (
               <div className="table-target-prompt">
                 <strong>Children of the Earth · Choose an enemy</strong>
-                <div>Choose an enemy to discard 1 Scum.</div>
+                <div>Choose an enemy to steal 1 Scum from.</div>
                 <div>{chichimecaTargets.length === 0
                   ? "No eligible targets are currently available."
                   : "Select an eligible player in Other Players. Other gameplay actions are paused."}</div>

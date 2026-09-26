@@ -34,7 +34,8 @@ test("actual table router renders the closed-scene prompt and target while prese
     }));
     const actor = render("player-nnu30f");
     assert.ok(actor.includes("Children of the Earth · Choose an enemy"));
-    assert.ok(actor.includes("Choose an enemy to discard 1 Scum."));
+    assert.ok(actor.includes("Choose an enemy to steal 1 Scum from."));
+    assert.ok(!actor.includes("Choose an enemy to " + "discard 1 Scum."));
     assert.ok(!actor.includes("Scum targeting active."));
     const target = actor.match(/<div\b[^>]*aria-label="Target Paisà with Children of the Earth"[^>]*>/)?.[0];
     assert.ok(target, "eligible Paisà must appear as a target in Other Players");
@@ -57,6 +58,33 @@ test("actual table router renders the closed-scene prompt and target while prese
       }));
       assert.ok(html.includes("Children of the Earth · Choose an enemy"));
       assert.match(html, /data-target-state="eligible"/);
+    }
+
+    const { default: PlayerLobbyView } = await server.ssrLoadModule("/src/views/PlayerLobbyView.tsx");
+    const lobbyResponse = structuredClone(chichimecaLiveResponse);
+    lobbyResponse.state.meta!.lobby!.players!["player-nnu30f"].stage = "ready";
+    const lobby = renderToStaticMarkup(createElement(PlayerLobbyView, {
+      resp: lobbyResponse, currentActorId: "player-nnu30f", view: "player",
+      run: () => { throw Error("render must not submit"); },
+    }));
+    assert.ok(lobby.includes("Whenever you take a wound, steal 1 Scum card from an opponent."));
+    assert.ok(!lobby.includes("they discard"));
+
+    // Results are debug data, not a source of player-facing hidden card details.
+    const resolved = structuredClone(chichimecaLiveResponse);
+    resolved.state.meta!.pending_interaction = null;
+    resolved.result = {
+      player_id: "player-nnu30f", target_player_id: "player-o2o9sa",
+      stolen_scum_card_id: "hidden-stolen-card",
+    };
+    for (const currentActorId of ["player-nnu30f", "player-o2o9sa"]) {
+      const html = renderToStaticMarkup(createElement(TableRouterView, {
+        resp: resolved, currentActorId, view: "player",
+        run: () => { throw Error("render must not submit"); }, onBackHome: () => {},
+      }));
+      assert.ok(!html.includes("hidden-stolen-card"));
+      assert.ok(!html.includes("stolen_scum_card_id"));
+      assert.ok(!html.includes("Confirm target"));
     }
 
     const { default: OtherPlayers } = await server.ssrLoadModule("/src/views/player_table/PTV-OtherPlayers.tsx");
