@@ -1,13 +1,11 @@
 // src/views/RegistrationClosedView.tsx
 type RegistrationClosedViewProps = {
   gameId: string;
-  marshalId: string;
   onBackHome: () => void;
 };
 
 export default function RegistrationClosedView({
   gameId,
-  marshalId,
   onBackHome,
 }: RegistrationClosedViewProps) {
   return (
@@ -34,20 +32,10 @@ export default function RegistrationClosedView({
           justifyItems: "center",
         }}
       >
-        <img
-          src="/registration-closed.png"
-          alt="Registration Closed"
-          style={{
-            width: "min(360px, 100%)",
-            height: "auto",
-            display: "block",
-          }}
-        />
-
         <div style={{ textAlign: "center", maxWidth: 520 }}>
-          Game <b>{gameId}</b> is currently closed.
+          Registration for game <b>{gameId}</b> is closed.
           <br />
-          Ask Marshal <b>{marshalId}</b> to open it back for you.
+          If you already joined this game, reopen it from the same player session.
         </div>
 
         <button onClick={onBackHome}>Back Home</button>

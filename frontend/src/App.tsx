@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { newGame, getGame, gfAction } from "./api/gf";
 import type { ActionResponse, View } from "./api/types";
-import { getFreshPlayerId, getOrCreateClientId } from "./utils/identity";
+import { getFreshPlayerId, getOrCreatePlayerId, persistPlayerId } from "./utils/identity";
+import { getGameEntryMode } from "./utils/reconnect";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
@@ -16,20 +17,18 @@ export default function App() {
   const [gameId, setGameId] = useState("");
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
-  const [currentActorId, setCurrentActorId] = useState("");
+  const [currentActorId, setCurrentActorId] = useState(getOrCreatePlayerId);
   const [joinPlayerId, setJoinPlayerId] = useState("");
-  const [selectedPlayerId, setSelectedPlayerId] = useState("");
+  const [selectedPlayerId, setSelectedPlayerId] = useState(currentActorId);
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
   const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">("home");
   const [closedGameId, setClosedGameId] = useState("");
-  const [closedMarshalId, setClosedMarshalId] = useState("");
 
   useEffect(() => {
-    const id = getOrCreateClientId();
-    setCurrentActorId(id);
-    setSelectedPlayerId(id);
-  }, []);
+    // Also retain an already-joined in-memory actor when a development tab hot-reloads.
+    persistPlayerId(currentActorId);
+  }, [currentActorId]);
 
   useEffect(() => {
     if (screen !== "game" || !gameId) return;
@@ -154,12 +153,12 @@ export default function App() {
               if (r.error) return;
 
               const loadedMeta = (r.state?.meta ?? {}) as MetaAny;
-              const lobby = loadedMeta.lobby ?? {};
-              const marshalId = loadedMeta.marshal_id ?? "";
+              const entryMode = getGameEntryMode(loadedMeta, currentActorId);
+              // run already loaded this response and entered normal game routing.
+              if (entryMode === "reconnect") return;
 
-              if (!lobby.registration_open) {
+              if (entryMode === "closed") {
                 setClosedGameId(r.game_id);
-                setClosedMarshalId(marshalId);
                 setScreen("registration-closed");
                 return;
               }
@@ -177,7 +176,7 @@ export default function App() {
               );
               if (joinResp.error) return;
 
-              setCurrentActorId(freshPlayerId);
+              setCurrentActorId(persistPlayerId(freshPlayerId));
               setSelectedPlayerId(freshPlayerId);
             }}
           />
@@ -188,13 +187,11 @@ export default function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <RegistrationClosedView
             gameId={closedGameId}
-            marshalId={closedMarshalId}
             onBackHome={() => {
               setResp(null);
               setGameId("");
               setJoinGameId("");
               setClosedGameId("");
-              setClosedMarshalId("");
               setScreen("home");
             }}
           />
