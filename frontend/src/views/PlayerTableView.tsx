@@ -1,3 +1,4 @@
+import { getWoundDisplay } from "../utils/wounds";
 import { CHICHIMECA_CHOOSE_TARGET_ACTION, getChichimecaEligibleTargetIds, isChichimecaPendingForActor, reconcileChichimecaSelection, toggleChichimecaSelection } from "./player_table/chichimeca";
 import { isPaisaAvailable, isPaisaSelectionValid, reconcilePaisaSelection, togglePaisaSelection } from "./player_table/paisa";
 import { useEffect, useState } from "react";
@@ -51,6 +52,7 @@ type ScenePlayerState = {
   resolved?: boolean;
   acknowledged?: boolean;
   wounds_gained?: number;
+  wounds_applied?: number;
   reward_gained?: boolean;
   result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
   recovery_action?: "healed" | "skipped" | null;
@@ -723,23 +725,20 @@ export default function PlayerTableView({
     return scenePlayers?.[pid]?.modifier_total ?? 0;
   }
 
-  function getPersistentWounds(pid: string): number {
-    return metaPlayers?.[pid]?.wounds ?? 0;
+  function getPlayerWoundDisplay(pid: string) {
+    return getWoundDisplay(metaPlayers?.[pid]?.wounds, scenePlayers?.[pid]);
   }
 
   function getDisplayedWounds(pid: string): number {
-    const persistentWounds = getPersistentWounds(pid);
-    const pendingWounds =
-      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : scenePlayers?.[pid]?.busted ? 1 : 0;
-    return persistentWounds + pendingWounds;
+    return getPlayerWoundDisplay(pid).wounds;
   }
 
   function getIsDead(pid: string): boolean {
-    return getDisplayedWounds(pid) >= 2;
+    return getPlayerWoundDisplay(pid).dead;
   }
 
   function getFigureRotated(pid: string): boolean {
-    return getDisplayedWounds(pid) > 0;
+    return getPlayerWoundDisplay(pid).wounded;
   }
 
   function getParticipantLaneState(pid: string): "waiting" | "active" | "done" {

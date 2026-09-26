@@ -1,3 +1,4 @@
+import { getWoundDisplay } from "../utils/wounds";
 import { useEffect, useMemo, useState } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
@@ -74,6 +75,7 @@ type SceneState = {
     resolved?: boolean;
     acknowledged?: boolean;
     wounds_gained?: number;
+    wounds_applied?: number;
     reward_gained?: boolean;
     result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
     recovery_action?: "healed" | "skipped" | null;
@@ -660,23 +662,20 @@ export default function MarshalTableView({
     return scene.bonus_assignments?.[pid] ?? null;
   }
 
-  function getPersistentWounds(pid: string): number {
-    return metaPlayers?.[pid]?.wounds ?? 0;
+  function getPlayerWoundDisplay(pid: string) {
+    return getWoundDisplay(metaPlayers?.[pid]?.wounds, scenePlayers?.[pid]);
   }
 
   function getDisplayedWounds(pid: string): number {
-    const persistentWounds = getPersistentWounds(pid);
-    const pendingWounds =
-      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : scenePlayers?.[pid]?.busted ? 1 : 0;
-    return persistentWounds + pendingWounds;
+    return getPlayerWoundDisplay(pid).wounds;
   }
 
   function getIsDead(pid: string): boolean {
-    return getDisplayedWounds(pid) >= 2;
+    return getPlayerWoundDisplay(pid).dead;
   }
 
   function getFigureRotated(pid: string): boolean {
-    return getDisplayedWounds(pid) > 0;
+    return getPlayerWoundDisplay(pid).wounded;
   }
 
   const backendParticipantIds: string[] = Array.isArray(scene.participants)
