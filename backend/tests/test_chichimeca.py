@@ -117,14 +117,20 @@ def test_trigger_commits_one_wound_and_pauses_with_authoritative_targets():
     assert current().meta["scene"]["participants"] == ["p1"]
 
 
-def test_choice_discards_top_scum_and_resumes_exactly_once():
+def test_choice_steals_top_scum_and_resumes_exactly_once():
     start()
     original = current()
     response = choose()
     assert response.result == {"ok": True, "action": CHOOSE, "player_id": "p1",
-                               "target_player_id": "p2", "discarded_scum_card_id": "5C"}
+                               "target_player_id": "p2", "stolen_scum_card_id": "5C"}
     assert current().zones["players.p2.scum"] == ["4C"]
-    assert current().deck.discard_pile == original.deck.discard_pile + ["5C"]
+    assert current().zones == {**original.zones, "players.p2.scum": ["4C"],
+                               "players.p1.scum": ["3C", "5C"]}
+    assert current().deck == original.deck
+    assert original.zones["players.p2.scum"] == ["4C", "5C"]
+    assert original.zones["players.p1.scum"] == ["3C"]
+    assert sum(cards.count("5C") for cards in current().zones.values()) == 1
+    assert "5C" not in current().deck.discard_pile
     assert current().meta["pending_interaction"] is None
     assert current().meta["scene"]["status"] == "awaiting_ack"
     assert current().meta["players"]["p1"]["wounds"] == 1
@@ -190,7 +196,7 @@ def test_two_wounded_chichimecas_are_discovered_one_at_a_time(first, second):
     assert current().meta["players"]["p1"]["wounds"] == 1
     assert current().meta["players"]["p2"]["wounds"] == 1
     assert current().meta["revision"] == 12
-    # No precomputed target queue: the next interaction sees the earlier discard.
+    # No precomputed target queue: the next interaction sees the earlier transfer.
     assert ("p3" in current().meta["pending_interaction"]["payload"]["eligible_target_ids"]) == (first == "reclaim")
     if second == "resolve":
         choose(actor="p2", target="p3")
@@ -200,18 +206,26 @@ def test_two_wounded_chichimecas_are_discovered_one_at_a_time(first, second):
     assert current().meta["scene"]["status"] == "awaiting_ack"
     assert current().meta["revision"] == 13
     assert [current().meta["players"][pid]["wounds"] for pid in ["p1", "p2"]] == [1, 1]
-    assert current().deck.discard_pile.count("6C") == 1
+    owner = "p1" if first == "resolve" else "p2"
+    assert current().zones[f"players.{owner}.scum"][-1] == "6C"
+    assert "6C" not in current().deck.discard_pile
+    validate_game_state(current())
 
 
 def test_each_wound_unit_is_consumed_separately():
     start(make_game(debts={"p1": 2}))
+    original_deck = current().deck
     assert current().meta["players"]["p1"]["wounds"] == 1
     assert current().meta["scene"]["players"]["p1"]["wounds_gained"] == 1
-    choose()
+    assert choose().result["stolen_scum_card_id"] == "5C"
+    assert current().zones["players.p1.scum"] == ["3C", "5C"]
     assert current().meta["players"]["p1"]["wounds"] == 2
     assert current().meta["pending_interaction"]["actor_id"] == "p1"
     assert current().meta["scene"]["players"]["p1"]["wounds_gained"] == 0
-    choose()
+    assert choose().result["stolen_scum_card_id"] == "4C"
+    assert current().zones["players.p1.scum"] == ["3C", "5C", "4C"]
+    assert current().deck == original_deck
+    validate_game_state(current())
     assert current().meta["pending_interaction"] is None
     assert current().meta["players"]["p1"]["wounds"] == 2
     assert current().zones["players.p2.scum"] == []
@@ -221,7 +235,12 @@ def test_each_wound_unit_is_consumed_separately():
 def test_lethal_wound_still_triggers_then_normal_death_rules_apply():
     start(make_game(wounds={"p1": 1}))
     assert current().meta["players"]["p1"]["wounds"] == 2
+    original_deck = current().deck
     choose()
+    assert current().zones["players.p1.scum"] == ["3C", "5C"]
+    assert current().zones["players.p2.scum"] == ["4C"]
+    assert current().deck == original_deck
+    validate_game_state(current())
     assert current().meta["scene"]["status"] == "awaiting_ack"
     reject("gf.scene_set_participants", actor_id="host", participant_ids=["p1"])
 
@@ -248,6 +267,9 @@ def test_failure_during_resumption_preserves_original_pending_and_effect(action,
     def fail(game):
         assert game.meta["pending_interaction"] is None
         assert game.zones["players.p2.scum"] == (["4C"] if action == CHOOSE else ["4C", "5C"])
+        assert game.zones["players.p1.scum"] == (["3C", "5C"] if action == CHOOSE else ["3C"])
+        assert game.deck == snapshot.deck
+        validate_game_state(game)
         raise ValueError("controlled resume failure")
     with monkeypatch.context() as patch:
         patch.setattr(scene, "resume_scene_wounds", fail)
@@ -382,6 +404,10 @@ def test_pending_scene_continuation_serializes_and_reloads(view, tmp_path):
     assert loaded == current()
     install(loaded)
     choose()
+    assert current().zones["players.p1.scum"] == ["3C", "5C"]
+    assert current().zones["players.p2.scum"] == ["4C"]
+    assert current().deck == loaded.deck
+    validate_game_state(current())
     assert current().meta["players"]["p1"]["wounds"] == 1
     assert current().meta["scene"]["status"] == "awaiting_ack"
 
@@ -495,7 +521,8 @@ def test_reversible_duel_preview_does_not_leave_a_wound_on_the_eventual_winner()
     assert current().meta["players"]["p2"]["wounds"] == 1
 
 
-def test_old_saved_pending_can_still_resume_scene_new_without_new_interrupts():
+@pytest.mark.parametrize("outcome", ["resolve", "reclaim"])
+def test_old_saved_pending_can_still_resume_scene_new_without_new_interrupts(outcome):
     game = make_game(debts={"p1": 0, "p2": 1}, wounds={"p1": 1})
     scene = {**game.meta["scene"], "status": "closed"}
     game = replace(game, meta={**game.meta, "scene": scene})
@@ -506,15 +533,49 @@ def test_old_saved_pending_can_still_resume_scene_new_without_new_interrupts():
                          for branch in ["on_resolve", "on_reclaim"]},
     })
     install(game)
-    choose()
+    if outcome == "resolve":
+        choose()
+        assert current().zones["players.p1.scum"] == ["3C", "5C"]
+        assert current().zones["players.p2.scum"] == ["4C"]
+    else:
+        dispatch(RECLAIM, actor_id="host")
+        assert current().zones == game.zones
+    assert current().deck == game.deck
+    validate_game_state(current())
     assert current().meta["pending_interaction"] is None
     assert current().meta["scene"]["status"] == "setup"
     assert current().meta["players"]["p1"]["wounds"] == 1
     assert current().meta["players"]["p2"]["wounds"] == 1
 
 
-def test_chichimeca_character_metadata_uses_canonical_discard_rule():
+def test_chichimeca_character_metadata_uses_canonical_steal_rule():
     from backend.engine.helpers.characters import figure_to_character
     character = figure_to_character("QS")
     assert character["ability_name"] == "Children of the Earth"
-    assert character["ability_text"] == "Whenever you take a wound, choose an enemy: they discard 1 Scum card."
+    assert character["ability_text"] == "Whenever you take a wound, steal 1 Scum card from an opponent."
+
+
+def test_next_chichimeca_can_target_previous_actor_using_transferred_scum():
+    game = make_game(debts={"p1": 1, "p2": 1})
+    # The first actor has no Scum zone until the steal creates it.
+    zones = dict(game.zones)
+    returned = zones.pop("players.p1.scum")
+    game = replace(game, zones=zones,
+                   deck=replace(game.deck, draw_pile=game.deck.draw_pile + returned))
+    start(game)
+    original_deck = current().deck
+    assert choose(target="p3").result["stolen_scum_card_id"] == "6C"
+    assert current().zones["players.p1.scum"] == ["6C"]
+    assert current().zones["players.p3.scum"] == []
+    pending = current().meta["pending_interaction"]
+    assert pending["actor_id"] == "p2"
+    assert pending["payload"]["eligible_target_ids"] == ["p1"]
+    validate_game_state(current())
+    assert choose(actor="p2", target="p1").result["stolen_scum_card_id"] == "6C"
+    assert current().zones["players.p1.scum"] == []
+    assert current().zones["players.p2.scum"] == ["4C", "5C", "6C"]
+    assert current().deck == original_deck
+    assert current().meta["pending_interaction"] is None
+    assert current().meta["revision"] == 13
+    assert sum(cards.count("6C") for cards in current().zones.values()) == 1
+    validate_game_state(current())
