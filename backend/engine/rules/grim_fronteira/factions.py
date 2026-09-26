@@ -139,7 +139,7 @@ def begin_chichimeca_wound_interaction(game: GameState, *, player_id: str) -> Ga
 def chichimeca_choose_target(game: GameState, *, player_id: str, target_player_id: str) -> tuple[GameState, dict[str, Any]]:
     from backend.engine.state.pending_interaction import get_pending_interaction
     from backend.engine.state.continuations import complete_pending_interaction
-    from .scene import _move_zone_top_card_to_discard
+    from .scene import _move_zone_top_card_to_zone
 
     pending = get_pending_interaction(game)
     if pending is None or pending["kind"] != CHICHIMECA_INTERACTION:
@@ -150,11 +150,11 @@ def chichimeca_choose_target(game: GameState, *, player_id: str, target_player_i
             or target_player_id not in _chichimeca_targets(game, player_id)):
         raise ValueError("Target must be an eligible living enemy with Scum.")
     zone = f"players.{target_player_id}.scum"
-    discarded = game.zones[zone][-1]
-    derived = _move_zone_top_card_to_discard(game, zone)
+    stolen = game.zones[zone][-1]
+    derived = _move_zone_top_card_to_zone(game, zone, f"players.{player_id}.scum")
     derived = complete_pending_interaction(derived, outcome="resolve")
     return derived, {"player_id": player_id, "target_player_id": target_player_id,
-                     "discarded_scum_card_id": discarded}
+                     "stolen_scum_card_id": stolen}
 
 
 YANKEE_CHOOSE_TOP_CARD = "gf.faction_yankee_choose_top_card"
