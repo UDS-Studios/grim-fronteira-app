@@ -366,7 +366,7 @@ export default function PTVPlayerBoard({
   criolloSelectionLocked = false,
   onSelectCriolloCard,
 }: PTVPlayerBoardProps) {
-  const { ref, scale } = useResponsiveScale(780, 1.4, 0.7);
+  const { ref, scale } = useResponsiveScale(844, 1, 0.7);
   const s = (value: number) => value * scale;
   const powerArtSrc = getPowerArtSrc(powerLabel);
   const summaryTextDisplay = normalizeSummaryText(summaryText, displayName);
@@ -425,6 +425,7 @@ export default function PTVPlayerBoard({
           <div
             style={{
               width: s(500),
+              boxSizing: "border-box",
               display: "grid",
               gap: s(16),
               alignContent: "start",

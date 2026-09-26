@@ -110,18 +110,21 @@ export default function App() {
       ? (zones[`players.${victoryWinnerId}.character`]?.[0] ?? null)
       : null;
   const showMarshalVictoryPortrait = victoryWinnerId === "marshal";
-  const viewportHeight = "calc(100vh - 32px)";
+  const viewportHeight = "calc(100dvh - 32px)";
+  const isTable = screen === "game" && (phase === "started" || phase === "table");
   const useScrollableGameContent = phase === "lobby";
-  const useFixedGameViewport = phase === "lobby";
+  const useFixedGameViewport = phase === "lobby" || isTable;
 
   return (
     <div
       style={{
-        padding: 16,
+        padding: isTable ? 8 : 16,
+        height: isTable ? "100dvh" : undefined,
+        overflow: isTable ? "hidden" : undefined,
         boxSizing: "border-box",
         fontFamily: "system-ui, sans-serif",
         background: "var(--app-bg)",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         flexDirection: "column",
       }}
@@ -215,15 +218,16 @@ export default function App() {
       {screen === "game" && (
         <div
           style={{
-            height: useFixedGameViewport ? viewportHeight : undefined,
-            minHeight: viewportHeight,
+            height: isTable ? "100%" : useFixedGameViewport ? viewportHeight : undefined,
+            minHeight: isTable ? 0 : viewportHeight,
+            minWidth: 0,
             display: "flex",
             flexDirection: "column",
             overflow: useFixedGameViewport ? "hidden" : "visible",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div className={isTable ? "table-dev-controls" : undefined} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
             <label>
               View:&nbsp;
               <select value={view} onChange={(e) => setView(e.target.value as View)}>
@@ -239,11 +243,15 @@ export default function App() {
             </button>
 
             <input
-              style={{ width: 360 }}
+              style={{ width: 360, maxWidth: "100%", minWidth: 0 }}
               placeholder="game_id"
               value={gameId}
               onChange={(e) => setGameId(e.target.value)}
             />
+            {isTable && <details className="table-debug">
+              <summary>State JSON</summary>
+              <pre>{JSON.stringify(resp, null, 2)}</pre>
+            </details>}
           </div>
 
           {resp?.error && (
@@ -260,7 +268,7 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ marginTop: isTable ? 4 : 12, display: "flex", gap: 16, flexWrap: "wrap", flexShrink: 0, fontSize: isTable ? 12 : undefined }}>
             <div><b>revision:</b> {resp?.revision ?? "-"}</div>
             <div><b>game_id:</b> {resp?.game_id ?? "-"}</div>
             <div><b>phase:</b> {phase}</div>
@@ -270,6 +278,7 @@ export default function App() {
             style={{
               flex: useFixedGameViewport ? 1 : "0 0 auto",
               minHeight: 0,
+              minWidth: 0,
               overflowY: useScrollableGameContent ? "auto" : "visible",
               overflowX: useFixedGameViewport ? "hidden" : "visible",
               display: "flex",
@@ -340,7 +349,7 @@ export default function App() {
         </div>
       )}
 
-      {resp && screen !== "home" && (
+      {resp && screen !== "home" && !isTable && (
         <pre
           style={{
             marginTop: 14,

@@ -29,6 +29,8 @@ export default function TableZone({
         gridTemplateRows: fill ? "auto minmax(0, 1fr)" : undefined,
         height: fill ? "100%" : undefined,
         minHeight: 0,
+        minWidth: 0,
+        boxSizing: "border-box",
       }}
     >
       <div

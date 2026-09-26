@@ -1,3 +1,4 @@
+import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
 import { CHICHIMECA_CHOOSE_TARGET_ACTION, getChichimecaEligibleTargetIds, isChichimecaPendingForActor, reconcileChichimecaSelection, toggleChichimecaSelection } from "./player_table/chichimeca";
 import { isPaisaAvailable, isPaisaSelectionValid, reconcilePaisaSelection, togglePaisaSelection } from "./player_table/paisa";
@@ -1322,11 +1323,11 @@ export default function PlayerTableView({
   return (
     <div
       style={{
-        height: "100%",
+        height: "auto",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
-        marginTop: 12,
+        overflow: "visible",
+        marginTop: 0,
         gap: 12,
       }}
     >
@@ -1374,7 +1375,7 @@ export default function PlayerTableView({
         {hasPendingInteraction && (
           <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
             {chichimecaActive ? (
-              <div style={{ display: "grid", gap: 8 }}>
+              <div className="table-target-prompt">
                 <strong>Children of the Land · Choose an enemy</strong>
                 <div>Choose an enemy to discard 1 Scum.</div>
                 <div>{chichimecaTargets.length === 0
@@ -1413,86 +1414,221 @@ export default function PlayerTableView({
           display: "grid",
           gridTemplateColumns: "auto minmax(0, 1fr)",
           gap: 14,
-          overflow: "hidden",
+          overflow: "visible",
         }}
       >
         <div
           style={{
-            width: "clamp(176px, 18vw, 352px)",
+            width: 400,
             display: "grid",
             gap: 14,
-            overflowY: "auto",
+            overflowY: "visible",
             minHeight: 0,
             alignContent: "start",
             alignSelf: "start",
             gridAutoRows: "max-content",
           }}
         >
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
-            <TableZone title="Deck">
-              <button
-                type="button"
-                onClick={handleSceneDraw}
-                disabled={!canDrawFromDeck}
+          <div style={{ width: "100%" }}>
+            <TableZone title="Difficulty / Scene">
+              <div
                 style={{
-                  border: "1px solid var(--border-muted)",
-                  borderRadius: ds(12),
-                  padding: ds(10),
-                  background: "var(--surface-strong)",
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: 14,
                   alignItems: "center",
-                  gap: ds(10),
-                  width: "100%",
-                  boxSizing: "border-box",
-                  cursor: canDrawFromDeck ? "pointer" : "not-allowed",
-                  opacity: canDrawFromDeck ? 1 : 0.65,
+                  justifyContent: "start",
                 }}
-                title={deckTooltip}
               >
-                {typeof deckCount === "number" && deckCount > 0 ? (
-                  <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
-                ) : (
+                <div
+                  style={{
+                    border: "1px solid var(--border-muted)",
+                    borderRadius: 14,
+                    padding: "12px 10px",
+                    background: "var(--surface-muted)",
+                    display: "grid",
+                    gap: 12,
+                    alignContent: "center",
+                    justifyItems: "center",
+                    justifySelf: "start",
+                    minHeight: 130,
+                  }}
+                >
                   <div
                     style={{
-                      width: ds(86),
-                      height: ds(124),
-                      border: "2px dashed var(--border-muted)",
-                      borderRadius: ds(10),
                       display: "flex",
                       alignItems: "center",
+                      gap: 12,
+                      flexWrap: "wrap",
                       justifyContent: "center",
-                      color: "var(--text-muted)",
-                      fontSize: ds(12),
-                      background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
-                      flexShrink: 0,
                     }}
                   >
-                    empty
-                  </div>
-                )}
-                <div style={{ fontSize: ds(16), textAlign: "left" }}>
-                  <div>
-                    <b>{deckCount}</b> cards
-                  </div>
-                  <div style={{ fontSize: ds(12), opacity: 0.75 }}>{deckTooltip}</div>
-                </div>
-              </button>
-            </TableZone>
-          </ResponsiveScaleBox>
+                    <div
+                      style={{
+                        fontFamily: "LavaArabic, serif",
+                        fontSize: isJokerDifficulty ? "3rem" : "2rem",
+                        lineHeight: 1,
+                        whiteSpace: "nowrap",
+                        color: isJokerDifficulty ? "#7a1f1f" : "inherit",
+                      }}
+                    >
+                      {isJokerDifficulty ? "20" : "10 +"}
+                    </div>
 
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
-            <TableZone title="Discard">
-              {discardPile.length === 0 ? (
-                <div style={{ opacity: 0.6, fontSize: ds(13) }}>— empty —</div>
-              ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: ds(8) }}>
-                  {discardPile.map((cardId, idx) => (
-                    <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={ds(70)} />
-                  ))}
+                    {difficultyCardId ? (
+                        <CardImg
+                          cardId={difficultyCardId}
+                          width={86}
+                          title="Difficulty card"
+                        />
+                    ) : (
+                      <div style={{ opacity: 0.6 }}>— no card —</div>
+                    )}
+
+                    {azzardoStatus !== "unavailable" ? (
+                      azzardoCardId ? (
+                        <CardImg
+                          cardId={azzardoCardId}
+                          width={86}
+                          title="Azzardo"
+                        />
+                      ) : (
+                        <CardImg
+                          cardId="BACK"
+                          faceDown
+                          width={86}
+                          title="Azzardo"
+                        />
+                      )
+                    ) : (
+                      <div style={{ opacity: 0.35, fontSize: 13 }}>
+                        no azzardo
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
+
+                <div
+                  style={{
+                    border: "1px solid var(--border-muted)",
+                    borderRadius: 14,
+                    padding: "12px 10px",
+                    background: "var(--surface-muted)",
+                    display: "grid",
+                    gridTemplateRows: "auto 1fr",
+                    justifyItems: "center",
+                    alignItems: "center",
+                    minWidth: 50,
+                    justifySelf: "start",
+                    minHeight: 130,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "LavaArabic, serif",
+                      fontSize: 14,
+                      lineHeight: 1,
+                      letterSpacing: "0.06em",
+                      textAlign: "center",
+                    }}
+                  >
+                    TOTAL
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "LavaArabic, serif",
+                      fontSize: "3rem",
+                      lineHeight: 1,
+                      whiteSpace: "nowrap",
+                      opacity: 0.58,
+                      color: difficultyTotalColor ?? "inherit",
+                    }}
+                  >
+                    {totalBoxLabel}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    gridColumn: "1 / -1",
+                    alignContent: "start",
+                    minWidth: 0,
+                  }}
+                >
+                  <div><b>difficulty value:</b> {difficultyValueLabel}</div>
+                  <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
+                  <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
+                  <div><b>azzardo status:</b> {azzardoStatus}</div>
+                  <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
+                  <div><b>participants selected:</b> {participantIds.length}</div>
+                  <div><b>scene status:</b> {scene.status ?? "-"}</div>
+                  <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
+                </div>
+              </div>
             </TableZone>
-          </ResponsiveScaleBox>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+            <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+              <TableZone title="Deck">
+                <button
+                  type="button"
+                  onClick={handleSceneDraw}
+                  disabled={!canDrawFromDeck}
+                  style={{
+                    border: "1px solid var(--border-muted)",
+                    borderRadius: ds(12),
+                    padding: ds(10),
+                    background: "var(--surface-strong)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: ds(10),
+                    width: "100%",
+                    boxSizing: "border-box",
+                    cursor: canDrawFromDeck ? "pointer" : "not-allowed",
+                    opacity: canDrawFromDeck ? 1 : 0.65,
+                  }}
+                  title={deckTooltip}
+                >
+                  {typeof deckCount === "number" && deckCount > 0 ? (
+                    <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                  ) : (
+                    <div
+                      style={{
+                        width: ds(86),
+                        height: ds(124),
+                        border: "2px dashed var(--border-muted)",
+                        borderRadius: ds(10),
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-muted)",
+                        fontSize: ds(12),
+                        background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      empty
+                    </div>
+                  )}
+                  <div style={{ fontSize: ds(16), textAlign: "left" }}>
+                    <div>
+                      <b>{deckCount}</b> cards
+                    </div>
+                    <div style={{ fontSize: ds(12), opacity: 0.75 }}>{deckTooltip}</div>
+                  </div>
+                </button>
+              </TableZone>
+            </ResponsiveScaleBox>
+
+            <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+              <TableZone title="Discard">
+                <DiscardPile cards={discardPile} />
+              </TableZone>
+            </ResponsiveScaleBox>
+          </div>
         </div>
 
         <div
@@ -1500,14 +1636,14 @@ export default function PlayerTableView({
             display: "grid",
             gap: 14,
             minHeight: 0,
-            overflow: "hidden",
+            overflow: "visible",
           }}
         >
           <div
             style={{
               minHeight: 0,
-              overflowX: "auto",
-              overflowY: "hidden",
+              overflowX: "visible",
+              overflowY: "visible",
               display: "grid",
               gap: 14,
             }}
@@ -1518,7 +1654,7 @@ export default function PlayerTableView({
                 gridTemplateColumns: "minmax(0, 1fr) auto",
                 gap: 18,
                 alignItems: "start",
-                minWidth: "max-content",
+                minWidth: 0,
                 minHeight: 0,
                 width: "100%",
               }}
@@ -1530,146 +1666,6 @@ export default function PlayerTableView({
                   minHeight: 0,
                 }}
               >
-                <div style={{ width: "100%" }}>
-                  <TableZone title="Difficulty / Scene">
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "max-content max-content minmax(320px, 1fr)",
-                        gap: 14,
-                        alignItems: "center",
-                        justifyContent: "start",
-                      }}
-                    >
-                      <div
-                        style={{
-                          border: "1px solid var(--border-muted)",
-                          borderRadius: 14,
-                          padding: "14px 16px",
-                          background: "var(--surface-muted)",
-                          display: "grid",
-                          gap: 12,
-                          alignContent: "center",
-                          justifyItems: "center",
-                          justifySelf: "start",
-                          minHeight: 212,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            flexWrap: "wrap",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontFamily: "LavaArabic, serif",
-                              fontSize: isJokerDifficulty ? "4.2rem" : "3rem",
-                              lineHeight: 1,
-                              whiteSpace: "nowrap",
-                              color: isJokerDifficulty ? "#7a1f1f" : "inherit",
-                            }}
-                          >
-                            {isJokerDifficulty ? "20" : "10 +"}
-                          </div>
-
-                          {difficultyCardId ? (
-                              <CardImg
-                                cardId={difficultyCardId}
-                                width={ds(86)}
-                                title="Difficulty card"
-                              />
-                          ) : (
-                            <div style={{ opacity: 0.6 }}>— no card —</div>
-                          )}
-
-                          {azzardoStatus !== "unavailable" ? (
-                            azzardoCardId ? (
-                              <CardImg
-                                cardId={azzardoCardId}
-                                width={ds(86)}
-                                title="Azzardo"
-                              />
-                            ) : (
-                              <CardImg
-                                cardId="BACK"
-                                faceDown
-                                width={ds(86)}
-                                title="Azzardo"
-                              />
-                            )
-                          ) : (
-                            <div style={{ opacity: 0.35, fontSize: 13 }}>
-                              no azzardo
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: "1px solid var(--border-muted)",
-                          borderRadius: 14,
-                          padding: "16px 20px",
-                          background: "var(--surface-muted)",
-                          display: "grid",
-                          gridTemplateRows: "auto 1fr",
-                          justifyItems: "center",
-                          alignItems: "center",
-                          minWidth: 116,
-                          justifySelf: "start",
-                          minHeight: 212,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontFamily: "LavaArabic, serif",
-                            fontSize: 14,
-                            lineHeight: 1,
-                            letterSpacing: "0.06em",
-                            textAlign: "center",
-                          }}
-                        >
-                          TOTAL
-                        </div>
-                        <div
-                          style={{
-                            fontFamily: "LavaArabic, serif",
-                            fontSize: "3rem",
-                            lineHeight: 1,
-                            whiteSpace: "nowrap",
-                            opacity: 0.58,
-                            color: difficultyTotalColor ?? "inherit",
-                          }}
-                        >
-                          {totalBoxLabel}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gap: 10,
-                          alignContent: "start",
-                          minWidth: 0,
-                        }}
-                      >
-                        <div><b>difficulty value:</b> {difficultyValueLabel}</div>
-                        <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
-                        <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                        <div><b>azzardo status:</b> {azzardoStatus}</div>
-                        <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
-                        <div><b>participants selected:</b> {participantIds.length}</div>
-                        <div><b>scene status:</b> {scene.status ?? "-"}</div>
-                        <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
-                      </div>
-                    </div>
-                  </TableZone>
-                </div>
-
                 <div style={{ width: "100%" }}>
                   <CurrentPlayerSceneRow
                     inScene={currentPlayerInScene}
@@ -1942,7 +1938,7 @@ export default function PlayerTableView({
                   display: "grid",
                   gap: 14,
                   alignItems: "start",
-                  width: "clamp(240px, 24vw, 461px)",
+                  width: 360,
                 }}
               >
                 <PTVOtherPlayers

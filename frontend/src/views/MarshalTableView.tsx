@@ -1,3 +1,4 @@
+import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
 import { useEffect, useMemo, useState } from "react";
 import CardImg from "../components/CardImg";
@@ -1221,7 +1222,7 @@ export default function MarshalTableView({
       style={{
         display: "flex",
         flexDirection: "column",
-        marginTop: 12,
+        marginTop: 0,
         gap: 12,
       }}
     >
@@ -1296,22 +1297,22 @@ export default function MarshalTableView({
       <div
         style={{
           minHeight: 0,
-          overflowX: "auto",
-          overflowY: "hidden",
+          overflowX: "visible",
+          overflowY: "visible",
           display: "grid",
           gridTemplateColumns: "auto minmax(0, 1fr) auto",
           gap: 14,
           alignItems: "start",
-          minWidth: "max-content",
+          minWidth: 0,
         }}
       >
         {/* LEFT RAIL */}
         <div
           style={{
-            width: "clamp(176px, 18vw, 352px)",
+            width: 280,
             display: "grid",
             gap: 14,
-            overflowY: "auto",
+            overflowY: "visible",
             minHeight: 0,
             alignContent: "start",
         }}
@@ -1459,15 +1460,7 @@ export default function MarshalTableView({
 
           <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
             <TableZone title="Discard">
-              {discardPile.length === 0 ? (
-                <div style={{ opacity: 0.6, fontSize: ds(13) }}>— empty —</div>
-              ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: ds(8) }}>
-                  {discardPile.map((cardId, idx) => (
-                    <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={ds(70)} />
-                  ))}
-                </div>
-              )}
+              <DiscardPile cards={discardPile} />
             </TableZone>
           </ResponsiveScaleBox>
 
@@ -1816,7 +1809,7 @@ export default function MarshalTableView({
         <div
           style={{
             minHeight: 0,
-            width: "clamp(216px, 24vw, 432px)",
+            width: 400,
           }}
         >
           <ResponsiveScaleBox baseWidth={480} minScale={0.5} maxScale={1}>
