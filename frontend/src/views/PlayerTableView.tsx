@@ -104,7 +104,7 @@ function getPowerFromCardId(cardId?: string | null): string {
     case "C":
       return "Heart of Shadow";
     case "S":
-      return "Children of the Land";
+      return "Children of the Earth";
     default:
       return "Unknown";
   }
@@ -1370,7 +1370,7 @@ export default function PlayerTableView({
           <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
             {chichimecaActive ? (
               <div className="table-target-prompt">
-                <strong>Children of the Land · Choose an enemy</strong>
+                <strong>Children of the Earth · Choose an enemy</strong>
                 <div>Choose an enemy to discard 1 Scum.</div>
                 <div>{chichimecaTargets.length === 0
                   ? "No eligible targets are currently available."
@@ -1934,7 +1934,7 @@ export default function PlayerTableView({
                 <PTVOtherPlayers
                   players={otherPlayers}
                   wholePanelTargeting={chichimecaActive}
-                  targetActionLabel={chichimecaActive ? "Children of the Land" : undefined}
+                  targetActionLabel={chichimecaActive ? "Children of the Earth" : undefined}
                   sceneTargetingActive={!hasPendingInteraction && scumTargetingActive}
                   selectableTargetPlayerIds={
                     chichimecaActive

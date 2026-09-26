@@ -516,5 +516,5 @@ def test_old_saved_pending_can_still_resume_scene_new_without_new_interrupts():
 def test_chichimeca_character_metadata_uses_canonical_discard_rule():
     from backend.engine.helpers.characters import figure_to_character
     character = figure_to_character("QS")
-    assert character["ability_name"] == "Children of the Land"
+    assert character["ability_name"] == "Children of the Earth"
     assert character["ability_text"] == "Whenever you take a wound, choose an enemy: they discard 1 Scum card."

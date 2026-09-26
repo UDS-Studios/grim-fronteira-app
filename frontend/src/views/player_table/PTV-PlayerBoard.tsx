@@ -42,14 +42,14 @@ export type PTVPlayerBoardProps = {
 };
 
 type PowerArtKey =
-  | "Children of the Land"
+  | "Children of the Earth"
   | "Heart of Shadow"
   | "Law of Lead"
   | "Order and Profit";
 
 function getPowerArtSrc(powerLabel: string): string | null {
   const map: Record<PowerArtKey, string> = {
-    "Children of the Land": publicAsset("ui/powers/children_of_the_earth.png"),
+    "Children of the Earth": publicAsset("ui/powers/children_of_the_earth.png"),
     "Heart of Shadow": publicAsset("ui/powers/heart_of_shadow.png"),
     "Law of Lead": publicAsset("ui/powers/law_of_lead.png"),
     "Order and Profit": publicAsset("ui/powers/order_and_profit.png"),

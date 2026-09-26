@@ -35,7 +35,7 @@ test("both roles share viewport fitting and retain every functional region", asy
         for (const region of ["Scene Participation", "Other Players", "REWARDS", "Confirm target", "DESCRIPTION", "FACTION POWER", "SCUM", "VENGEANCE"]) {
           assert.ok(html.includes(region), region);
         }
-        assert.match(html, /alt="Children of the Land"/);
+        assert.match(html, /alt="Children of the Earth"/);
         assert.match(html, /width:190px;height:190px/);
         assert.match(html, /grid-template-columns:500px minmax\(0, 1fr\)/);
       }

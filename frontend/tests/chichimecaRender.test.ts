@@ -33,17 +33,17 @@ test("actual table router renders the closed-scene prompt and target while prese
       onBackHome: () => {},
     }));
     const actor = render("player-nnu30f");
-    assert.ok(actor.includes("Children of the Land · Choose an enemy"));
+    assert.ok(actor.includes("Children of the Earth · Choose an enemy"));
     assert.ok(actor.includes("Choose an enemy to discard 1 Scum."));
     assert.ok(!actor.includes("Scum targeting active."));
-    const target = actor.match(/<div\b[^>]*aria-label="Target Paisà with Children of the Land"[^>]*>/)?.[0];
+    const target = actor.match(/<div\b[^>]*aria-label="Target Paisà with Children of the Earth"[^>]*>/)?.[0];
     assert.ok(target, "eligible Paisà must appear as a target in Other Players");
     assert.match(target, /role="button"/);
     assert.match(target, /tabindex="0"/);
     assert.match(target, /aria-disabled="false"/);
     assert.match(target, /data-target-state="eligible"/);
     assert.match(target, /var\(--target-positive\)/);
-    assert.ok(!actor.includes("Children of the Earth"));
+    assert.ok(!actor.includes("Children of the " + "Land"), "legacy power name must not render");
     assert.match(actor, /<button[^>]*disabled[^>]*>Confirm target<\/button>/);
     assert.match(actor, /<button[^>]*disabled[^>]*title="SCUM"/);
     assert.match(actor, /<button[^>]*disabled[^>]*title="VENGEANCE"/);
@@ -55,7 +55,7 @@ test("actual table router renders the closed-scene prompt and target while prese
         resp: response, currentActorId: "player-nnu30f", view: "player",
         run: () => { throw Error("render must not submit"); }, onBackHome: () => {},
       }));
-      assert.ok(html.includes("Children of the Land · Choose an enemy"));
+      assert.ok(html.includes("Children of the Earth · Choose an enemy"));
       assert.match(html, /data-target-state="eligible"/);
     }
 
@@ -64,7 +64,7 @@ test("actual table router renders the closed-scene prompt and target while prese
       players: ["eligible", "selected", "ineligible"].map(playerId => ({
         playerId, displayName: playerId, figureCardId: "QC",
         scumCount: 1, vengeanceCount: 0, rewardCount: 0, rewardPoints: 0,
-      })), wholePanelTargeting: true, targetActionLabel: "Children of the Land",
+      })), wholePanelTargeting: true, targetActionLabel: "Children of the Earth",
       selectableTargetPlayerIds: ["eligible", "selected"], selectedTargetPlayerId: "selected",
       onSelectSceneTarget: () => {},
     }));
@@ -84,7 +84,7 @@ test("actual table router renders the closed-scene prompt and target while prese
     const other = render("player-o2o9sa");
     assert.ok(other.includes("Waiting for Chichimeca to resolve an interaction. Gameplay actions are paused."));
     assert.ok(!other.includes("Confirm target"));
-    assert.ok(!other.includes('aria-label="Target Chichimeca with Children of the Land"'));
+    assert.ok(!other.includes('aria-label="Target Chichimeca with Children of the Earth"'));
 
     const marshal = render("marshal");
     assert.match(marshal, /<button type="button">Reclaim interaction<\/button>/);
