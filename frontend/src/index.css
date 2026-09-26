@@ -190,3 +190,11 @@ button:focus-visible {
   font-size: 34px;
   font-weight: 800;
 }
+
+:root { --difficulty-base-size: 3rem; }
+.table-deck-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-content: start;
+}

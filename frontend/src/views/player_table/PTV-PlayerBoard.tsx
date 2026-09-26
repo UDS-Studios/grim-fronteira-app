@@ -414,10 +414,9 @@ export default function PTVPlayerBoard({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `${s(500)}px minmax(0, ${s(284)}px)`,
+            gridTemplateColumns: `${s(500)}px minmax(0, 1fr)`,
             columnGap: s(20),
             alignItems: "start",
-            justifyContent: "space-between",
             padding: `${s(18)}px ${s(20)}px ${s(20)}px`,
             borderBottom: "1px solid var(--border-muted)",
           }}
@@ -431,7 +430,7 @@ export default function PTVPlayerBoard({
               alignContent: "start",
               border: "1px solid var(--border-muted)",
               borderRadius: s(16),
-              padding: `${s(14)}px ${s(18)}px ${s(18)}px`,
+              padding: `${s(14)}px ${s(16)}px ${s(18)}px`,
               background: "var(--surface-bg)",
             }}
           >
@@ -600,11 +599,10 @@ export default function PTVPlayerBoard({
               boxSizing: "border-box",
               minWidth: 0,
               display: "grid",
-              gap: s(18),
+              gap: s(10),
               alignContent: "start",
               justifyItems: "start",
-              paddingTop: s(22),
-              paddingLeft: s(44),
+              paddingTop: s(4),
             }}
           >
             <div
@@ -623,9 +621,9 @@ export default function PTVPlayerBoard({
               style={{
                 display: "grid",
                 gap: s(2),
-                lineHeight: 1.2,
-                opacity: 0.82,
-                fontSize: s(15),
+                lineHeight: 1.4,
+                opacity: 0.9,
+                fontSize: s(18),
                 minWidth: 0,
                 width: "100%",
               }}
@@ -649,7 +647,7 @@ export default function PTVPlayerBoard({
             <div
               style={{
                 fontFamily: "LavaArabic, serif",
-                fontSize: s(16),
+                fontSize: s(24),
                 lineHeight: 1,
                 opacity: 0.9,
                 letterSpacing: "0.02em",
@@ -674,8 +672,8 @@ export default function PTVPlayerBoard({
                 opacity: powerDisabled ? 0.82 : 1,
                 padding: 0,
                 overflow: "hidden",
-                width: s(150),
-                height: s(150),
+                width: s(190),
+                height: s(190),
                 display: "block",
               }}
             >

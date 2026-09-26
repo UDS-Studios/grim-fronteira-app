@@ -1,4 +1,4 @@
-import { DIFFICULTY_CARD_WIDTH } from "../components/difficultyDisplay";
+import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
 import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
@@ -1301,9 +1301,9 @@ export default function MarshalTableView({
         }}
       >
         {/* LEFT RAIL */}
-        <div
+        <div className="table-deck-stack"
           style={{
-            width: 280,
+            width: 400,
             display: "grid",
             gap: 14,
             overflowY: "visible",
@@ -1312,7 +1312,7 @@ export default function MarshalTableView({
         }}
       >
           {canCloseScene || canOpenNewScene ? (
-            <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+            <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
               <TableZone title={canCloseScene ? "Close Scene" : "Next Scene"}>
                 <div
                   style={{
@@ -1392,7 +1392,7 @@ export default function MarshalTableView({
             </ResponsiveScaleBox>
           ) : null}
 
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+          <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
             <TableZone title="Deck">
               <button
                 type="button"
@@ -1425,12 +1425,12 @@ export default function MarshalTableView({
                 }
               >
                 {typeof deckCount === "number" && deckCount > 0 ? (
-                  <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                  <CardImg cardId="BACK" faceDown width={DECK_CARD_WIDTH} title="Deck" />
                 ) : (
                   <div
                     style={{
-                      width: ds(86),
-                      height: ds(124),
+                      width: DECK_CARD_WIDTH,
+                      height: DECK_CARD_WIDTH * 1.45,
                       border: "2px dashed var(--border-muted)",
                       borderRadius: ds(10),
                       display: "flex",
@@ -1445,15 +1445,15 @@ export default function MarshalTableView({
                     empty
                   </div>
                 )}
-                <div style={{ fontSize: ds(16) }}>
+                <div style={{ fontSize: 28 }}>
                   <b>{deckCount}</b> cards
                 </div>
               </button>
             </TableZone>
           </ResponsiveScaleBox>
 
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
-            <TableZone title="Discard">
+          <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
+            <TableZone title={`Discard · ${discardPile.length}`}>
               <DiscardPile cards={discardPile} />
             </TableZone>
           </ResponsiveScaleBox>
@@ -1526,7 +1526,7 @@ export default function MarshalTableView({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "max-content max-content minmax(320px, 1fr)",
+                gridTemplateColumns: "max-content max-content minmax(0, 1fr)",
                 gap: 14,
                 alignItems: "center",
                 justifyContent: "start",
@@ -1558,7 +1558,7 @@ export default function MarshalTableView({
                   <div
                     style={{
                       fontFamily: "LavaArabic, serif",
-                      fontSize: isJokerDifficulty ? "4.2rem" : "3rem",
+                      fontSize: "var(--difficulty-base-size)",
                       lineHeight: 1,
                       whiteSpace: "nowrap",
                       color: isJokerDifficulty ? "#7a1f1f" : "inherit",

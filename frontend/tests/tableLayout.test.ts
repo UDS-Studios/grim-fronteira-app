@@ -3,6 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chichimecaLiveResponse } from "./fixtures/chichimecaLiveState.ts";
 
@@ -20,6 +21,10 @@ test("both roles share viewport fitting and retain every functional region", asy
       }));
       assert.match(html, /class="table-viewport"/);
       assert.match(html, /class="saloon-composition"/);
+      assert.match(html, /font-size:var\(--difficulty-base-size\)/);
+      assert.match(html, /class="table-deck-stack"/);
+      const rail = html.slice(html.indexOf('class="table-deck-stack"'));
+      assert.ok(rail.indexOf('>Deck<') < rail.indexOf('>Discard ·'), "Deck precedes Discard in the rail");
       for (const region of ["Deck", "Discard", "Difficulty / Scene", "Refresh Table"]) {
         assert.ok(html.includes(region), `${currentActorId}: ${region}`);
       }
@@ -27,11 +32,17 @@ test("both roles share viewport fitting and retain every functional region", asy
         assert.ok(html.includes("Next Scene"));
         assert.ok(html.includes("Reclaim interaction"));
       } else {
-        for (const region of ["Scene Participation", "Other Players", "REWARDS", "Confirm target"]) {
+        for (const region of ["Scene Participation", "Other Players", "REWARDS", "Confirm target", "DESCRIPTION", "FACTION POWER", "SCUM", "VENGEANCE"]) {
           assert.ok(html.includes(region), region);
         }
+        assert.match(html, /alt="Children of the Land"/);
+        assert.match(html, /width:190px;height:190px/);
+        assert.match(html, /grid-template-columns:500px minmax\(0, 1fr\)/);
       }
     }
+    const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
+    assert.match(css, /--difficulty-base-size: 3rem/);
+    assert.match(css, /\.table-deck-stack\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
     const { default: DiscardPile } = await server.ssrLoadModule("/src/components/DiscardPile.tsx");
     const cards = Array.from({ length: 54 }, (_, index) => `${index % 9 + 2}H`);
     const full = renderToStaticMarkup(createElement(DiscardPile, { cards }));
