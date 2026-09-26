@@ -1,3 +1,4 @@
+import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
 import { CHICHIMECA_CHOOSE_TARGET_ACTION, getChichimecaEligibleTargetIds, isChichimecaPendingForActor, reconcileChichimecaSelection, toggleChichimecaSelection } from "./player_table/chichimeca";
@@ -830,14 +831,6 @@ export default function PlayerTableView({
     })
     .filter((player) => player.figureCardId != null);
 
-  const difficultyValueLabel =
-    scene.difficulty?.value == null
-      ? "-"
-      : scene.azzardo?.revealed && scene.azzardo?.value != null
-        ? `${scene.difficulty.value} + ${scene.azzardo.value}`
-        : azzardoStatus !== "unavailable"
-          ? `${scene.difficulty.value} + ?`
-          : `${scene.difficulty.value}`;
   const totalBoxLabel =
     scene.difficulty?.value == null
       ? "-"
@@ -1557,14 +1550,10 @@ export default function PlayerTableView({
                     minWidth: 0,
                   }}
                 >
-                  <div><b>difficulty value:</b> {difficultyValueLabel}</div>
-                  <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
-                  <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                  <div><b>azzardo status:</b> {azzardoStatus}</div>
-                  <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
-                  <div><b>participants selected:</b> {participantIds.length}</div>
-                  <div><b>scene status:</b> {scene.status ?? "-"}</div>
-                  <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
+                  <SceneStatus
+                    message={getSceneInstruction()}
+                    ownTurn={scene.status === "active" && isCurrentViewerActive}
+                  />
                 </div>
               </div>
             </TableZone>

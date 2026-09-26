@@ -169,3 +169,24 @@ button:focus-visible {
 .discard-card { position: relative; min-width: 0; }
 .discard-card:hover, .discard-card:focus-visible { z-index: 20; }
 .discard-card:focus-visible { outline: 3px solid var(--border-strong); }
+
+.scene-status {
+  min-width: 0;
+  padding: 14px 16px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  font-family: LavaArabic, serif;
+  font-size: 28px;
+  line-height: 1.3;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.scene-status--your-turn {
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
+  font-size: 34px;
+  font-weight: 800;
+}

@@ -1,3 +1,4 @@
+import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
 import { useEffect, useMemo, useState } from "react";
@@ -790,14 +791,6 @@ export default function MarshalTableView({
   const isDuelScene = scene.mode === "duel";
   const isPvpDuelScene = isDuelScene && scene.duel?.subtype === "pvp";
 
-  const difficultyValueLabel =
-    scene.difficulty?.value == null
-      ? "-"
-      : scene.azzardo?.revealed && scene.azzardo?.value != null
-        ? `${scene.difficulty.value} + ${scene.azzardo.value}`
-        : hasAzzardo
-          ? `${scene.difficulty.value} + ?`
-          : `${scene.difficulty.value}`;
   const totalBoxLabel =
     scene.difficulty?.value == null
       ? "-"
@@ -1679,25 +1672,7 @@ export default function MarshalTableView({
                   minWidth: 0,
                 }}
               >
-                <div><b>difficulty value:</b> {difficultyValueLabel}</div>
-                <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
-                <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                <div><b>azzardo status:</b> {azzardoStatus}</div>
-                <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
-                <div><b>participants selected:</b> {participantIds.length}</div>
-                <div>
-                  <b>scene status:</b> {scene.status ?? "-"}
-                </div>
-                <div
-                  style={{
-                    opacity: 0.72,
-                    whiteSpace: "pre-line",
-                    overflowWrap: "break-word",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {getSceneInstruction()}
-                </div>
+                <SceneStatus message={getSceneInstruction()} />
               </div>
             </div>
           </TableZone>
