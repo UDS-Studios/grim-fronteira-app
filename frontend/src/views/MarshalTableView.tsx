@@ -1,3 +1,4 @@
+import { DIFFICULTY_CARD_WIDTH } from "../components/difficultyDisplay";
 import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
@@ -1569,7 +1570,7 @@ export default function MarshalTableView({
                   {difficultyCardId ? (
                     <CardImg
                       cardId={difficultyCardId}
-                      width={ds(86)}
+                      width={DIFFICULTY_CARD_WIDTH}
                       title="Difficulty card"
                     />
                   ) : (

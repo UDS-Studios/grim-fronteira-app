@@ -1,3 +1,4 @@
+import { DIFFICULTY_CARD_WIDTH } from "../components/difficultyDisplay";
 import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
@@ -881,7 +882,7 @@ export default function PlayerTableView({
 
     if (scene.status === "active") {
       if (isCurrentViewerActive) {
-        return "Your turn. Draw until you stay or bust.";
+        return "Your turn.\nDraw until you stay or bust.";
       }
       if (activeParticipantId) {
         const activeName = lobbyPlayers?.[activeParticipantId]?.chosen_name ?? activeParticipantId;
@@ -1437,7 +1438,7 @@ export default function PlayerTableView({
                   style={{
                     border: "1px solid var(--border-muted)",
                     borderRadius: 14,
-                    padding: "12px 10px",
+                    padding: "12px 6px",
                     background: "var(--surface-muted)",
                     display: "grid",
                     gap: 12,
@@ -1451,7 +1452,7 @@ export default function PlayerTableView({
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 12,
+                      gap: 6,
                       flexWrap: "wrap",
                       justifyContent: "center",
                     }}
@@ -1471,7 +1472,7 @@ export default function PlayerTableView({
                     {difficultyCardId ? (
                         <CardImg
                           cardId={difficultyCardId}
-                          width={86}
+                          width={DIFFICULTY_CARD_WIDTH}
                           title="Difficulty card"
                         />
                     ) : (

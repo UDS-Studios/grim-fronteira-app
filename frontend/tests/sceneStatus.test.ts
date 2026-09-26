@@ -5,6 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
+import { DIFFICULTY_CARD_WIDTH } from "../src/components/difficultyDisplay.ts";
 import { chichimecaLiveResponse } from "./fixtures/chichimecaLiveState.ts";
 
 test("both Difficulty / Scene panels replace internal labels with themed gameplay status", async () => {
@@ -19,6 +20,7 @@ test("both Difficulty / Scene panels replace internal labels with themed gamepla
       resp.state.meta!.pending_interaction = null;
       resp.state.meta!.scene = {
         ...resp.state.meta!.scene, status,
+        difficulty: { card_id: "7D", value: 17 },
         ...extraScene,
       };
       return renderToStaticMarkup(createElement(Table, {
@@ -38,8 +40,10 @@ test("both Difficulty / Scene panels replace internal labels with themed gamepla
       }
       assert.ok(panel.includes("10 +"));
       assert.ok(panel.includes("TOTAL"));
+      const card = panel.match(/<img[^>]*title="Difficulty card"[^>]*>/)?.[0] ?? "";
+      assert.ok(card.includes(`width:${DIFFICULTY_CARD_WIDTH}px`), `${actor}: shared difficulty size`);
       if (actor === "player-nnu30f") {
-        assert.match(panel, /class="scene-status scene-status--your-turn">Your turn\. Draw until you stay or bust\./);
+        assert.match(panel, /class="scene-status scene-status--your-turn">Your turn\.\nDraw until you stay or bust\./);
       } else {
         assert.match(panel, /class="scene-status">(?:Scene active\. )?Chichimeca is acting\./);
         assert.ok(!panel.includes("scene-status--your-turn"));
