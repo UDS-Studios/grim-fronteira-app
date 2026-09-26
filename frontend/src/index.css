@@ -21,6 +21,7 @@
   --text-primary: #213547;
   --text-muted: rgba(33, 53, 71, 0.75);
   --accent-danger: #7a1f1f;
+  --target-positive: #2f8f3e;
   --danger-bg: #fff4f4;
   --danger-border: #c00;
   --input-bg: #ffffff;
@@ -127,6 +128,7 @@ button:focus-visible {
     --text-primary: #f3ead3;
     --text-muted: rgba(243, 234, 211, 0.78);
     --accent-danger: #d47f72;
+    --target-positive: #78c98a;
     --danger-bg: #4f2d2d;
     --danger-border: #d47f72;
     --input-bg: #40382a;
@@ -136,4 +138,9 @@ button:focus-visible {
     --card-bg: #f4efe4;
     --player-selected-bg: rgba(255, 255, 255, 0.12);
   }
+}
+
+.other-player-target:focus-visible {
+  outline: 3px solid var(--target-positive);
+  outline-offset: 3px;
 }

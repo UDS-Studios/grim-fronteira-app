@@ -29,6 +29,7 @@ export type PTVOtherPlayersEntry = {
 export type PTVOtherPlayersProps = {
   players: PTVOtherPlayersEntry[];
   sceneTargetingActive?: boolean;
+  wholePanelTargeting?: boolean;
   targetActionLabel?: string;
   selectableTargetPlayerIds?: string[];
   selectedTargetPlayerId?: string | null;
@@ -108,23 +109,47 @@ function OtherPlayerMini({
   selected = false,
   onSelectTarget,
   targetActionLabel,
+  wholePanelTargeting,
 }: {
   player: PTVOtherPlayersEntry;
   scale?: number;
   targetable?: boolean;
   targetActionLabel: string;
+  wholePanelTargeting: boolean;
   selected?: boolean;
   onSelectTarget?: (() => void) | undefined;
 }) {
   const totalColor = getTwentyOneColor(player.sceneTotal);
+  const panelTargetable = wholePanelTargeting && targetable;
+  const FigureTarget = wholePanelTargeting ? "div" : "button";
 
   return (
     <div
+      className={wholePanelTargeting ? "other-player-target" : undefined}
+      role={wholePanelTargeting ? "button" : undefined}
+      tabIndex={panelTargetable ? 0 : undefined}
+      aria-label={wholePanelTargeting ? `Target ${player.displayName} with ${targetActionLabel}` : undefined}
+      aria-pressed={wholePanelTargeting ? selected : undefined}
+      aria-disabled={wholePanelTargeting ? !targetable : undefined}
+      data-target-state={wholePanelTargeting ? selected ? "selected" : targetable ? "eligible" : "ineligible" : undefined}
+      onClick={panelTargetable ? onSelectTarget : undefined}
+      onKeyDown={panelTargetable ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelectTarget?.();
+        }
+      } : undefined}
       style={{
-        border: "1px solid var(--border-muted)",
+        border: wholePanelTargeting && (targetable || selected)
+          ? `${selected ? 3 : 1}px solid var(--target-positive)` : "1px solid var(--border-muted)",
+        boxShadow: wholePanelTargeting && selected ? "0 0 0 2px var(--target-positive)" : undefined,
+        cursor: panelTargetable ? "pointer" : undefined,
+        opacity: wholePanelTargeting && !targetable && !selected ? 0.65 : 1,
         borderRadius: 14 * scale,
         padding: 12 * scale,
-        background: player.inScene
+        background: wholePanelTargeting && (targetable || selected)
+          ? `color-mix(in srgb, var(--target-positive) ${selected ? 28 : 12}%, var(--surface-strong))`
+          : player.inScene
           ? "var(--player-selected-bg)"
           : "var(--surface-strong)",
         display: "grid",
@@ -161,13 +186,13 @@ function OtherPlayerMini({
           }}
         >
           {player.figureCardId ? (
-            <button
-              type="button"
-              onClick={targetable ? onSelectTarget : undefined}
-              disabled={!targetable}
+            <FigureTarget
+              type={wholePanelTargeting ? undefined : "button"}
+              onClick={!wholePanelTargeting && targetable ? onSelectTarget : undefined}
+              disabled={wholePanelTargeting ? undefined : !targetable}
               title={targetable ? `Target ${player.displayName} with ${targetActionLabel}` : undefined}
-              aria-label={`Target ${player.displayName} with ${targetActionLabel}`}
-              aria-pressed={selected}
+              aria-label={wholePanelTargeting ? undefined : `Target ${player.displayName} with ${targetActionLabel}`}
+              aria-pressed={wholePanelTargeting ? undefined : selected}
               style={{
                 border: selected
                   ? `2px solid var(--border-strong)`
@@ -190,7 +215,7 @@ function OtherPlayerMini({
                 rotationDeg={player.wounded ? 90 : 0}
                 deadVariant={player.dead}
               />
-            </button>
+            </FigureTarget>
           ) : (
             <div
               style={{
@@ -335,6 +360,7 @@ function OtherPlayerMini({
 export default function PTVOtherPlayers({
   players,
   sceneTargetingActive = false,
+  wholePanelTargeting = false,
   targetActionLabel = "Scum",
   selectableTargetPlayerIds = [],
   selectedTargetPlayerId = null,
@@ -374,6 +400,7 @@ export default function PTVOtherPlayers({
             <OtherPlayerMini
               key={player.playerId}
               player={player}
+              wholePanelTargeting={wholePanelTargeting}
               targetActionLabel={targetActionLabel}
               scale={scale}
               targetable={selectableTargets.has(player.playerId)}

@@ -23,7 +23,7 @@ def _normalize_destination(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, Mapping) or set(raw) != {"kind", "payload"}:
         raise ValueError("continuation destination must contain exactly kind and payload.")
     kind, payload = raw["kind"], raw["payload"]
-    if not isinstance(kind, str) or kind not in {"debug_resume_marker", "debug_raise", "resume_scene_new", "resume_scene_start"}:
+    if not isinstance(kind, str) or kind not in {"debug_resume_marker", "debug_raise", "resume_scene_new", "resume_scene_start", "resume_scene_wounds"}:
         raise ValueError(f"Unknown continuation kind: {kind!r}")
     if not isinstance(payload, Mapping):
         raise ValueError("continuation payload must be a mapping.")
@@ -49,6 +49,9 @@ def _dispatch_continuation(game: GameState, destination: dict[str, Any] | None) 
     if destination["kind"] == "resume_scene_start":
         from backend.engine.rules.grim_fronteira.scene import resume_scene_start
         return resume_scene_start(game)
+    if destination["kind"] == "resume_scene_wounds":
+        from backend.engine.rules.grim_fronteira.scene import resume_scene_wounds
+        return resume_scene_wounds(game)
     if destination["kind"] == "resume_scene_new":
         from backend.engine.rules.grim_fronteira.scene import resume_scene_new
         return resume_scene_new(game)

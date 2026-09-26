@@ -55,6 +55,16 @@ def _ready_table_game() -> GameState:
     return game
 
 
+def _reclaim_wound_if_pending(game: GameState) -> GameState:
+    # Scene-only tests skip the faction choice but exercise its real continuation.
+    from backend.engine.state.continuations import complete_pending_interaction
+    pending = game.meta.get("pending_interaction")
+    if pending is not None:
+        assert pending["kind"] == "chichimeca_choose_target"
+        return complete_pending_interaction(game, outcome="reclaim")
+    return game
+
+
 def _with_draw_order(game: GameState, draw_sequence: list[str]) -> GameState:
     assert game.deck is not None
     extracted_cards: list[str] = []
@@ -731,12 +741,14 @@ def test_pvp_duel_bust_ends_duel_immediately():
     game = scene_start(game, actor_id="host1")
 
     game = scene_draw_card(game, player_id="p1")
+    game = _reclaim_wound_if_pending(game)
 
     scene = game.meta["scene"]
     assert scene["status"] == "awaiting_ack"
     assert scene["players"]["p1"]["busted"] is True
     assert scene["players"]["p1"]["result"] == "wound"
-    assert scene["players"]["p1"]["wounds_gained"] == 1
+    assert scene["players"]["p1"]["wounds_gained"] == 0
+    assert scene["players"]["p1"]["wounds_applied"] == 1
     assert scene["players"]["p2"]["result"] == "duel_win"
     assert scene["players"]["p2"]["wounds_gained"] == 0
     assert scene["players"]["p2"]["reward_gained"] is True
@@ -1075,6 +1087,7 @@ def test_scene_set_participants_allows_second_scene_after_resolve():
             "resolved": False,
             "acknowledged": False,
             "wounds_gained": 0,
+            "wounds_applied": 0,
             "reward_gained": False,
             "result": None,
             "recovery_action": None,
@@ -1111,13 +1124,15 @@ def test_scene_bust_increments_persistent_wounds():
     game = scene_start(game, actor_id="host1")
 
     game = scene_draw_card(game, player_id="p1")
+    game = _reclaim_wound_if_pending(game)
 
     scene = game.meta["scene"]
     assert scene["status"] == "resolved"
     assert scene["players"]["p1"]["busted"] is True
-    assert scene["players"]["p1"]["wounds_gained"] == 1
+    assert scene["players"]["p1"]["wounds_gained"] == 0
+    assert scene["players"]["p1"]["wounds_applied"] == 1
     assert scene["players"]["p1"]["result"] == "bust"
-    assert "players" not in game.meta or game.meta["players"].get("p1", {}).get("wounds", 0) == 0
+    assert game.meta["players"]["p1"]["wounds"] == 1
 
 
 def test_scene_close_discards_scene_cards_after_last_ack():
@@ -1370,7 +1385,7 @@ def test_scene_force_discard_rewards_discards_highest_point_rewards_until_twenty
     assert game.zones["players.p1.rewards"] == ["10H", "2C"]
 
 
-def test_bust_applies_exactly_one_persistent_wound_on_new_scene():
+def test_bust_applies_wound_immediately_without_reapplying_on_new_scene():
     game = _ready_table_game()
     game = _with_draw_order(game, ["4H", "9C", "5D"])
     game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
@@ -1378,9 +1393,10 @@ def test_bust_applies_exactly_one_persistent_wound_on_new_scene():
     game = scene_skip_azzardo(game, actor_id="host1")
     game = scene_start(game, actor_id="host1")
     game = scene_draw_card(game, player_id="p1")
+    game = _reclaim_wound_if_pending(game)
 
     assert game.meta["scene"]["status"] == "resolved"
-    assert "players" not in game.meta or game.meta["players"].get("p1", {}).get("wounds", 0) == 0
+    assert game.meta["players"]["p1"]["wounds"] == 1
 
     game = _ack_all_scene_participants(game)
     game = scene_close(game, actor_id="host1")
@@ -1583,6 +1599,7 @@ def test_busted_player_cannot_play_vengeance_on_self():
     game = scene_skip_azzardo(game, actor_id="host1")
     game = scene_start(game, actor_id="host1")
     game = scene_draw_card(game, player_id="p1")
+    game = _reclaim_wound_if_pending(game)
     game = scene_stand(game, player_id="p2")
 
     assert game.meta["scene"]["players"]["p1"]["busted"] is True
@@ -1604,6 +1621,7 @@ def test_busted_player_cannot_be_targeted_with_scum_after_resolution():
     game = scene_skip_azzardo(game, actor_id="host1")
     game = scene_start(game, actor_id="host1")
     game = scene_draw_card(game, player_id="p1")
+    game = _reclaim_wound_if_pending(game)
     game = scene_stand(game, player_id="p2")
 
     assert game.meta["scene"]["status"] == "awaiting_ack"
@@ -1626,6 +1644,7 @@ def test_busted_player_can_play_scum_on_non_busted_target_after_resolution():
     game = scene_skip_azzardo(game, actor_id="host1")
     game = scene_start(game, actor_id="host1")
     game = scene_draw_card(game, player_id="p1")
+    game = _reclaim_wound_if_pending(game)
     game = scene_stand(game, player_id="p2")
 
     assert game.meta["scene"]["status"] == "awaiting_ack"

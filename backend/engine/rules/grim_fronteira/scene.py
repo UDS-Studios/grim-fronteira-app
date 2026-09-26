@@ -525,7 +525,9 @@ def scene_play_vengeance(game: GameState, *, player_id: str) -> tuple[GameState,
     game = _replace_scene(game, scene=scene)
     if scene["status"] == SCENE_STATUS_AWAITING_ACK:
         game = _refresh_scene_resolution_preview(game, reset_acknowledgements=True)
-        game = _auto_acknowledge_if_no_post_resolution_actions(game)
+        game = resume_scene_wounds(_queue_bust_wounds(game))
+    else:
+        game = _resolve_scene_if_all_participants_done(game)
     validate_unique_cards(game)
     return game, {
         "player_id": player_id,
@@ -542,6 +544,11 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_ACTIVE:
         raise ValueError("Scene can only be resolved while active.")
+
+    game = _apply_pending_scene_wounds(_queue_bust_wounds(game))
+    if get_pending_interaction(game) is not None:
+        return game
+    scene = _scene(game)
 
     if _is_pvp_duel(scene):
         unresolved = [
@@ -595,7 +602,7 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
                 winners.append(pid)
         elif pstate.get("busted"):
             pstate["result"] = "bust"
-            pstate["wounds_gained"] = 1
+            pstate["wounds_gained"] = max(0, 1 - int(pstate.get("wounds_applied", 0)))
             losers.append(pid)
         elif int(pstate.get("hand_value", 0)) >= effective_difficulty:
             pstate["result"] = "success"
@@ -663,6 +670,11 @@ def scene_force_acknowledge_resolution(game: GameState, *, actor_id: str, player
 
 
 def _resolve_scene_if_all_participants_done(game: GameState) -> GameState:
+    game = _queue_bust_wounds(game)
+    return resume_scene_wounds(game)
+
+
+def _resolve_scene_after_wounds(game: GameState) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_ACTIVE:
         return game
@@ -706,7 +718,7 @@ def _acknowledge_scene_player(game: GameState, *, player_id: str) -> GameState:
     scene["status"] = SCENE_STATUS_RESOLVED
     game = _replace_scene(game, scene=scene)
     validate_unique_cards(game)
-    return game
+    return resume_scene_wounds(game)
 
 
 def _has_post_resolution_reaction_options(game: GameState) -> bool:
@@ -757,7 +769,7 @@ def _auto_acknowledge_if_no_post_resolution_actions(game: GameState) -> GameStat
     scene["status"] = SCENE_STATUS_RESOLVED
     game = _replace_scene(game, scene=scene)
     validate_unique_cards(game)
-    return game
+    return resume_scene_wounds(game)
 
 
 def _get_persistent_wounds(game: GameState, player_id: str) -> int:
@@ -841,7 +853,7 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
         busted = hand_value > 21
         pstate["busted"] = busted
         pstate["resolved"] = True
-        pstate["wounds_gained"] = 0 if marshal_busted else 1 if busted else 0
+        pstate["wounds_gained"] = max(0, (0 if marshal_busted else 1 if busted else 0) - int(pstate.get("wounds_applied", 0)))
         pstate["reward_gained"] = (not busted) if marshal_busted else (not busted and hand_value >= effective_difficulty)
         pstate["recovery_action"] = None
         pstate["reward_discard_started"] = False
@@ -888,20 +900,57 @@ def _grant_resolved_scene_rewards(game: GameState) -> GameState:
     return game
 
 
-def _apply_pending_scene_wounds(game: GameState) -> GameState:
+def _queue_bust_wounds(game: GameState) -> GameState:
+    scene = _scene(game)
+    difficulty = int(scene["difficulty"].get("value") or 0)
+    if scene["azzardo"]["status"] == "drawn":
+        difficulty += int(scene["azzardo"].get("value") or 0)
+    wound_exempt = (not _is_pvp_duel(scene) and difficulty > 21) or (
+        _is_pvp_duel(scene) and _pvp_duel_outcome(scene)[0] == "rematch"
+    )
+    for pid in scene["participants"]:
+        pstate = dict(scene["players"].get(pid) or {})
+        if pstate.get("busted") or int(pstate.get("hand_value") or 0) > 21:
+            pstate["busted"] = True
+            pstate["wounds_gained"] = 0 if wound_exempt else max(0, 1 - int(pstate.get("wounds_applied", 0)))
+            scene["players"][pid] = pstate
+    return _replace_scene(game, scene=scene)
+
+
+def resume_scene_wounds(game: GameState) -> GameState:
+    """Consume wound units in participant order, then resume the interrupted stage."""
+    _require_table_phase(game)
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_ACTIVE, SCENE_STATUS_AWAITING_ACK, SCENE_STATUS_RESOLVED}:
+        raise ValueError("Wound resumption requires an active or resolving scene.")
+    if get_pending_interaction(game) is not None:
+        raise ValueError("Consume the pending interaction before resuming wounds.")
+    game = _apply_pending_scene_wounds(game)
+    if get_pending_interaction(game) is not None:
+        return game
+    if scene["status"] == SCENE_STATUS_ACTIVE:
+        return _resolve_scene_after_wounds(game)
+    return _auto_acknowledge_if_no_post_resolution_actions(game)
+
+
+def _apply_pending_scene_wounds(game: GameState, *, trigger: bool = True) -> GameState:
     # Import locally: faction effects use the same scene/card movement helpers.
     from .factions import begin_chichimeca_wound_interaction
 
     scene = _scene(game)
     for pid in scene["participants"]:
         pstate = dict(scene["players"].get(pid) or {})
+        if trigger and scene["status"] == SCENE_STATUS_AWAITING_ACK and not pstate.get("busted"):
+            continue  # Non-bust PvP losses are provisional until final acknowledgement.
         while int(pstate.get("wounds_gained", 0) or 0) > 0:
             game = _increment_player_wounds(game, pid, 1)
             # Consume debt in the same derived transition as the persistent wound.
             pstate["wounds_gained"] -= 1
+            pstate["wounds_applied"] = int(pstate.get("wounds_applied", 0)) + 1
             scene["players"][pid] = pstate
             game = _replace_scene(game, scene=scene)
-            game = begin_chichimeca_wound_interaction(game, player_id=pid)
+            if trigger:
+                game = begin_chichimeca_wound_interaction(game, player_id=pid)
             if get_pending_interaction(game) is not None:
                 return game
     return game
@@ -1174,20 +1223,15 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
 
 
 def resume_scene_new(game: GameState) -> GameState:
-    """Advance committed wound debt until one interrupt or a fresh scene/victory.
-
-    Authorization and post-scene choices are checked by scene_new before entry.
-    A consumed interaction resumes here without re-entering the external action.
-    """
+    """Prepare the next scene; old serialized continuations may still resume here."""
     _require_table_phase(game)
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_CLOSED:
         raise ValueError("Scene-new resumption requires a closed scene.")
     if get_pending_interaction(game) is not None:
         raise ValueError("Consume the pending interaction before resuming scene-new.")
-    game = _apply_pending_scene_wounds(game)
-    if get_pending_interaction(game) is not None:
-        return game
+    # Compatibility for old saved wound debt: never trigger a past wound here.
+    game = _apply_pending_scene_wounds(game, trigger=False)
     if _all_non_marshal_players_dead(game):
         return _set_marshal_victory(game)
 
@@ -1628,7 +1672,7 @@ def _resolve_pvp_duel_scene(game: GameState, *, actor_id: str) -> GameState:
                 pstate["result"] = "duel_win"
                 winners.append(pid)
             else:
-                pstate["wounds_gained"] = 1
+                pstate["wounds_gained"] = max(0, 1 - int(pstate.get("wounds_applied", 0)))
                 pstate["result"] = "wound"
                 losers.append(pid)
         players[pid] = pstate
@@ -1674,7 +1718,7 @@ def _refresh_pvp_duel_resolution_preview(game: GameState, *, reset_acknowledgeme
                 pstate["result"] = "duel_win"
                 winners.append(pid)
             else:
-                pstate["wounds_gained"] = 1
+                pstate["wounds_gained"] = max(0, 1 - int(pstate.get("wounds_applied", 0)))
                 pstate["result"] = "wound"
                 losers.append(pid)
         players[pid] = pstate
@@ -1807,6 +1851,7 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             "resolved": bool(pdata.get("resolved", False)),
             "acknowledged": bool(pdata.get("acknowledged", False)),
             "wounds_gained": int(pdata.get("wounds_gained", 0) or 0),
+            "wounds_applied": int(pdata.get("wounds_applied", 0) or 0),
             "reward_gained": bool(pdata.get("reward_gained", False)),
             "result": pdata.get("result"),
             "recovery_action": pdata.get("recovery_action")

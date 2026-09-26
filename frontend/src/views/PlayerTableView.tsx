@@ -99,7 +99,7 @@ function getPowerFromCardId(cardId?: string | null): string {
     case "C":
       return "Heart of Shadow";
     case "S":
-      return "Children of the Earth";
+      return "Children of the Land";
     default:
       return "Unknown";
   }
@@ -1948,6 +1948,7 @@ export default function PlayerTableView({
               >
                 <PTVOtherPlayers
                   players={otherPlayers}
+                  wholePanelTargeting={chichimecaActive}
                   targetActionLabel={chichimecaActive ? "Children of the Land" : undefined}
                   sceneTargetingActive={!hasPendingInteraction && scumTargetingActive}
                   selectableTargetPlayerIds={

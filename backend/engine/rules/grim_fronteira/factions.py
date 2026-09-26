@@ -130,8 +130,8 @@ def begin_chichimeca_wound_interaction(game: GameState, *, player_id: str) -> Ga
         "allowed_actions": [CHICHIMECA_CHOOSE_TARGET],
         "payload": {"eligible_target_ids": targets},
         "continuation": {
-            "on_resolve": {"kind": "resume_scene_new", "payload": {}},
-            "on_reclaim": {"kind": "resume_scene_new", "payload": {}},
+            "on_resolve": {"kind": "resume_scene_wounds", "payload": {}},
+            "on_reclaim": {"kind": "resume_scene_wounds", "payload": {}},
         },
     })
 
