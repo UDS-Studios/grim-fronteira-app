@@ -1,3 +1,4 @@
+import { CHICHIMECA_CHOOSE_TARGET_ACTION, getChichimecaEligibleTargetIds, isChichimecaPendingForActor, reconcileChichimecaSelection, toggleChichimecaSelection } from "./player_table/chichimeca";
 import { isPaisaAvailable, isPaisaSelectionValid, reconcilePaisaSelection, togglePaisaSelection } from "./player_table/paisa";
 import { useEffect, useState } from "react";
 import CardImg from "../components/CardImg";
@@ -6,7 +7,7 @@ import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import TableZone from "../components/TableZone";
 import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
-import { getPendingInteraction, getPendingInteractionIdentity, isPendingInteractionActor } from "../utils/pendingInteractions";
+import { getPendingInteraction, getPendingInteractionIdentity, isPendingInteractionActor, isPendingInteractionActionAllowed } from "../utils/pendingInteractions";
 import type { ActionResponse, View } from "../api/types";
 import { isCriolloAvailable, isCriolloSelectionOwned, type CriolloSelection } from "./player_table/criollo";
 import PTVPlayerBoard from "./player_table/PTV-PlayerBoard";
@@ -531,6 +532,43 @@ export default function PlayerTableView({
   const hasPendingInteraction = pendingInteraction !== null;
   const isPendingActor = isPendingInteractionActor(state, currentActorId);
   const pendingIdentity = getPendingInteractionIdentity(state);
+
+  const chichimecaActive = isChichimecaPendingForActor(state, currentActorId);
+  const chichimecaTargets = getChichimecaEligibleTargetIds(state, currentActorId);
+  const chichimecaContext = JSON.stringify([resp.game_id, view, currentActorId, pendingIdentity]);
+  const [chichimecaSelection, setChichimecaSelection] = useState<{ context: string; target: string | null }>({ context: chichimecaContext, target: null });
+  const selectedChichimecaTarget = chichimecaSelection.context === chichimecaContext
+    ? reconcileChichimecaSelection(chichimecaSelection.target, chichimecaTargets) : null;
+  const chichimecaActionAllowed = chichimecaActive && isPendingInteractionActionAllowed(state, CHICHIMECA_CHOOSE_TARGET_ACTION);
+  // Compare routing values and eligibility, never polling response identity.
+  useEffect(() => {
+    setChichimecaSelection(previous => previous.context === chichimecaContext && previous.target === selectedChichimecaTarget
+      ? previous : { context: chichimecaContext, target: selectedChichimecaTarget });
+  }, [chichimecaContext, selectedChichimecaTarget]);
+
+  function handleSelectChichimecaTarget(target: string) {
+    if (!chichimecaActionAllowed || sceneActionPending) return;
+    setChichimecaSelection({ context: chichimecaContext, target: toggleChichimecaSelection(selectedChichimecaTarget, target, chichimecaTargets) });
+  }
+
+  async function handleConfirmChichimeca() {
+    if (!chichimecaActionAllowed || !selectedChichimecaTarget || sceneActionPending) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: CHICHIMECA_CHOOSE_TARGET_ACTION,
+        params: { player_id: currentActorId, target_player_id: selectedChichimecaTarget },
+        view,
+        viewer_id: view === "player" ? currentActorId : undefined,
+      }));
+    } finally {
+      // Clear only local selection on success or rejection; run owns server state/errors.
+      setChichimecaSelection(previous => previous.context === chichimecaContext
+        ? { context: chichimecaContext, target: null } : previous);
+      setSceneActionPending(false);
+    }
+  }
 
   useEffect(() => {
     if (pendingIdentity === null) return;
@@ -1336,7 +1374,18 @@ export default function PlayerTableView({
 
         {hasPendingInteraction && (
           <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
-            {isPendingActor
+            {chichimecaActive ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                <strong>Children of the Land · Choose an enemy</strong>
+                <div>Choose an enemy to discard 1 Scum.</div>
+                <div>{chichimecaTargets.length === 0
+                  ? "No eligible targets are currently available."
+                  : "Select an eligible player in Other Players. Other gameplay actions are paused."}</div>
+                <button type="button" disabled={!chichimecaActionAllowed || !selectedChichimecaTarget || sceneActionPending} onClick={handleConfirmChichimeca}>
+                  {sceneActionPending ? "Confirming…" : "Confirm target"}
+                </button>
+              </div>
+            ) : isPendingActor
               ? "An interaction is waiting for you. Other gameplay actions are paused."
               : `Waiting for ${lobbyPlayers[pendingInteraction.actor_id]?.chosen_name ?? "another player"} to resolve an interaction. Gameplay actions are paused.`}
           </div>
@@ -1899,16 +1948,19 @@ export default function PlayerTableView({
               >
                 <PTVOtherPlayers
                   players={otherPlayers}
+                  targetActionLabel={chichimecaActive ? "Children of the Land" : undefined}
                   sceneTargetingActive={!hasPendingInteraction && scumTargetingActive}
                   selectableTargetPlayerIds={
-                    !hasPendingInteraction && scumTargetingActive
+                    chichimecaActive
+                      ? chichimecaActionAllowed && !sceneActionPending ? chichimecaTargets : []
+                      : !hasPendingInteraction && scumTargetingActive
                       ? otherPlayers
                           .filter((player) => player.inScene && !player.busted)
                           .map((player) => player.playerId)
                       : []
                   }
-                  selectedTargetPlayerId={hasPendingInteraction ? null : selectedScumTargetId}
-                  onSelectSceneTarget={handleSelectScumTarget}
+                  selectedTargetPlayerId={chichimecaActive ? selectedChichimecaTarget : hasPendingInteraction ? null : selectedScumTargetId}
+                  onSelectSceneTarget={chichimecaActive ? handleSelectChichimecaTarget : handleSelectScumTarget}
                 />
               </div>
             </div>

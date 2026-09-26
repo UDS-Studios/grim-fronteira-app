@@ -29,6 +29,7 @@ export type PTVOtherPlayersEntry = {
 export type PTVOtherPlayersProps = {
   players: PTVOtherPlayersEntry[];
   sceneTargetingActive?: boolean;
+  targetActionLabel?: string;
   selectableTargetPlayerIds?: string[];
   selectedTargetPlayerId?: string | null;
   onSelectSceneTarget?: (playerId: string) => void;
@@ -106,10 +107,12 @@ function OtherPlayerMini({
   targetable = false,
   selected = false,
   onSelectTarget,
+  targetActionLabel,
 }: {
   player: PTVOtherPlayersEntry;
   scale?: number;
   targetable?: boolean;
+  targetActionLabel: string;
   selected?: boolean;
   onSelectTarget?: (() => void) | undefined;
 }) {
@@ -162,7 +165,9 @@ function OtherPlayerMini({
               type="button"
               onClick={targetable ? onSelectTarget : undefined}
               disabled={!targetable}
-              title={targetable ? `Target ${player.displayName} with Scum` : undefined}
+              title={targetable ? `Target ${player.displayName} with ${targetActionLabel}` : undefined}
+              aria-label={`Target ${player.displayName} with ${targetActionLabel}`}
+              aria-pressed={selected}
               style={{
                 border: selected
                   ? `2px solid var(--border-strong)`
@@ -330,6 +335,7 @@ function OtherPlayerMini({
 export default function PTVOtherPlayers({
   players,
   sceneTargetingActive = false,
+  targetActionLabel = "Scum",
   selectableTargetPlayerIds = [],
   selectedTargetPlayerId = null,
   onSelectSceneTarget,
@@ -368,6 +374,7 @@ export default function PTVOtherPlayers({
             <OtherPlayerMini
               key={player.playerId}
               player={player}
+              targetActionLabel={targetActionLabel}
               scale={scale}
               targetable={selectableTargets.has(player.playerId)}
               selected={selectedTargetPlayerId === player.playerId}
