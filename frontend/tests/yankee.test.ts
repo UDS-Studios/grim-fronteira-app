@@ -31,8 +31,11 @@ test("Yankee rendered privacy, lifecycle, deck count, controls, and exact reques
     server: { middlewareMode: true, hmr: false }, appType: "custom" });
   try {
     const { default: Table } = await server.ssrLoadModule("/src/views/TableRouterView.tsx");
-    const render = (viewer: string, response = yankeeLiveState(viewer)) => renderToStaticMarkup(createElement(Table, {
-      resp: response, currentActorId: viewer, view: "player",
+    const { default: MarshalTable } = await server.ssrLoadModule("/src/views/MarshalTableView.tsx");
+    // "marshal" is an explicit test case, not a new API View value.
+    // Production routing selects the table by actor identity.
+    const render = (viewer: string, response = yankeeLiveState(viewer), view = "player") => renderToStaticMarkup(createElement(Table, {
+      resp: response, currentActorId: viewer, view,
       run: () => { throw Error("Rendering must not submit"); }, onBackHome: () => {},
     }));
     const actor = render(YANKEE_A);
@@ -56,7 +59,7 @@ test("Yankee rendered privacy, lifecycle, deck count, controls, and exact reques
       assert.ok(other.includes("Waiting for Yankee A to resolve an interaction. Gameplay actions are paused."));
     }
     for (const viewer of [YANKEE_A, "marshal"]) {
-      const html = render(viewer);
+      const html = render(viewer, yankeeLiveState(viewer), viewer === "marshal" ? "marshal" : "player");
       assert.match(html, /class="table-viewport"/);
       assert.match(html, /class="saloon-composition"/);
       assert.match(html, /class="table-deck-stack"/);
@@ -74,10 +77,24 @@ test("Yankee rendered privacy, lifecycle, deck count, controls, and exact reques
         }
       }
     }
-    const marshal = render("marshal", yankeeLiveState());
-    assert.ok(marshal.includes("Reclaim interaction"));
+    const marshalResponse = yankeeLiveState("marshal");
+    const marshalRoute = Table({
+      resp: marshalResponse, currentActorId: "marshal", view: "marshal",
+      run: () => { throw Error("Rendering must not submit"); }, onBackHome: () => {},
+    });
+    assert.equal(marshalRoute.props.children.type, MarshalTable, "router must select the actual MarshalTableView");
+    assert.equal(marshalRoute.props.children.props.view, "marshal");
+    const marshal = render("marshal", marshalResponse, "marshal");
+    assert.ok(marshal.includes("Interaction pending for Yankee A. Scene actions are paused."));
+    assert.match(marshal, /<button type="button">Reclaim interaction<\/button>/);
     assert.ok(!marshal.includes(">KEEP<") && !marshal.includes(">BURY<"));
     assert.ok(!marshal.includes(INSPECTED_CARD));
+    assert.ok(!marshal.includes("Inspected top card"));
+    // Even if a privileged payload is supplied, the normal table must not
+    // display the private card. App-level debug JSON is outside this render.
+    const privilegedMarshal = render("marshal", yankeeLiveState(), "marshal");
+    assert.ok(!privilegedMarshal.includes(INSPECTED_CARD));
+    assert.ok(!privilegedMarshal.includes("inspected_card_id"));
     for (const view of ["public", "debug"]) {
       const html = renderToStaticMarkup(createElement(Table, {
         resp: yankeeLiveState(), currentActorId: YANKEE_A, view,
