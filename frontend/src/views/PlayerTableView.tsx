@@ -1,3 +1,4 @@
+import { getFactionMedallion } from "./player_table/factionMedallion";
 import YankeeDeck from "./player_table/PTV-YankeeDeck";
 import { getYankeeInspectedCardId, getYankeeChoiceRequest, type YankeeChoice } from "./player_table/yankee";
 import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
@@ -92,25 +93,6 @@ type SceneState = {
     message?: string | null;
   };
 };
-
-function getPowerFromCardId(cardId?: string | null): string {
-  if (!cardId) return "Unknown";
-
-  const suit = cardId.slice(-1).toUpperCase();
-
-  switch (suit) {
-    case "H":
-      return "Order and Profit";
-    case "D":
-      return "Law of Lead";
-    case "C":
-      return "Heart of Shadow";
-    case "S":
-      return "Children of the Earth";
-    default:
-      return "Unknown";
-  }
-}
 
 function formatModifierTotal(modifierTotal: number): string {
   if (modifierTotal > 0) return `+${modifierTotal}`;
@@ -1154,6 +1136,9 @@ export default function PlayerTableView({
   }
 
   const criolloAvailable = isCriolloAvailable(state, currentActorId) && !getIsDead(currentActorId);
+  const factionMedallion = getFactionMedallion(state, currentActorId, {
+    criolloAvailable, paisaAvailable, actionPending: sceneActionPending,
+  });
   const criolloActive = !hasPendingInteraction && criolloSelecting && criolloAvailable;
   const validCriolloSelection = isCriolloSelectionOwned(state, currentActorId, criolloSelection)
     ? criolloSelection : null;
@@ -1748,7 +1733,7 @@ export default function PlayerTableView({
                     }
                     mustHealOrSkip={currentPlayerNeedsHealOrSkip}
                     mustDiscardRewards={currentPlayerNeedsDiscardRewards}
-                    powerLabel={getPowerFromCardId(currentPlayerFigureCardId)}
+                    medallion={factionMedallion}
                     inScene={currentPlayerInScene}
                     onClickScum={!criolloActive && !paisaActive && !sceneActionPending && canPlayScum ? handleToggleScumTargeting : undefined}
                     onClickVengeance={!criolloActive && !paisaActive && !sceneActionPending && canPlayVengeance ? handlePlayVengeance : undefined}
@@ -1943,7 +1928,6 @@ export default function PlayerTableView({
                         </div>
                       ) : null
                     }
-                    powerDisabled
                   />
                 </div>
               </div>

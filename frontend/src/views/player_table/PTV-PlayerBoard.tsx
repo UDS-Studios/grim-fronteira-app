@@ -1,3 +1,4 @@
+import type { FactionMedallion } from "./factionMedallion";
 import { useEffect, useRef, useState } from "react";
 import type { CriolloSelection } from "./criollo";
 import CardImg from "../../components/CardImg";
@@ -22,12 +23,10 @@ export type PTVPlayerBoardProps = {
   rewardSelectionHint?: string | null;
   mustHealOrSkip?: boolean;
   mustDiscardRewards?: boolean;
-  powerLabel: string;
+  medallion: FactionMedallion | null;
   inScene?: boolean;
-  powerDisabled?: boolean;
   onClickScum?: () => void;
   onClickVengeance?: () => void;
-  onClickPower?: () => void;
   onClickRewardCard?: (cardId: string, index: number) => void;
   rewardActions?: React.ReactNode;
   resourceActions?: React.ReactNode;
@@ -348,12 +347,10 @@ export default function PTVPlayerBoard({
   rewardSelectionHint = null,
   mustHealOrSkip = false,
   mustDiscardRewards = false,
-  powerLabel,
+  medallion,
   inScene = false,
-  powerDisabled = true,
   onClickScum,
   onClickVengeance,
-  onClickPower,
   onClickRewardCard,
   rewardActions,
   resourceActions,
@@ -368,6 +365,7 @@ export default function PTVPlayerBoard({
 }: PTVPlayerBoardProps) {
   const { ref, scale } = useResponsiveScale(844, 1, 0.7);
   const s = (value: number) => value * scale;
+  const powerLabel = medallion?.powerName ?? "Unknown";
   const powerArtSrc = getPowerArtSrc(powerLabel);
   const summaryTextDisplay = normalizeSummaryText(summaryText, displayName);
   const figureCardWidth = s(150);
@@ -656,20 +654,18 @@ export default function PTVPlayerBoard({
               FACTION POWER
             </div>
 
-            <button
-              type="button"
-              onClick={powerDisabled ? undefined : onClickPower}
-              disabled={powerDisabled}
-              title={powerDisabled ? "Power not available yet" : powerLabel}
+            <div
+              role="img"
+              aria-label={medallion ? `${powerLabel}: ${medallion.tooltip}` : powerLabel}
+              data-power-state={medallion?.state ?? "idle"}
+              title={medallion?.tooltip ?? powerLabel}
               style={{
                 border: "1px solid var(--border-muted)",
                 borderRadius: s(16),
-                background: powerDisabled
-                  ? "var(--surface-muted)"
-                  : "var(--surface-bg)",
+                background: "var(--surface-muted)",
                 color: "inherit",
-                cursor: powerDisabled ? "not-allowed" : "pointer",
-                opacity: powerDisabled ? 0.82 : 1,
+                cursor: "default",
+                opacity: 0.82,
                 padding: 0,
                 overflow: "hidden",
                 width: s(190),
@@ -706,7 +702,7 @@ export default function PTVPlayerBoard({
                   {powerLabel}
                 </div>
               )}
-            </button>
+            </div>
           </div>
         </div>
 
