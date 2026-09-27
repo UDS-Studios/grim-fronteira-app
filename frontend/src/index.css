@@ -300,3 +300,44 @@ button:focus-visible {
     transition: none;
   }
 }
+
+/* Recovery help is secondary to normal pending-player controls. */
+.reclaim-control {
+  position: relative;
+}
+.reclaim-control:hover,
+.reclaim-control:focus-within {
+  z-index: 50;
+}
+.reclaim-button {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-muted);
+}
+.reclaim-button:focus-visible {
+  outline: 3px solid var(--accent-danger);
+  outline-offset: 3px;
+}
+.reclaim-warning {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: var(--accent-danger);
+  box-shadow: 0 6px 18px #0004;
+  font-size: 15px;
+  line-height: 1.45;
+  visibility: hidden;
+  pointer-events: none;
+}
+.reclaim-control:hover .reclaim-warning,
+.reclaim-control:focus-within .reclaim-warning {
+  visibility: visible;
+  pointer-events: auto;
+}

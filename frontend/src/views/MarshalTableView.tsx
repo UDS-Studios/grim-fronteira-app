@@ -1,3 +1,4 @@
+import ReclaimInteractionControl from "../components/ReclaimInteractionControl";
 import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
 import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
@@ -1266,9 +1267,9 @@ export default function MarshalTableView({
             <div role="status">
               Interaction pending for {lobbyPlayers[pendingInteraction.actor_id]?.chosen_name ?? pendingInteraction.actor_id}. Scene actions are paused.
             </div>
-            <button type="button" onClick={handleReclaimPending} disabled={reclaimPending || currentActorId !== marshalId}>
-              {reclaimPending ? "Reclaiming…" : "Reclaim interaction"}
-            </button>
+            <ReclaimInteractionControl busy={reclaimPending}
+              disabled={reclaimPending || currentActorId !== marshalId}
+              onReclaim={handleReclaimPending} />
           </div>
         )}
 

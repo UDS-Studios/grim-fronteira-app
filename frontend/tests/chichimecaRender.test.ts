@@ -115,7 +115,7 @@ test("actual table router renders the closed-scene prompt and target while prese
     assert.ok(!other.includes('aria-label="Target Chichimeca with Children of the Earth"'));
 
     const marshal = render("marshal");
-    assert.match(marshal, /<button type="button">Reclaim interaction<\/button>/);
+    assert.match(marshal, /<button type="button"[^>]*>Reclaim interaction<\/button>/);
     assert.ok(marshal.includes("Scene actions are paused."));
   } finally {
     await server.close();

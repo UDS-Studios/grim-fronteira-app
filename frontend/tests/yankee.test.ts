@@ -86,7 +86,7 @@ test("Yankee rendered privacy, lifecycle, deck count, controls, and exact reques
     assert.equal(marshalRoute.props.children.props.view, "marshal");
     const marshal = render("marshal", marshalResponse, "marshal");
     assert.ok(marshal.includes("Interaction pending for Yankee A. Scene actions are paused."));
-    assert.match(marshal, /<button type="button">Reclaim interaction<\/button>/);
+    assert.match(marshal, /<button type="button"[^>]*>Reclaim interaction<\/button>/);
     assert.ok(!marshal.includes(">KEEP<") && !marshal.includes(">BURY<"));
     assert.ok(!marshal.includes(INSPECTED_CARD));
     assert.ok(!marshal.includes("Inspected top card"));
