@@ -1,3 +1,5 @@
+import YankeeDeck from "./player_table/PTV-YankeeDeck";
+import { getYankeeInspectedCardId, getYankeeChoiceRequest, type YankeeChoice } from "./player_table/yankee";
 import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
 import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
@@ -537,6 +539,20 @@ export default function PlayerTableView({
   const hasPendingInteraction = pendingInteraction !== null;
   const isPendingActor = isPendingInteractionActor(state, currentActorId);
   const pendingIdentity = getPendingInteractionIdentity(state);
+
+  const yankeeCardId = view === "player" ? getYankeeInspectedCardId(state, currentActorId) : null;
+
+  async function handleYankeeChoice(choice: YankeeChoice) {
+    if (view !== "player" || sceneActionPending) return;
+    const request = getYankeeChoiceRequest(state, resp.game_id, currentActorId, choice);
+    if (!request) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction(request));
+    } finally {
+      setSceneActionPending(false);
+    }
+  }
 
   const chichimecaActive = isChichimecaPendingForActor(state, currentActorId);
   const chichimecaTargets = getChichimecaEligibleTargetIds(state, currentActorId);
@@ -1368,7 +1384,12 @@ export default function PlayerTableView({
 
         {hasPendingInteraction && (
           <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
-            {chichimecaActive ? (
+            {yankeeCardId !== null ? (
+              <div className="table-target-prompt">
+                <strong>Order and Profit · Inspect the top card</strong>
+                <div>Keep it on top or bury it at the bottom of the deck.</div>
+              </div>
+            ) : chichimecaActive ? (
               <div className="table-target-prompt">
                 <strong>Children of the Earth · Choose an enemy</strong>
                 <div>Choose an enemy to steal 1 Scum from.</div>
@@ -1563,45 +1584,48 @@ export default function PlayerTableView({
           <div className="table-deck-stack">
             <ResponsiveScaleBox baseWidth={440} minScale={0.5} maxScale={1}>
               <TableZone title="Deck">
-                <button
-                  type="button"
-                  onClick={handleSceneDraw}
-                  disabled={!canDrawFromDeck}
-                  style={{
-                    border: "1px solid var(--border-muted)",
-                    borderRadius: ds(12),
-                    padding: 8,
-                    background: "var(--surface-strong)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: ds(10),
-                    width: "100%",
-                    boxSizing: "border-box",
-                    cursor: canDrawFromDeck ? "pointer" : "not-allowed",
-                    opacity: canDrawFromDeck ? 1 : 0.65,
-                  }}
-                  title={deckTooltip}
-                >
-                  {typeof deckCount === "number" && deckCount > 0 ? (
-                    <CardImg cardId="BACK" faceDown width={DECK_CARD_WIDTH} title="Deck" />
-                  ) : (
-                    <div
-                      style={{
-                        width: DECK_CARD_WIDTH,
-                        height: DECK_CARD_WIDTH * 1.45,
-                        border: "2px dashed var(--border-muted)",
-                        borderRadius: ds(10),
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "var(--text-muted)",
-                        fontSize: ds(12),
-                        background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      empty
-                    </div>
+                {yankeeCardId !== null ? (
+                  <YankeeDeck cardId={yankeeCardId} deckCount={deckCount} busy={sceneActionPending} onChoose={handleYankeeChoice} />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSceneDraw}
+                    disabled={!canDrawFromDeck}
+                    style={{
+                      border: "1px solid var(--border-muted)",
+                      borderRadius: ds(12),
+                      padding: 8,
+                      background: "var(--surface-strong)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: ds(10),
+                      width: "100%",
+                      boxSizing: "border-box",
+                      cursor: canDrawFromDeck ? "pointer" : "not-allowed",
+                      opacity: canDrawFromDeck ? 1 : 0.65,
+                    }}
+                    title={deckTooltip}
+                  >
+                    {typeof deckCount === "number" && deckCount > 0 ? (
+                      <CardImg cardId="BACK" faceDown width={DECK_CARD_WIDTH} title="Deck" />
+                    ) : (
+                      <div
+                        style={{
+                          width: DECK_CARD_WIDTH,
+                          height: DECK_CARD_WIDTH * 1.45,
+                          border: "2px dashed var(--border-muted)",
+                          borderRadius: ds(10),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--text-muted)",
+                          fontSize: ds(12),
+                          background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        empty
+                      </div>
                   )}
                   <div style={{ fontSize: 28, textAlign: "left" }}>
                     <div>
@@ -1610,6 +1634,7 @@ export default function PlayerTableView({
                     <div style={{ fontSize: ds(12), opacity: 0.75 }}>{deckTooltip}</div>
                   </div>
                 </button>
+                )}
               </TableZone>
             </ResponsiveScaleBox>
 
