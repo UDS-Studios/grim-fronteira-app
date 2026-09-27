@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { newGame, getGame, gfAction } from "./api/gf";
-import type { ActionResponse, View } from "./api/types";
+import type { ActionResponse } from "./api/types";
 import { getFreshPlayerId, getOrCreatePlayerId, persistPlayerId } from "./utils/identity";
+import { getSessionView, type InspectionView } from "./utils/sessionView";
 import { getGameEntryMode } from "./utils/reconnect";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
@@ -13,7 +14,7 @@ import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
-  const [view, setView] = useState<View>("public");
+  const [inspectionView, setInspectionView] = useState<InspectionView>("public");
   const [gameId, setGameId] = useState("");
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
@@ -24,6 +25,8 @@ export default function App() {
   const [joinGameId, setJoinGameId] = useState("");
   const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">("home");
   const [closedGameId, setClosedGameId] = useState("");
+
+  const { view, viewer_id: viewerId } = getSessionView(resp?.state.meta ?? {}, currentActorId, inspectionView);
 
   useEffect(() => {
     // Also retain an already-joined in-memory actor when a development tab hot-reloads.
@@ -44,7 +47,7 @@ export default function App() {
 
     const sync = async () => {
       try {
-        const r = await getGame(gameId, view, view === "player" ? currentActorId : undefined);
+        const r = await getGame(gameId, view, viewerId);
         if (cancelled) return;
 
         if (!r.error) {
@@ -67,7 +70,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [screen, gameId, view, currentActorId]);
+  }, [screen, gameId, view, viewerId]);
 
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
@@ -146,41 +149,43 @@ export default function App() {
                 newGame({
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
-                  view,
-                  viewer_id: view === "player" ? currentActorId : undefined,
+                  // The creator becomes Marshal, so creation uses the non-player view.
+                  view: inspectionView,
                 })
               )
             }
             onJoinGame={async () => {
-              const r = await run(getGame(joinGameId, view, view === "player" ? currentActorId : undefined));
-              if (r.error) return;
+              let entryMode: ReturnType<typeof getGameEntryMode> | undefined;
+              const response = await run((async () => {
+                // Discover identity/routing without entering gameplay on this public response.
+                const loaded = await getGame(joinGameId, "public");
+                if (loaded.error) return loaded;
+                const loadedMeta = loaded.state.meta ?? {};
+                entryMode = getGameEntryMode(loadedMeta, currentActorId);
+                if (entryMode === "closed") return loaded;
+                if (entryMode === "reconnect") {
+                  const session = getSessionView(loadedMeta, currentActorId, inspectionView);
+                  return getGame(loaded.game_id, session.view, session.viewer_id);
+                }
 
-              const loadedMeta = (r.state?.meta ?? {}) as MetaAny;
-              const entryMode = getGameEntryMode(loadedMeta, currentActorId);
-              // run already loaded this response and entered normal game routing.
-              if (entryMode === "reconnect") return;
-
-              if (entryMode === "closed") {
-                setClosedGameId(r.game_id);
-                setScreen("registration-closed");
-                return;
-              }
-
-              const freshPlayerId = getFreshPlayerId();
-
-              const joinResp = await run(
-                gfAction({
-                  game_id: r.game_id,
+                const freshPlayerId = getFreshPlayerId();
+                const joined = await gfAction({
+                  game_id: loaded.game_id,
                   action: "gf.join_lobby",
                   params: { player_id: freshPlayerId },
-                  view,
-                  viewer_id: view === "player" ? freshPlayerId : undefined,
-                })
-              );
-              if (joinResp.error) return;
-
-              setCurrentActorId(persistPlayerId(freshPlayerId));
-              setSelectedPlayerId(freshPlayerId);
+                  view: "player",
+                  viewer_id: freshPlayerId,
+                });
+                if (!joined.error) {
+                  setCurrentActorId(persistPlayerId(freshPlayerId));
+                  setSelectedPlayerId(freshPlayerId);
+                }
+                return joined;
+              })());
+              if (!response.error && entryMode === "closed") {
+                setClosedGameId(response.game_id);
+                setScreen("registration-closed");
+              }
             }}
           />
         </div>
@@ -229,8 +234,8 @@ export default function App() {
         >
           <div className={isTable ? "table-dev-controls" : undefined} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
             <label>
-              View:&nbsp;
-              <select value={view} onChange={(e) => setView(e.target.value as View)}>
+              Non-player inspection:&nbsp;
+              <select value={inspectionView} disabled={view === "player"} onChange={(e) => setInspectionView(e.target.value as InspectionView)}>
                 <option value="public">public</option>
                 <option value="debug">debug</option>
               </select>
@@ -238,7 +243,7 @@ export default function App() {
 
             <button onClick={() => setScreen("home")}>Home</button>
 
-            <button disabled={!gameId} onClick={() => run(getGame(gameId, view, view === "player" ? currentActorId : undefined))}>
+            <button disabled={!gameId} onClick={() => run(getGame(gameId, view, viewerId))}>
               Refresh
             </button>
 
