@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import type { FactionName } from "../src/api/types.ts";
 import { getFactionMedallion } from "../src/views/player_table/factionMedallion.ts";
 import { isCriolloAvailable } from "../src/views/player_table/criollo.ts";
@@ -123,9 +124,15 @@ test("actual table passes semantic state and tooltip to a non-interactive Player
         assert.ok(tag, "medallion must be a non-button semantic image");
         assert.ok(tag.includes(`data-power-state="${active ? cases[faction].state : "idle"}"`));
         const tooltip = active ? cases[faction].instruction : cases[faction].description;
-        assert.ok(tag.includes(`title="${tooltip.replaceAll("'", "&#x27;")}"`));
-        assert.ok(tag.includes(`aria-label="${cases[faction].powerName}:`));
-        assert.doesNotMatch(tag, /onclick|tabindex|7D|inspected_card_id|Heart of Ombra|Children of the Land|discard/);
+        assert.ok(tag.includes('tabindex="0"'));
+        assert.ok(tag.includes(`aria-label="${cases[faction].powerName}. ${tooltip.replaceAll("'", "&#x27;")}"`));
+        assert.doesNotMatch(tag, /onclick|title=|role="button"|7D|inspected_card_id|Heart of Ombra|Children of the Land|discard/);
+        const popup = html.match(/<span class="faction-medallion-tooltip"[^>]*><strong>[^<]*<\/strong><span>[^<]*<\/span><\/span>/)?.[0];
+        assert.ok(popup, "in-app tooltip renders the centralized current copy");
+        assert.ok(popup.includes(`<strong>${cases[faction].powerName}</strong>`));
+        assert.ok(popup.includes(tooltip.replaceAll("'", "&#x27;")));
+        assert.ok(popup.includes('aria-hidden="true"'), "label already supplies the same text to assistive technology");
+        assert.doesNotMatch(popup, /7D|inspected_card_id|Heart of Ombra|Children of the Land|discard/);
         assert.ok(html.includes(`alt="${cases[faction].powerName}"`));
       }
     }
@@ -135,4 +142,24 @@ test("actual table passes semantic state and tooltip to a non-interactive Player
       assert.match(render(dead), /data-power-state="idle"/, "existing living-player availability gate is reused");
     }
   } finally { await server.close(); }
+});
+
+
+test("medallion CSS provides hover/focus tooltips, distinct glows, stable geometry and reduced motion", async () => {
+  const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
+  for (const state of ["idle", "available", "resolving"]) {
+    assert.ok(css.includes(`.faction-medallion[data-power-state="${state}"]`));
+  }
+  assert.match(css, /data-power-state="idle"\]\s*\{[^}]*box-shadow: none/);
+  assert.match(css, /data-power-state="available"\]\s*\{[^}]*animation: medallion-breathe 4.8s/);
+  assert.match(css, /data-power-state="resolving"\]\s*\{[^}]*animation: medallion-resolving-breathe 4s/);
+  assert.match(css, /\.faction-medallion-tooltip\s*\{[^}]*position: absolute;[^}]*right: calc\(100% \+ 12px\);[^}]*top: 0;/);
+  assert.match(css, /\.faction-medallion-tooltip\s*\{[^}]*visibility: hidden;[^}]*pointer-events: none;/);
+  assert.match(css, /\.faction-medallion:hover \.faction-medallion-tooltip,\s*\.faction-medallion:focus \.faction-medallion-tooltip\s*\{[^}]*visibility: visible;[^}]*pointer-events: auto;/);
+  assert.match(css, /\.faction-medallion:focus-visible\s*\{[^}]*outline:/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.faction-medallion\[data-power-state\]\s*\{[^}]*animation: none;[^}]*transition: none;/);
+  const board = await readFile(new URL("../src/views/player_table/PTV-PlayerBoard.tsx", import.meta.url), "utf8");
+  const medallion = board.slice(board.indexOf('className="faction-medallion"'), board.indexOf('{powerArtSrc ?'));
+  assert.doesNotMatch(medallion, /onClick|onMouseDown|onPointerDown/);
+  assert.match(medallion, /width: s\(190\),\s*height: s\(190\)/);
 });

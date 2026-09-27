@@ -656,21 +656,14 @@ export default function PTVPlayerBoard({
 
             <div
               role="img"
-              aria-label={medallion ? `${powerLabel}: ${medallion.tooltip}` : powerLabel}
+              className="faction-medallion"
+              tabIndex={0}
+              aria-label={medallion ? `${powerLabel}. ${medallion.tooltip}` : powerLabel}
               data-power-state={medallion?.state ?? "idle"}
-              title={medallion?.tooltip ?? powerLabel}
               style={{
-                border: "1px solid var(--border-muted)",
                 borderRadius: s(16),
-                background: "var(--surface-muted)",
-                color: "inherit",
-                cursor: "default",
-                opacity: 0.82,
-                padding: 0,
-                overflow: "hidden",
                 width: s(190),
                 height: s(190),
-                display: "block",
               }}
             >
               {powerArtSrc ? (
@@ -682,6 +675,7 @@ export default function PTVPlayerBoard({
                     width: "100%",
                     height: "100%",
                     objectFit: "cover",
+                    borderRadius: "inherit",
                   }}
                 />
               ) : (
@@ -701,6 +695,12 @@ export default function PTVPlayerBoard({
                 >
                   {powerLabel}
                 </div>
+              )}
+              {medallion && (
+                <span className="faction-medallion-tooltip" role="tooltip" aria-hidden="true">
+                  <strong>{medallion.powerName}</strong>
+                  <span>{medallion.tooltip}</span>
+                </span>
               )}
             </div>
           </div>
