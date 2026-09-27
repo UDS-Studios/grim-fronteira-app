@@ -1,3 +1,4 @@
+import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import MarshalTableView from "./MarshalTableView";
 import PlayerTableView from "./PlayerTableView";
 import type { ActionResponse, View } from "../api/types";
@@ -17,31 +18,22 @@ export default function TableRouterView({
   run,
   onBackHome,
 }: TableRouterViewProps) {
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const meta = state.meta ?? {};
   const marshalId = meta.marshal_id ?? "";
 
   const isMarshal = currentActorId === marshalId;
 
-  if (isMarshal) {
-    return (
-      <MarshalTableView
+  const Table = isMarshal ? MarshalTableView : PlayerTableView;
+  return (
+    <ResponsiveScaleBox baseWidth={1800} fit="viewport">
+      <Table
         resp={resp}
         view={view}
         currentActorId={currentActorId}
         run={run}
         onBackHome={onBackHome}
       />
-    );
-  }
-
-  return (
-    <PlayerTableView
-      resp={resp}
-      view={view}
-      currentActorId={currentActorId}
-      run={run}
-      onBackHome={onBackHome}
-    />
+    </ResponsiveScaleBox>
   );
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { newGame, getGame, gfAction } from "./api/gf";
-import type { ActionResponse, View } from "./api/types";
-import { getFreshPlayerId, getOrCreateClientId } from "./utils/identity";
+import type { ActionResponse } from "./api/types";
+import { getFreshPlayerId, getOrCreatePlayerId, persistPlayerId } from "./utils/identity";
+import { getSessionView, type InspectionView } from "./utils/sessionView";
+import { getGameEntryMode } from "./utils/reconnect";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
@@ -12,24 +14,24 @@ import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
-  const [view, setView] = useState<View>("public");
+  const [inspectionView, setInspectionView] = useState<InspectionView>("public");
   const [gameId, setGameId] = useState("");
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
-  const [currentActorId, setCurrentActorId] = useState("");
+  const [currentActorId, setCurrentActorId] = useState(getOrCreatePlayerId);
   const [joinPlayerId, setJoinPlayerId] = useState("");
-  const [selectedPlayerId, setSelectedPlayerId] = useState("");
+  const [selectedPlayerId, setSelectedPlayerId] = useState(currentActorId);
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
   const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">("home");
   const [closedGameId, setClosedGameId] = useState("");
-  const [closedMarshalId, setClosedMarshalId] = useState("");
+
+  const { view, viewer_id: viewerId } = getSessionView(resp?.state.meta ?? {}, currentActorId, inspectionView);
 
   useEffect(() => {
-    const id = getOrCreateClientId();
-    setCurrentActorId(id);
-    setSelectedPlayerId(id);
-  }, []);
+    // Also retain an already-joined in-memory actor when a development tab hot-reloads.
+    persistPlayerId(currentActorId);
+  }, [currentActorId]);
 
   useEffect(() => {
     if (screen !== "game" || !gameId) return;
@@ -45,7 +47,7 @@ export default function App() {
 
     const sync = async () => {
       try {
-        const r = await getGame(gameId, view);
+        const r = await getGame(gameId, view, viewerId);
         if (cancelled) return;
 
         if (!r.error) {
@@ -68,7 +70,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [screen, gameId, view]);
+  }, [screen, gameId, view, viewerId]);
 
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
@@ -82,7 +84,7 @@ export default function App() {
         // stay on the current screen so we can inspect the real error
       }
       return r;
-    } catch (e: any) {
+    } catch (e: unknown) {
       const errResp: ActionResponse = {
         game_id: gameId,
         revision: 0,
@@ -91,7 +93,7 @@ export default function App() {
         result: {},
         error: {
           code: "CLIENT_FETCH_ERROR",
-          message: e?.message ?? String(e),
+          message: e instanceof Error ? e.message : String(e),
           details: null,
         },
       };
@@ -101,7 +103,7 @@ export default function App() {
     }
   }
 
-  const state = (resp?.state as any) ?? {};
+  const state = resp?.state ?? {};
   const meta: MetaAny = state.meta ?? {};
   const zones = state.zones ?? {};
   const phase = meta.phase ?? "no-game";
@@ -111,18 +113,21 @@ export default function App() {
       ? (zones[`players.${victoryWinnerId}.character`]?.[0] ?? null)
       : null;
   const showMarshalVictoryPortrait = victoryWinnerId === "marshal";
-  const viewportHeight = "calc(100vh - 32px)";
+  const viewportHeight = "calc(100dvh - 32px)";
+  const isTable = screen === "game" && (phase === "started" || phase === "table");
   const useScrollableGameContent = phase === "lobby";
-  const useFixedGameViewport = phase === "lobby";
+  const useFixedGameViewport = phase === "lobby" || isTable;
 
   return (
     <div
       style={{
-        padding: 16,
+        padding: isTable ? 8 : 16,
+        height: isTable ? "100dvh" : undefined,
+        overflow: isTable ? "hidden" : undefined,
         boxSizing: "border-box",
         fontFamily: "system-ui, sans-serif",
         background: "var(--app-bg)",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         flexDirection: "column",
       }}
@@ -144,39 +149,43 @@ export default function App() {
                 newGame({
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
-                  view,
+                  // The creator becomes Marshal, so creation uses the non-player view.
+                  view: inspectionView,
                 })
               )
             }
             onJoinGame={async () => {
-              const r = await run(getGame(joinGameId, view));
-              if (r.error) return;
+              let entryMode: ReturnType<typeof getGameEntryMode> | undefined;
+              const response = await run((async () => {
+                // Discover identity/routing without entering gameplay on this public response.
+                const loaded = await getGame(joinGameId, "public");
+                if (loaded.error) return loaded;
+                const loadedMeta = loaded.state.meta ?? {};
+                entryMode = getGameEntryMode(loadedMeta, currentActorId);
+                if (entryMode === "closed") return loaded;
+                if (entryMode === "reconnect") {
+                  const session = getSessionView(loadedMeta, currentActorId, inspectionView);
+                  return getGame(loaded.game_id, session.view, session.viewer_id);
+                }
 
-              const loadedMeta = ((r.state as any)?.meta ?? {}) as MetaAny;
-              const lobby = loadedMeta.lobby ?? {};
-              const marshalId = loadedMeta.marshal_id ?? "";
-
-              if (!lobby.registration_open) {
-                setClosedGameId(r.game_id);
-                setClosedMarshalId(marshalId);
-                setScreen("registration-closed");
-                return;
-              }
-
-              const freshPlayerId = getFreshPlayerId();
-
-              const joinResp = await run(
-                gfAction({
-                  game_id: r.game_id,
+                const freshPlayerId = getFreshPlayerId();
+                const joined = await gfAction({
+                  game_id: loaded.game_id,
                   action: "gf.join_lobby",
                   params: { player_id: freshPlayerId },
-                  view,
-                })
-              );
-              if (joinResp.error) return;
-
-              setCurrentActorId(freshPlayerId);
-              setSelectedPlayerId(freshPlayerId);
+                  view: "player",
+                  viewer_id: freshPlayerId,
+                });
+                if (!joined.error) {
+                  setCurrentActorId(persistPlayerId(freshPlayerId));
+                  setSelectedPlayerId(freshPlayerId);
+                }
+                return joined;
+              })());
+              if (!response.error && entryMode === "closed") {
+                setClosedGameId(response.game_id);
+                setScreen("registration-closed");
+              }
             }}
           />
         </div>
@@ -186,13 +195,11 @@ export default function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <RegistrationClosedView
             gameId={closedGameId}
-            marshalId={closedMarshalId}
             onBackHome={() => {
               setResp(null);
               setGameId("");
               setJoinGameId("");
               setClosedGameId("");
-              setClosedMarshalId("");
               setScreen("home");
             }}
           />
@@ -216,18 +223,19 @@ export default function App() {
       {screen === "game" && (
         <div
           style={{
-            height: useFixedGameViewport ? viewportHeight : undefined,
-            minHeight: viewportHeight,
+            height: isTable ? "100%" : useFixedGameViewport ? viewportHeight : undefined,
+            minHeight: isTable ? 0 : viewportHeight,
+            minWidth: 0,
             display: "flex",
             flexDirection: "column",
             overflow: useFixedGameViewport ? "hidden" : "visible",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div className={isTable ? "table-dev-controls" : undefined} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
             <label>
-              View:&nbsp;
-              <select value={view} onChange={(e) => setView(e.target.value as View)}>
+              Non-player inspection:&nbsp;
+              <select value={inspectionView} disabled={view === "player"} onChange={(e) => setInspectionView(e.target.value as InspectionView)}>
                 <option value="public">public</option>
                 <option value="debug">debug</option>
               </select>
@@ -235,16 +243,20 @@ export default function App() {
 
             <button onClick={() => setScreen("home")}>Home</button>
 
-            <button disabled={!gameId} onClick={() => run(getGame(gameId, view))}>
+            <button disabled={!gameId} onClick={() => run(getGame(gameId, view, viewerId))}>
               Refresh
             </button>
 
             <input
-              style={{ width: 360 }}
+              style={{ width: 360, maxWidth: "100%", minWidth: 0 }}
               placeholder="game_id"
               value={gameId}
               onChange={(e) => setGameId(e.target.value)}
             />
+            {isTable && <details className="table-debug">
+              <summary>State JSON</summary>
+              <pre>{JSON.stringify(resp, null, 2)}</pre>
+            </details>}
           </div>
 
           {resp?.error && (
@@ -261,7 +273,7 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ marginTop: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ marginTop: isTable ? 4 : 12, display: "flex", gap: 16, flexWrap: "wrap", flexShrink: 0, fontSize: isTable ? 12 : undefined }}>
             <div><b>revision:</b> {resp?.revision ?? "-"}</div>
             <div><b>game_id:</b> {resp?.game_id ?? "-"}</div>
             <div><b>phase:</b> {phase}</div>
@@ -271,6 +283,7 @@ export default function App() {
             style={{
               flex: useFixedGameViewport ? 1 : "0 0 auto",
               minHeight: 0,
+              minWidth: 0,
               overflowY: useScrollableGameContent ? "auto" : "visible",
               overflowX: useFixedGameViewport ? "hidden" : "visible",
               display: "flex",
@@ -341,7 +354,7 @@ export default function App() {
         </div>
       )}
 
-      {resp && screen !== "home" && (
+      {resp && screen !== "home" && !isTable && (
         <pre
           style={{
             marginTop: 14,

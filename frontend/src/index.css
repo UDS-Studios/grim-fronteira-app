@@ -21,6 +21,7 @@
   --text-primary: #213547;
   --text-muted: rgba(33, 53, 71, 0.75);
   --accent-danger: #7a1f1f;
+  --target-positive: #2f8f3e;
   --danger-bg: #fff4f4;
   --danger-border: #c00;
   --input-bg: #ffffff;
@@ -127,6 +128,7 @@ button:focus-visible {
     --text-primary: #f3ead3;
     --text-muted: rgba(243, 234, 211, 0.78);
     --accent-danger: #d47f72;
+    --target-positive: #78c98a;
     --danger-bg: #4f2d2d;
     --danger-border: #d47f72;
     --input-bg: #40382a;
@@ -136,4 +138,206 @@ button:focus-visible {
     --card-bg: #f4efe4;
     --player-selected-bg: rgba(255, 255, 255, 0.12);
   }
+}
+
+.other-player-target:focus-visible {
+  outline: 3px solid var(--target-positive);
+  outline-offset: 3px;
+}
+
+/* The table is measured at its natural size, then scaled once into the flex remainder. */
+.saloon-composition { display: flow-root; }
+.saloon-composition > div { min-width: 0; min-height: 0; }
+.table-dev-controls button { padding: 0.35em 0.8em; }
+.table-debug { position: relative; margin-left: auto; }
+.table-debug summary { cursor: pointer; }
+.table-debug pre {
+  position: absolute; right: 0; top: 100%; z-index: 100;
+  width: min(720px, calc(100vw - 32px)); max-height: 60dvh;
+  overflow: auto; padding: 12px; box-sizing: border-box;
+  border: 1px solid var(--border-strong); background: var(--surface-strong);
+}
+
+.table-target-prompt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  align-items: center;
+}
+.table-target-prompt > :not(button) { grid-column: 1; }
+.table-target-prompt > button { grid-column: 2; grid-row: 1 / 4; }
+.discard-card { position: relative; min-width: 0; }
+.discard-card:hover, .discard-card:focus-visible { z-index: 20; }
+.discard-card:focus-visible { outline: 3px solid var(--border-strong); }
+
+.scene-status {
+  min-width: 0;
+  padding: 14px 16px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  font-family: LavaArabic, serif;
+  font-size: 28px;
+  line-height: 1.3;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.scene-status--your-turn {
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
+  font-size: 34px;
+  font-weight: 800;
+}
+
+:root { --difficulty-base-size: 3rem; }
+.table-deck-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-content: start;
+}
+
+/* Status only: the focusable medallion never activates a faction power. */
+.faction-medallion {
+  --medallion-gold: #c39a50;
+  --medallion-light: #edca85;
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border-muted);
+  background: var(--surface-muted);
+  color: inherit;
+  cursor: default;
+  overflow: visible;
+  transition: filter 180ms ease;
+}
+.faction-medallion[data-power-state="idle"] {
+  opacity: 1;
+  filter: brightness(1);
+  box-shadow: none;
+}
+.faction-medallion[data-power-state="available"] {
+  border-color: var(--medallion-gold);
+  filter: brightness(1.06);
+  box-shadow: 0 0 0 1px var(--medallion-gold), 0 0 18px #c39a5066;
+  animation: medallion-breathe 4.8s ease-in-out infinite;
+}
+.faction-medallion[data-power-state="resolving"] {
+  border-color: var(--medallion-light);
+  filter: brightness(1.12);
+  box-shadow: 0 0 0 2px var(--medallion-light), 0 0 28px #c39a5099;
+  animation: medallion-resolving-breathe 4s ease-in-out infinite;
+}
+@keyframes medallion-breathe {
+  50% { box-shadow: 0 0 0 1px var(--medallion-gold), 0 0 24px #c39a5080; }
+}
+@keyframes medallion-resolving-breathe {
+  50% { box-shadow: 0 0 0 2px var(--medallion-light), 0 0 34px #c39a50b3; }
+}
+.faction-medallion:hover,
+.faction-medallion:focus {
+  z-index: 30;
+}
+.faction-medallion:hover > img,
+.faction-medallion:focus > img {
+  filter: brightness(1.04);
+}
+.faction-medallion:focus-visible {
+  outline: 3px solid var(--text-primary);
+  outline-offset: 5px;
+}
+.faction-medallion-tooltip {
+  /* Open inward over the resource panel, inside the board's overflow clip.
+     Absolute positioning preserves the medallion's existing layout footprint. */
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 0;
+  z-index: 40;
+  width: 320px;
+  box-sizing: border-box;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--medallion-gold);
+  border-radius: 10px;
+  background: #292217;
+  color: #fff3d9;
+  box-shadow: 0 6px 18px #0006;
+  font-size: 16px;
+  line-height: 1.45;
+  text-align: left;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.faction-medallion-tooltip strong {
+  font-family: LavaArabic, serif;
+  font-size: 24px;
+  font-weight: normal;
+  line-height: 1.2;
+  color: #edca85;
+}
+/* Bridge the gap so the tooltip remains hoverable without a click. */
+.faction-medallion-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 100%;
+  top: 0;
+  width: 12px;
+  height: 100%;
+}
+.faction-medallion:hover .faction-medallion-tooltip,
+.faction-medallion:focus .faction-medallion-tooltip {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .faction-medallion[data-power-state] {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Recovery help is secondary to normal pending-player controls. */
+.reclaim-control {
+  position: relative;
+}
+.reclaim-control:hover,
+.reclaim-control:focus-within {
+  z-index: 50;
+}
+.reclaim-button {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-muted);
+}
+.reclaim-button:focus-visible {
+  outline: 3px solid var(--accent-danger);
+  outline-offset: 3px;
+}
+.reclaim-warning {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: var(--accent-danger);
+  box-shadow: 0 6px 18px #0004;
+  font-size: 15px;
+  line-height: 1.45;
+  visibility: hidden;
+  pointer-events: none;
+}
+.reclaim-control:hover .reclaim-warning,
+.reclaim-control:focus-within .reclaim-warning {
+  visibility: visible;
+  pointer-events: auto;
 }

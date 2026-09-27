@@ -1,4 +1,6 @@
+import type { FactionMedallion } from "./factionMedallion";
 import { useEffect, useRef, useState } from "react";
+import type { CriolloSelection } from "./criollo";
 import CardImg from "../../components/CardImg";
 import { publicAsset } from "../../app/assets";
 import { getTwentyOneColor } from "./sceneResolution";
@@ -21,14 +23,21 @@ export type PTVPlayerBoardProps = {
   rewardSelectionHint?: string | null;
   mustHealOrSkip?: boolean;
   mustDiscardRewards?: boolean;
-  powerLabel: string;
+  medallion: FactionMedallion | null;
   inScene?: boolean;
-  powerDisabled?: boolean;
   onClickScum?: () => void;
   onClickVengeance?: () => void;
-  onClickPower?: () => void;
   onClickRewardCard?: (cardId: string, index: number) => void;
   rewardActions?: React.ReactNode;
+  resourceActions?: React.ReactNode;
+  paisaSelecting?: boolean;
+  paisaSelection?: string[];
+  paisaSelectionLocked?: boolean;
+  onSelectPaisaCard?: (cardId: string) => void;
+  criolloSelecting?: boolean;
+  criolloSelection?: CriolloSelection | null;
+  criolloSelectionLocked?: boolean;
+  onSelectCriolloCard?: (selection: CriolloSelection) => void;
 };
 
 type PowerArtKey =
@@ -338,17 +347,25 @@ export default function PTVPlayerBoard({
   rewardSelectionHint = null,
   mustHealOrSkip = false,
   mustDiscardRewards = false,
-  powerLabel,
+  medallion,
   inScene = false,
-  powerDisabled = true,
   onClickScum,
   onClickVengeance,
-  onClickPower,
   onClickRewardCard,
   rewardActions,
+  resourceActions,
+  paisaSelecting = false,
+  paisaSelection = [],
+  paisaSelectionLocked = false,
+  onSelectPaisaCard,
+  criolloSelecting = false,
+  criolloSelection = null,
+  criolloSelectionLocked = false,
+  onSelectCriolloCard,
 }: PTVPlayerBoardProps) {
-  const { ref, scale } = useResponsiveScale(780, 1.4, 0.7);
+  const { ref, scale } = useResponsiveScale(844, 1, 0.7);
   const s = (value: number) => value * scale;
+  const powerLabel = medallion?.powerName ?? "Unknown";
   const powerArtSrc = getPowerArtSrc(powerLabel);
   const summaryTextDisplay = normalizeSummaryText(summaryText, displayName);
   const figureCardWidth = s(150);
@@ -395,10 +412,9 @@ export default function PTVPlayerBoard({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `${s(500)}px minmax(0, ${s(284)}px)`,
+            gridTemplateColumns: `${s(500)}px minmax(0, 1fr)`,
             columnGap: s(20),
             alignItems: "start",
-            justifyContent: "space-between",
             padding: `${s(18)}px ${s(20)}px ${s(20)}px`,
             borderBottom: "1px solid var(--border-muted)",
           }}
@@ -406,12 +422,13 @@ export default function PTVPlayerBoard({
           <div
             style={{
               width: s(500),
+              boxSizing: "border-box",
               display: "grid",
               gap: s(16),
               alignContent: "start",
               border: "1px solid var(--border-muted)",
               borderRadius: s(16),
-              padding: `${s(14)}px ${s(18)}px ${s(18)}px`,
+              padding: `${s(14)}px ${s(16)}px ${s(18)}px`,
               background: "var(--surface-bg)",
             }}
           >
@@ -444,15 +461,37 @@ export default function PTVPlayerBoard({
                   paddingTop: s(20),
                 }}
               >
-                <FixedWidthFaceDownStack
-                  cardIds={scumCardIds}
-                  revealedTopCardId={revealedScumCardId}
-                  title="SCUM"
-                  scale={scale}
-                  interactive={typeof onClickScum === "function"}
-                  disabled={typeof onClickScum !== "function"}
-                  onClick={onClickScum}
-                />
+                {criolloSelecting ? (
+                  <div style={{ display: "grid", gap: s(8), justifyItems: "center", maxHeight: s(250), overflowY: "auto" }}>
+                    <div>SCUM : {scumCardIds.length}</div>
+                    {scumCardIds.map((cardId) => (
+                      <button key={cardId} type="button"
+                        disabled={criolloSelectionLocked}
+                        aria-label={`Convert SCUM card ${cardId}`}
+                        aria-pressed={criolloSelection?.resource === "scum" && criolloSelection.cardId === cardId}
+                        onClick={() => onSelectCriolloCard?.({ cardId, resource: "scum" })}
+                        style={{
+                          padding: 3, borderRadius: s(12),
+                          border: criolloSelection?.resource === "scum" && criolloSelection.cardId === cardId
+                            ? "3px solid #d11f1f" : "3px solid transparent",
+                          background: "var(--surface-bg)",
+                          cursor: criolloSelectionLocked ? "default" : "pointer",
+                        }}>
+                        <CardImg cardId={cardId} width={s(88)} />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <FixedWidthFaceDownStack
+                    cardIds={scumCardIds}
+                    revealedTopCardId={revealedScumCardId}
+                    title="SCUM"
+                    scale={scale}
+                    interactive={typeof onClickScum === "function"}
+                    disabled={typeof onClickScum !== "function"}
+                    onClick={onClickScum}
+                  />
+                )}
               </div>
 
               <div
@@ -498,16 +537,58 @@ export default function PTVPlayerBoard({
                   paddingTop: s(20),
                 }}
               >
-                <FixedWidthFaceDownStack
-                  cardIds={vengeanceCardIds}
-                  title="VENGEANCE"
-                  scale={scale}
-                  interactive={typeof onClickVengeance === "function"}
-                  disabled={typeof onClickVengeance !== "function"}
-                  onClick={onClickVengeance}
-                />
+                {paisaSelecting ? (
+                  <div style={{ display: "grid", gap: s(8), justifyItems: "center", maxHeight: s(250), overflowY: "auto" }}>
+                    <div>VENGEANCE : {vengeanceCardIds.length}</div>
+                    {vengeanceCardIds.map(cardId => (
+                      <button key={cardId} type="button"
+                        disabled={paisaSelectionLocked || (!paisaSelection.includes(cardId) && paisaSelection.length >= 3)}
+                        aria-label={`Select Vengeance card ${cardId} for Heart of Shadow`}
+                        aria-pressed={paisaSelection.includes(cardId)}
+                        onClick={() => onSelectPaisaCard?.(cardId)}
+                        style={{
+                          padding: 3, borderRadius: s(12),
+                          border: paisaSelection.includes(cardId) ? "3px solid #d11f1f" : "3px solid transparent",
+                          background: "var(--surface-bg)",
+                          cursor: paisaSelectionLocked ? "default" : "pointer",
+                        }}>
+                        <CardImg cardId={cardId} width={s(88)} />
+                      </button>
+                    ))}
+                  </div>
+                ) : criolloSelecting ? (
+                  <div style={{ display: "grid", gap: s(8), justifyItems: "center", maxHeight: s(250), overflowY: "auto" }}>
+                    <div>VENGEANCE : {vengeanceCardIds.length}</div>
+                    {vengeanceCardIds.map((cardId) => (
+                      <button key={cardId} type="button"
+                        disabled={criolloSelectionLocked}
+                        aria-label={`Convert VENGEANCE card ${cardId}`}
+                        aria-pressed={criolloSelection?.resource === "vengeance" && criolloSelection.cardId === cardId}
+                        onClick={() => onSelectCriolloCard?.({ cardId, resource: "vengeance" })}
+                        style={{
+                          padding: 3, borderRadius: s(12),
+                          border: criolloSelection?.resource === "vengeance" && criolloSelection.cardId === cardId
+                            ? "3px solid #d11f1f" : "3px solid transparent",
+                          background: "var(--surface-bg)",
+                          cursor: criolloSelectionLocked ? "default" : "pointer",
+                        }}>
+                        <CardImg cardId={cardId} width={s(88)} />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <FixedWidthFaceDownStack
+                    cardIds={vengeanceCardIds}
+                    title="VENGEANCE"
+                    scale={scale}
+                    interactive={typeof onClickVengeance === "function"}
+                    disabled={typeof onClickVengeance !== "function"}
+                    onClick={onClickVengeance}
+                  />
+                )}
               </div>
             </div>
+            {resourceActions}
           </div>
 
           <div
@@ -516,11 +597,10 @@ export default function PTVPlayerBoard({
               boxSizing: "border-box",
               minWidth: 0,
               display: "grid",
-              gap: s(18),
+              gap: s(10),
               alignContent: "start",
               justifyItems: "start",
-              paddingTop: s(22),
-              paddingLeft: s(44),
+              paddingTop: s(4),
             }}
           >
             <div
@@ -539,9 +619,9 @@ export default function PTVPlayerBoard({
               style={{
                 display: "grid",
                 gap: s(2),
-                lineHeight: 1.2,
-                opacity: 0.82,
-                fontSize: s(15),
+                lineHeight: 1.4,
+                opacity: 0.9,
+                fontSize: s(18),
                 minWidth: 0,
                 width: "100%",
               }}
@@ -565,7 +645,7 @@ export default function PTVPlayerBoard({
             <div
               style={{
                 fontFamily: "LavaArabic, serif",
-                fontSize: s(16),
+                fontSize: s(24),
                 lineHeight: 1,
                 opacity: 0.9,
                 letterSpacing: "0.02em",
@@ -574,25 +654,16 @@ export default function PTVPlayerBoard({
               FACTION POWER
             </div>
 
-            <button
-              type="button"
-              onClick={powerDisabled ? undefined : onClickPower}
-              disabled={powerDisabled}
-              title={powerDisabled ? "Power not available yet" : powerLabel}
+            <div
+              role="img"
+              className="faction-medallion"
+              tabIndex={0}
+              aria-label={medallion ? `${powerLabel}. ${medallion.tooltip}` : powerLabel}
+              data-power-state={medallion?.state ?? "idle"}
               style={{
-                border: "1px solid var(--border-muted)",
                 borderRadius: s(16),
-                background: powerDisabled
-                  ? "var(--surface-muted)"
-                  : "var(--surface-bg)",
-                color: "inherit",
-                cursor: powerDisabled ? "not-allowed" : "pointer",
-                opacity: powerDisabled ? 0.82 : 1,
-                padding: 0,
-                overflow: "hidden",
-                width: s(150),
-                height: s(150),
-                display: "block",
+                width: s(190),
+                height: s(190),
               }}
             >
               {powerArtSrc ? (
@@ -604,6 +675,7 @@ export default function PTVPlayerBoard({
                     width: "100%",
                     height: "100%",
                     objectFit: "cover",
+                    borderRadius: "inherit",
                   }}
                 />
               ) : (
@@ -624,7 +696,13 @@ export default function PTVPlayerBoard({
                   {powerLabel}
                 </div>
               )}
-            </button>
+              {medallion && (
+                <span className="faction-medallion-tooltip" role="tooltip" aria-hidden="true">
+                  <strong>{medallion.powerName}</strong>
+                  <span>{medallion.tooltip}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
