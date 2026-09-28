@@ -244,7 +244,16 @@ def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug"
 def action(req: ActionRequest) -> ActionResponse:
     g = _get_game(req.game_id)
     with g.lock:
-        return _action_transition(req, g)
+        try:
+            return _action_transition(req, g)
+        except ValueError:
+            scene = g.state.meta.get("scene") or {}
+            if (req.view != "debug" and scene.get("dark_mode")
+                    and not (scene.get("dark") or {}).get("revealed", False)
+                    and req.action in {"gf.scene_dark_draw", "gf.scene_dark_discard_last", "gf.scene_dark_reveal"}):
+                # Error details must not disclose whether the hidden hand busted.
+                raise ValueError("Dark hand action is unavailable.") from None
+            raise
 
 
 def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
@@ -339,6 +348,8 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         }
 
     elif req.action == "gf.roll_difficulty":
+        if (game.meta.get("scene") or {}).get("dark_mode"):
+            raise ValueError("Dark encounters require gf.scene_roll_difficulty.")
         params = req.params
         player_ids = params.get("player_ids")
 

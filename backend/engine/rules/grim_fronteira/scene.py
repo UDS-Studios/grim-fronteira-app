@@ -1105,6 +1105,9 @@ def _set_victory(game: GameState, *, winner: str, winner_label: str, reason: str
 
 def set_exact_reward_victory(game: GameState, player_id: str) -> GameState:
     """Declare the selected exact-21 winner using the normal victory state."""
+    # Faction rewards must respect the same deferred Dark settlement as close.
+    if any(p.get("dark_reward_loss_pending") for p in _scene(game)["players"].values()):
+        return game
     return _set_victory(
         game,
         winner=player_id,
@@ -1366,6 +1369,8 @@ def resume_scene_new(game: GameState) -> GameState:
         raise ValueError("Scene-new resumption requires a closed scene.")
     if get_pending_interaction(game) is not None:
         raise ValueError("Consume the pending interaction before resuming scene-new.")
+    if any(p.get("dark_reward_loss_pending") for p in scene["players"].values()):
+        raise ValueError("Dark Reward losses must be resolved before starting a new scene.")
     # Compatibility for old saved wound debt: never trigger a past wound here.
     game = _apply_pending_scene_wounds(game, trigger=False)
     if _all_non_marshal_players_dead(game):
