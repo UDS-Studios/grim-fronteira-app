@@ -426,6 +426,7 @@ def test_scene_red_joker_difficulty_gives_each_player_one_scum():
     game, difficulty = scene_roll_difficulty(game, actor_id="host1")
 
     assert difficulty["card_id"] == "RJ"
+    assert game.meta["scene"]["dark_mode"] is False
     assert difficulty["effects"] == []
     assert game.zones["scene.difficulty"] == ["RJ"]
     assert game.zones["players.p1.scum"][-1] == "5H"
@@ -442,7 +443,8 @@ def test_scene_black_joker_difficulty_gives_each_player_one_vengeance():
     game, difficulty = scene_roll_difficulty(game, actor_id="host1")
 
     assert difficulty["card_id"] == "BJ"
-    assert difficulty["effects"] == ["DARK_MODE"]
+    assert difficulty["effects"] == []
+    assert game.meta["scene"]["dark_mode"] is False
     assert game.zones["scene.difficulty"] == ["BJ"]
     assert game.zones["players.p1.vengeance"][-1] == "5H"
     assert game.zones["players.p2.vengeance"][-1] == "6C"

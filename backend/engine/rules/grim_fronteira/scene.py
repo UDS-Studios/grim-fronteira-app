@@ -44,6 +44,7 @@ def default_scene_state() -> dict[str, Any]:
         "deck_exhausted": False,
         "deck_exhausted_participants": [],
         "dark_mode": False,
+        "dark": {"revealed": False},
         "bonus_assignments": {},
         "difficulty": {
             "rule_id": None,
@@ -115,6 +116,7 @@ def scene_set_participants(game: GameState, *, actor_id: str, participant_ids: l
     scene["participants"] = participant_ids.copy()
     if original_status != SCENE_STATUS_SETUP:
         scene["dark_mode"] = False
+        scene["dark"] = default_scene_state()["dark"]
         scene["difficulty"] = default_scene_state()["difficulty"]
         scene["azzardo"] = default_scene_state()["azzardo"]
     scene["players"] = players
@@ -143,11 +145,35 @@ def scene_set_mode(
     if mode != SCENE_MODE_DUEL and duel_subtype is not None:
         raise ValueError("duel_subtype can only be set when mode is 'duel'.")
 
+    if scene["dark_mode"] and mode == SCENE_MODE_DUEL and duel_subtype == SCENE_DUEL_SUBTYPE_PVP:
+        raise ValueError("PVP duels do not support Dark Mode.")
+
     scene["mode"] = mode
     scene["duel"] = {
         "subtype": duel_subtype if mode == SCENE_MODE_DUEL else None,
         "sudden_death": False,
     }
+    return _replace_scene(game, scene=scene)
+
+
+def scene_declare_dark(game: GameState, *, actor_id: str) -> GameState:
+    """Declare Dark explicitly before any public difficulty or Azzardo choice."""
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_SETUP:
+        raise ValueError("Dark can only be declared while the scene is in setup.")
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not support Dark Mode.")
+    if scene["difficulty"]["card_id"] is not None:
+        raise ValueError("Dark must be declared before scene difficulty is rolled.")
+    if scene["dark_mode"]:
+        raise ValueError("Dark has already been declared.")
+    if scene["azzardo"]["status"] != "unavailable" or scene["azzardo"]["card_id"] is not None:
+        raise ValueError("Dark must be declared before any Azzardo choice.")
+
+    scene["dark_mode"] = True
     return _replace_scene(game, scene=scene)
 
 
@@ -178,7 +204,6 @@ def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = 
         "card_id": card_id,
         "value": diff.value,
     }
-    scene["dark_mode"] = bool(any(effect.kind == "DARK_MODE" for effect in diff.effects))
 
     game = _replace_scene(game, scene=scene)
     return game, {
@@ -244,6 +269,8 @@ def scene_draw_azzardo(game: GameState, *, actor_id: str, seed: int | None = Non
     _require_marshal(game, actor_id)
 
     scene = _scene(game)
+    if scene["dark_mode"]:
+        raise ValueError("Azzardo cannot be drawn in Dark Mode.")
     if _is_pvp_duel(scene):
         raise ValueError("PVP duels do not use azzardo.")
     if scene["status"] != SCENE_STATUS_SETUP:
@@ -1763,6 +1790,7 @@ def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
 def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
     default = default_scene_state()
     scene_in = dict(raw_scene or {})
+    dark_in = dict(scene_in.get("dark") or {})
     duel_in = dict(scene_in.get("duel") or {})
     difficulty_in = dict(scene_in.get("difficulty") or {})
     azzardo_in = dict(scene_in.get("azzardo") or {})
@@ -1805,6 +1833,7 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             pid for pid in scene_in.get("deck_exhausted_participants") or [] if isinstance(pid, str)
         ],
         "dark_mode": bool(scene_in.get("dark_mode", default["dark_mode"])),
+        "dark": {"revealed": bool(dark_in.get("revealed", False))},
         "bonus_assignments": {
             pid: bonus
             for pid, bonus in dict(scene_in.get("bonus_assignments") or {}).items()

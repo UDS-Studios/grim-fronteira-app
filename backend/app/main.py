@@ -39,6 +39,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_set_participants,
     scene_set_mode,
     scene_roll_difficulty,
+    scene_declare_dark,
     scene_draw_azzardo,
     scene_remove_azzardo,
     scene_skip_azzardo,
@@ -533,6 +534,14 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
             "mode": mode,
             "duel_subtype": duel_subtype,
         }
+
+    elif req.action == "gf.scene_declare_dark":
+        actor_id = req.params.get("actor_id")
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        game = scene_declare_dark(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, "actor_id": actor_id}
 
     elif req.action == "gf.scene_roll_difficulty":
         params = req.params

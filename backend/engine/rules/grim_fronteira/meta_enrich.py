@@ -53,6 +53,7 @@ def enrich_meta_for_ui(game: GameState) -> GameState:
     scene["deck_exhausted_participants"] = [
         pid for pid in scene_in.get("deck_exhausted_participants", []) if isinstance(pid, str)
     ]
+    scene["dark"] = _normalized_scene(scene_in)["dark"]
     scene["dark_mode"] = bool(scene_in.get("dark_mode", scene["dark_mode"]))
     scene["bonus_assignments"] = {
         pid: bonus

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Optional
-import random
 
 from backend.engine.grimdeck.models import CardID
 from backend.engine.grimdeck.deck_ops import play
@@ -66,7 +65,7 @@ def _ensure_zone(zones: dict[str, list[CardID]], name: str) -> None:
         zones[name] = []
 
 
-def _bump_scene_meta(game: GameState, *, base: int, value: int, rule_id: str, dark_mode: bool) -> GameState:
+def _bump_scene_meta(game: GameState, *, base: int, value: int, rule_id: str) -> GameState:
     meta = dict(game.meta or {})
     scene = dict(meta.get("scene") or {})
     scene.update(
@@ -74,7 +73,6 @@ def _bump_scene_meta(game: GameState, *, base: int, value: int, rule_id: str, da
             "difficulty_rule": rule_id,
             "difficulty_base": base,
             "difficulty_value": value,
-            "dark_mode": bool(dark_mode),
         }
     )
     meta["scene"] = scene
@@ -83,7 +81,6 @@ def _bump_scene_meta(game: GameState, *, base: int, value: int, rule_id: str, da
     meta["scene.difficulty_rule"] = rule_id
     meta["scene.difficulty_base"] = base
     meta["scene.difficulty_value"] = value
-    meta["scene.dark_mode"] = bool(dark_mode)
 
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
 
@@ -101,8 +98,7 @@ def marshal_roll_difficulty(
 
     v1.2 updates:
       - Joker difficulty = 20 (base 10 + 10)
-      - RJ -> reshuffle discard into draw (deterministic via seed)
-      - BJ -> meta.scene.dark_mode = true
+      - Joker bonuses are handled by the scene action.
     """
     if game.deck is None:
         raise ValueError("GameState has no deck.")
@@ -122,15 +118,8 @@ def marshal_roll_difficulty(
     value = base + points
 
     effects: list[DifficultyEffect] = []
-    dark_mode = False
-
-    # Joker effects
-    if card_id == "BJ":
-        effects.append(DifficultyEffect(kind="DARK_MODE"))
-        dark_mode = True
-
-    # Write scene meta (both structured + legacy keys)
-    game = _bump_scene_meta(game, base=base, value=value, rule_id=RULE_ID, dark_mode=dark_mode)
+    # Only difficulty metadata belongs to this draw; Dark is explicitly declared.
+    game = _bump_scene_meta(game, base=base, value=value, rule_id=RULE_ID)
 
     validate_unique_cards(game)
 
