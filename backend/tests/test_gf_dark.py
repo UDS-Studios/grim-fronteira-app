@@ -1,4 +1,4 @@
-"""Checkpoint 1: explicit Dark setup, without later Dark gameplay rules."""
+"""Dark checkpoints: declaration, hidden hand, reveal, and canonical consequences."""
 from copy import deepcopy
 from dataclasses import replace
 
@@ -26,6 +26,11 @@ from backend.engine.rules.grim_fronteira.scene import (
 from backend.engine.state.validators import validate_game_state
 from backend.engine.state.game_state_io import save_game_state, load_game_state
 from backend.tests.test_gf_scene import _with_exact_draw_pile
+
+from backend.tests.test_gf_scene import _replace_zone_cards
+from backend.engine.rules.grim_fronteira.scene import (
+    _refresh_scene_resolution_preview, _must_discard_rewards,
+)
 
 
 @pytest.fixture
@@ -469,7 +474,7 @@ def test_real_reveal_visibility_total_and_conservation(game_id, view, player_car
     assert scene["status"] == "awaiting_ack"
     assert scene["resolution"]["completed"] is True
     assert scene["players"]["p1"]["result"] == outcome
-    assert scene["players"]["p1"]["wounds_gained"] == 0
+    assert scene["players"]["p1"]["wounds_gained"] == int(outcome == "failure")
     assert game.deck == before.deck and game.zones == before.zones
     assert response.state["zones"][DARK_HAND] == ["3C", "4D"]
     assert response.state["zones"]["scene.difficulty"] == ["2H"]
@@ -608,3 +613,319 @@ def test_final_bust_chichimeca_reaction_then_wait_and_no_duplicate_wound(game_id
     assert game.meta["scene"]["players"]["p1"]["wounds_applied"] == 1
     assert game.meta["scene"]["players"]["p1"]["wounds_gained"] == 0
     assert game.meta["scene"]["status"] == "resolved"
+
+# Checkpoint 4: canonical consequences stay provisional until acknowledgement.
+
+
+def set_rewards(game_id, cards, player_id="p1"):
+    GAMES[game_id].state = _replace_zone_cards(GAMES[game_id].state, f"players.{player_id}.rewards", cards)
+
+
+def finish_acknowledgements(game_id):
+    for pid in list(GAMES[game_id].state.meta["scene"]["participants"]):
+        game = GAMES[game_id].state
+        if game.meta["scene"]["status"] == "awaiting_ack" and not game.meta["scene"]["players"][pid]["acknowledged"]:
+            hand_action(game_id, "scene_acknowledge_resolution", player_id=pid)
+        if GAMES[game_id].state.meta.get("pending_interaction"):
+            hand_action(game_id, "pending_reclaim")
+    assert GAMES[game_id].state.meta["scene"]["status"] == "resolved"
+
+
+def closed_loser(game_id, rewards=("5D", "6H", "7D")):
+    prepare_waiting(game_id)
+    set_rewards(game_id, list(rewards))
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    hand_action(game_id, "scene_close")
+    return GAMES[game_id].state
+
+
+def test_dark_success_two_real_rewards_in_order(game_id):
+    prepare_waiting(game_id, player_card="9S")
+    set_rewards(game_id, ["2D"])
+    hand_action(game_id, "scene_dark_reveal")
+    p = GAMES[game_id].state.meta["scene"]["players"]["p1"]
+    assert p["reward_cards_gained"] == 2 and p["reward_gained"] is True
+    assert not p["dark_reward_loss_pending"] and p["wounds_gained"] == 0
+    finish_acknowledgements(game_id)
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["5D", "6H"])
+    before = deepcopy(GAMES[game_id].state)
+    hand_action(game_id, "scene_close")
+    game = GAMES[game_id].state
+    assert game.zones["players.p1.rewards"] == ["2D", "5D", "6H"]
+    assert game.deck.draw_pile == before.deck.draw_pile[:-2]
+
+
+def test_multiple_dark_winners_each_receive_two(game_id):
+    dispatch(game_id, "scene_set_participants", participant_ids=["p1", "p2"])
+    prepare_hand(game_id, ["2H", "8S", "9S", "3D", "4D", "5D", "6D"])
+    dispatch(game_id, "scene_start")
+    dispatch(game_id, "scene_stand", player_id="p1")
+    dispatch(game_id, "scene_stand", player_id="p2")
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    order = GAMES[game_id].state.meta["scene"]["participants"]
+    hand_action(game_id, "scene_close")
+    game = GAMES[game_id].state
+    for pid, cards in zip(order, [["3D", "4D"], ["5D", "6D"]]):
+        assert game.zones[f"players.{pid}.rewards"] == cards
+        assert game.meta["scene"]["players"][pid]["reward_cards_gained"] == 2
+
+
+@pytest.mark.parametrize("player_card,count,wound", [("9S", 1, 0), ("2S", 0, 0)])
+def test_ordinary_reward_and_nonbust_failure_unchanged(game_id, player_card, count, wound):
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["8H", player_card, "5D"])
+    dispatch(game_id, "scene_roll_difficulty")
+    dispatch(game_id, "scene_start")
+    dispatch(game_id, "scene_stand", player_id="p1")
+    p = GAMES[game_id].state.meta["scene"]["players"]["p1"]
+    assert p["reward_cards_gained"] == count
+    assert p["reward_gained"] is bool(count)
+    assert p["wounds_gained"] == wound
+    assert not p["dark_reward_loss_pending"]
+    finish_acknowledgements(game_id)
+    hand_action(game_id, "scene_close")
+    assert GAMES[game_id].state.zones.get("players.p1.rewards", []) == (["5D"] if count else [])
+    assert GAMES[game_id].state.meta["players"]["p1"]["wounds"] == 0
+
+
+def test_failure_wound_provisional_then_chichimeca_save_load(game_id, tmp_path):
+    prepare_waiting(game_id)
+    hand_action(game_id, "scene_dark_reveal")
+    game = GAMES[game_id].state
+    assert game.meta["players"]["p1"]["wounds"] == 0
+    assert game.meta["scene"]["players"]["p1"]["wounds_gained"] == 1
+    assert not game.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+    assert game.meta.get("pending_interaction") is None
+    hand_action(game_id, "scene_acknowledge_resolution", player_id="p1")
+    game = GAMES[game_id].state
+    assert game.meta["players"]["p1"]["wounds"] == 1
+    assert game.meta["pending_interaction"]["kind"] == "chichimeca_choose_target"
+    path = tmp_path / "dark-wound.json"
+    save_game_state(game, path)
+    GAMES[game_id].state = load_game_state(path)
+    assert GAMES[game_id].state == game
+    reject(game_id, "scene_close", match="Action not permitted")
+    hand_action(game_id, "pending_reclaim")
+    hand_action(game_id, "scene_close")
+    assert GAMES[game_id].state.meta["players"]["p1"]["wounds"] == 1
+    assert GAMES[game_id].state.meta["scene"]["players"]["p1"]["wounds_applied"] == 1
+    assert not GAMES[game_id].state.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+    hand_action(game_id, "scene_new")
+
+
+def test_failure_to_success_cancels_penalties(game_id):
+    prepare_waiting(game_id)
+    set_rewards(game_id, ["5D"])
+    GAMES[game_id].state = _replace_zone_cards(GAMES[game_id].state, "players.p1.vengeance", ["6H"])
+    hand_action(game_id, "scene_dark_reveal")
+    assert GAMES[game_id].state.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+    hand_action(game_id, "scene_play_vengeance", player_id="p1")
+    game = GAMES[game_id].state
+    p = game.meta["scene"]["players"]["p1"]
+    assert p["result"] == "success" and p["reward_cards_gained"] == 2
+    assert p["wounds_gained"] == 0 and not p["dark_reward_loss_pending"]
+    finish_acknowledgements(game_id)
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["2D", "3D"])
+    hand_action(game_id, "scene_close")
+    assert GAMES[game_id].state.meta["players"]["p1"]["wounds"] == 0
+    assert GAMES[game_id].state.zones["players.p1.rewards"] == ["5D", "2D", "3D"]
+
+
+def test_success_to_failure_and_preview_idempotence(game_id):
+    prepare_waiting(game_id, player_card="9S")
+    set_rewards(game_id, ["5D"])
+    GAMES[game_id].state = _replace_zone_cards(GAMES[game_id].state, "players.p2.scum", ["6H"])
+    GAMES[game_id].state = _replace_zone_cards(GAMES[game_id].state, "players.p1.vengeance", ["6D"])
+    hand_action(game_id, "scene_dark_reveal")
+    hand_action(game_id, "scene_play_scum", player_id="p2", target_player_id="p1")
+    game = GAMES[game_id].state
+    for _ in range(3):
+        updated = _refresh_scene_resolution_preview(game, reset_acknowledgements=False)
+        assert updated == game
+        game = updated
+    p = game.meta["scene"]["players"]["p1"]
+    assert p["result"] == "failure" and p["reward_cards_gained"] == 0
+    assert not p["reward_gained"] and p["dark_reward_loss_pending"]
+    assert p["wounds_gained"] == 1 and game.meta["players"]["p1"]["wounds"] == 0
+    finish_acknowledgements(game_id)
+    hand_action(game_id, "scene_close")
+    assert GAMES[game_id].state.meta["players"]["p1"]["wounds"] == 1
+    assert GAMES[game_id].state.zones["players.p1.rewards"] == ["5D"]
+
+
+def test_chosen_middle_reward_loss_persistence_and_gate(game_id, tmp_path):
+    game = closed_loser(game_id)
+    assert game.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+    hand_action(game_id, "scene_skip_heal", player_id="p1")
+    reject(game_id, "scene_new")
+    path = tmp_path / "dark-loss.json"
+    save_game_state(GAMES[game_id].state, path)
+    GAMES[game_id].state = load_game_state(path)
+    before = deepcopy(GAMES[game_id].state)
+    response = hand_action(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="6H")
+    game = GAMES[game_id].state
+    assert game.zones["players.p1.rewards"] == ["5D", "7D"]
+    assert game.deck.discard_pile == before.deck.discard_pile + ["6H"]
+    assert response.result["remaining_reward_points"] == 12
+    assert not game.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+    for zone in ("players.p1.scum", "players.p1.vengeance"):
+        assert game.zones[zone] == before.zones[zone]
+    reject(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="5D")
+    hand_action(game_id, "scene_new")
+
+
+@pytest.mark.parametrize("choice", ["", "AS", "10D"])
+def test_bad_dark_reward_choice_atomic(game_id, choice):
+    closed_loser(game_id, ["5D"])
+    set_rewards(game_id, ["10D"], player_id="p2")
+    reject(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id=choice)
+    reject(game_id, "scene_discard_dark_reward", player_id="p2", reward_card_id="10D")
+
+
+@pytest.mark.parametrize("status", ["active", "awaiting_ack", "resolved"])
+def test_penalty_requires_closed(game_id, status):
+    closed_loser(game_id, ["5D"])
+    GAMES[game_id].state.meta["scene"]["status"] = status
+    reject(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="5D")
+
+
+def test_penalty_pending_gate_before_engine(game_id, monkeypatch):
+    import backend.app.main as main
+    closed_loser(game_id, ["5D"])
+    GAMES[game_id].state = begin_pending_interaction(GAMES[game_id].state, {
+        "kind": "test", "actor_id": "p1", "allowed_actions": ["gf.debug_resolve_pending"],
+        "payload": {}, "continuation": None,
+    })
+    def fail(*args, **kwargs):
+        pytest.fail("Penalty engine must not bypass the pending gate")
+    monkeypatch.setattr(main, "scene_discard_dark_reward", fail)
+    reject(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="5D", match="Action not permitted")
+
+
+@pytest.mark.parametrize("first", ["dark", "overflow"])
+def test_dark_loss_and_overflow_independent(game_id, first):
+    closed_loser(game_id, ["10D", "9D", "6H", "4H"])
+    hand_action(game_id, "scene_skip_heal", player_id="p1")
+    if first == "dark":
+        hand_action(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="4H")
+        assert _must_discard_rewards(GAMES[game_id].state, "p1")
+        assert not GAMES[game_id].state.meta["scene"]["players"]["p1"]["reward_discard_started"]
+        reject(game_id, "scene_new")
+        hand_action(game_id, "scene_discard_reward", player_id="p1", reward_card_id="6H")
+    else:
+        hand_action(game_id, "scene_discard_reward", player_id="p1", reward_card_id="10D")
+        assert GAMES[game_id].state.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+        reject(game_id, "scene_new")
+        hand_action(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="4H")
+    hand_action(game_id, "scene_new")
+
+
+@pytest.mark.parametrize("awards,phase", [(["AH", "4H"], "table"), (["5H", "6H"], "victory")])
+def test_two_rewards_evaluate_final_total_only(game_id, awards, phase):
+    prepare_waiting(game_id, player_card="9S")
+    set_rewards(game_id, ["10D"])
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, awards)
+    hand_action(game_id, "scene_close")
+    game = GAMES[game_id].state
+    assert game.zones["players.p1.rewards"] == ["10D", *awards]
+    assert game.meta["phase"] == phase
+    if phase == "table":
+        assert not game.meta.get("victory") and _must_discard_rewards(game, "p1")
+        reject(game_id, "scene_new")
+    else:
+        assert game.meta["victory"]["winner"] == "p1"
+
+
+def test_two_reward_short_deck_close_is_atomic(game_id):
+    prepare_waiting(game_id, player_card="9S")
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    GAMES[game_id].state = _with_exact_draw_pile(GAMES[game_id].state, ["5D"])
+    reject(game_id, "scene_close", match="draw_pile is empty")
+    assert GAMES[game_id].state.meta["scene"]["status"] == "resolved"
+    assert GAMES[game_id].state.deck.draw_pile == ["5D"]
+    validate_game_state(GAMES[game_id].state)
+
+
+def test_legacy_reward_count_normalization(game_id):
+    game = GAMES[game_id].state
+    p = game.meta["scene"]["players"]["p1"]
+    p.pop("reward_cards_gained")
+    p.pop("dark_reward_loss_pending")
+    p["reward_gained"] = True
+    normalized = ensure_scene_state(game)
+    assert normalized.meta["scene"]["players"]["p1"]["reward_cards_gained"] == 1
+    assert not normalized.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+    assert normalized.deck == game.deck and normalized.zones == game.zones
+
+
+def test_dark_penalty_cannot_be_spent_as_healing(game_id):
+    closed_loser(game_id, ["5D", "7D"])
+    reject(game_id, "scene_heal_wound", player_id="p1", reward_card_ids=["5D", "7D"], match="Dark Reward loss")
+    hand_action(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="5D")
+    assert GAMES[game_id].state.zones["players.p1.rewards"] == ["7D"]
+    hand_action(game_id, "scene_new")
+
+
+def test_dark_loss_blocks_endgame_and_new_scene_even_in_sudden_death(game_id):
+    closed_loser(game_id, ["5D"])
+    GAMES[game_id].state.meta["endgame"] = {"active": True}
+    reject(game_id, "scene_new")
+
+
+def test_pending_loss_defers_victory_until_loss_paid(game_id):
+    prepare_waiting(game_id)
+    set_rewards(game_id, ["5D"])
+    set_rewards(game_id, ["10H", "AH"], player_id="p2")
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    hand_action(game_id, "scene_close")
+    assert GAMES[game_id].state.meta["phase"] == "table"
+    hand_action(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="5D")
+    assert GAMES[game_id].state.meta["phase"] == "victory"
+    assert GAMES[game_id].state.meta["victory"]["winner"] == "p2"
+
+
+def test_pvp_reward_count_remains_one(game_id):
+    dispatch(game_id, "scene_set_participants", participant_ids=["p1", "p2"])
+    dispatch(game_id, "scene_set_mode", mode="duel", duel_subtype="pvp")
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["9S", "8H", "5D"])
+    dispatch(game_id, "scene_start")
+    dispatch(game_id, "scene_stand", player_id="p1")
+    dispatch(game_id, "scene_stand", player_id="p2")
+    scene = GAMES[game_id].state.meta["scene"]
+    assert scene["players"]["p1"]["reward_cards_gained"] == 1
+    assert scene["players"]["p2"]["reward_cards_gained"] == 0
+    assert not any(p["dark_reward_loss_pending"] for p in scene["players"].values())
+    finish_acknowledgements(game_id)
+    hand_action(game_id, "scene_close")
+    assert GAMES[game_id].state.zones["players.p1.rewards"] == ["5D"]
+
+
+def test_two_reward_grant_can_exhaust_deck_after_second_card(game_id):
+    prepare_waiting(game_id, player_card="9S")
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    GAMES[game_id].state = _with_exact_draw_pile(GAMES[game_id].state, ["5D", "6H"])
+    hand_action(game_id, "scene_close")
+    game = GAMES[game_id].state
+    assert game.zones["players.p1.rewards"] == ["5D", "6H"]
+    # Existing exhaustion flags are set during setup/active draws, not close.
+    assert game.meta["scene"]["deck_exhausted"] is False
+    assert game.meta["phase"] == "table"
+
+
+def test_dark_discard_does_not_cancel_started_overflow_at_21(game_id):
+    closed_loser(game_id, ["10D", "9D", "8H", "4H", "2D"])
+    hand_action(game_id, "scene_skip_heal", player_id="p1")
+    hand_action(game_id, "scene_discard_reward", player_id="p1", reward_card_id="10D")
+    assert GAMES[game_id].state.meta["scene"]["players"]["p1"]["reward_discard_started"]
+    hand_action(game_id, "scene_discard_dark_reward", player_id="p1", reward_card_id="2D")
+    assert GAMES[game_id].state.meta["phase"] == "table"
+    assert _must_discard_rewards(GAMES[game_id].state, "p1")
+    reject(game_id, "scene_new")
+    hand_action(game_id, "scene_discard_reward", player_id="p1", reward_card_id="4H")
+    hand_action(game_id, "scene_new")

@@ -1091,6 +1091,8 @@ def test_scene_set_participants_allows_second_scene_after_resolve():
             "wounds_gained": 0,
             "wounds_applied": 0,
             "reward_gained": False,
+            "reward_cards_gained": 0,
+            "dark_reward_loss_pending": False,
             "result": None,
             "recovery_action": None,
             "reward_discard_started": False,

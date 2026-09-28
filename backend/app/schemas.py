@@ -77,6 +77,7 @@ class ActionRequest(ViewRequest):
         "gf.scene_force_skip_heal",
         "gf.scene_heal_wound",
         "gf.scene_discard_reward",
+        "gf.scene_discard_dark_reward",
         "gf.scene_force_discard_rewards",
         "gf.scene_assign_bonus_card",
     ]
