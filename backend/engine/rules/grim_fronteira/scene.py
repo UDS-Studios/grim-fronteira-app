@@ -232,6 +232,35 @@ def scene_dark_discard_last(game: GameState, *, actor_id: str) -> tuple[GameStat
     return game, {"card_id": card_id, "marshal_total": total}
 
 
+def scene_dark_reveal(game: GameState, *, actor_id: str) -> tuple[GameState, dict[str, Any]]:
+    scene = _require_dark_hand_action(game, actor_id)
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        raise ValueError("Dark reveal requires an active scene.")
+    if not scene["participants"] or any(
+        not (scene["players"].get(pid, {}).get("standing") or scene["players"].get(pid, {}).get("busted"))
+        for pid in scene["participants"]
+    ):
+        raise ValueError("All participants must stand or bust before Dark reveal.")
+    total = _dark_marshal_total(game)
+    if scene["dark"]["must_discard_last"] or total > 21:
+        raise ValueError("The last Dark card must be discarded before reveal.")
+    scene["dark"]["revealed"] = True
+    game = scene_resolve(_replace_scene(game, scene=scene), actor_id=actor_id)
+    return game, {"marshal_total": total}
+
+
+def _effective_scene_difficulty(game: GameState) -> int:
+    scene = _scene(game)
+    if scene["dark_mode"]:
+        if not scene["dark"]["revealed"]:
+            raise ValueError("Dark must be revealed before resolution.")
+        return _dark_marshal_total(game)
+    value = int(scene["difficulty"].get("value") or 0)
+    if scene["azzardo"]["status"] == "drawn":
+        value += int(scene["azzardo"].get("value") or 0)
+    return value
+
+
 def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = None) -> tuple[GameState, dict[str, Any]]:
     _require_table_phase(game)
     _require_marshal(game, actor_id)
@@ -627,6 +656,9 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     if scene["status"] != SCENE_STATUS_ACTIVE:
         raise ValueError("Scene can only be resolved while active.")
 
+    if scene["dark_mode"] and not scene["dark"]["revealed"]:
+        raise ValueError("Dark must be revealed before resolution.")
+
     game = _apply_pending_scene_wounds(_queue_bust_wounds(game))
     if get_pending_interaction(game) is not None:
         return game
@@ -656,9 +688,7 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     if azzardo["status"] == "drawn":
         azzardo["revealed"] = True
 
-    effective_difficulty = int(scene["difficulty"]["value"])
-    if azzardo["status"] == "drawn":
-        effective_difficulty += int(azzardo["value"])
+    effective_difficulty = _effective_scene_difficulty(game)
     marshal_busted = effective_difficulty > 21
 
     winners: list[str] = []
@@ -773,6 +803,9 @@ def _resolve_scene_after_wounds(game: GameState) -> GameState:
         and not bool((scene["players"].get(pid) or {}).get("busted"))
     ]
     if unresolved:
+        return game
+
+    if scene["dark_mode"] and not scene["dark"]["revealed"]:
         return game
 
     marshal_id = (game.meta or {}).get("marshal_id")
@@ -919,10 +952,7 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
     if _is_pvp_duel(scene):
         return _refresh_pvp_duel_resolution_preview(game, reset_acknowledgements=reset_acknowledgements)
 
-    effective_difficulty = int(scene["difficulty"]["value"])
-    azzardo = dict(scene["azzardo"])
-    if azzardo["status"] == "drawn":
-        effective_difficulty += int(azzardo["value"])
+    effective_difficulty = _effective_scene_difficulty(game)
     marshal_busted = effective_difficulty > 21
 
     winners: list[str] = []
@@ -984,9 +1014,9 @@ def _grant_resolved_scene_rewards(game: GameState) -> GameState:
 
 def _queue_bust_wounds(game: GameState) -> GameState:
     scene = _scene(game)
-    difficulty = int(scene["difficulty"].get("value") or 0)
-    if scene["azzardo"]["status"] == "drawn":
-        difficulty += int(scene["azzardo"].get("value") or 0)
+    # An unrevealed Dark bust never exempts player wounds: the Marshal must
+    # discard back to <=21 before reveal. Preserve immediate bust reactions.
+    difficulty = 0 if scene["dark_mode"] and not scene["dark"]["revealed"] else _effective_scene_difficulty(game)
     wound_exempt = (not _is_pvp_duel(scene) and difficulty > 21) or (
         _is_pvp_duel(scene) and _pvp_duel_outcome(scene)[0] == "rematch"
     )

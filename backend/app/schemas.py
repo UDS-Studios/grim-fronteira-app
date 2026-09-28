@@ -54,6 +54,7 @@ class ActionRequest(ViewRequest):
         "gf.scene_roll_difficulty",
         "gf.scene_declare_dark",
         "gf.scene_dark_draw",
+        "gf.scene_dark_reveal",
         "gf.scene_dark_discard_last",
         "gf.scene_draw_azzardo",
         "gf.scene_remove_azzardo",

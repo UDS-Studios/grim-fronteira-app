@@ -41,6 +41,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_roll_difficulty,
     scene_declare_dark,
     scene_dark_draw,
+    scene_dark_reveal,
     scene_dark_discard_last,
     scene_draw_azzardo,
     scene_remove_azzardo,
@@ -544,6 +545,14 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         game = scene_declare_dark(game, actor_id=actor_id)
         mutated = True
         result = {"ok": True, "action": req.action, "actor_id": actor_id}
+
+    elif req.action == "gf.scene_dark_reveal":
+        actor_id = req.params.get("actor_id")
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        game, reveal_result = scene_dark_reveal(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action, **reveal_result}
 
     elif req.action in {"gf.scene_dark_draw", "gf.scene_dark_discard_last"}:
         actor_id = req.params.get("actor_id")
