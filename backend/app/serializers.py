@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, is_dataclass
 from typing import Any, Dict
 
@@ -32,7 +33,7 @@ def _serialize_full(game: GameState) -> Dict[str, Any]:
                 "removed": list(getattr(deck, "removed", [])),
             }
 
-    return {"deck": deck_dict, "zones": zones, "meta": meta}
+    return deepcopy({"deck": deck_dict, "zones": zones, "meta": meta})
 
 
 def can_view_yankee_inspection(*, view: str, viewer_id: str | None, actor_id: str) -> bool:
@@ -63,6 +64,23 @@ def game_state_to_dict(game: GameState, *, view: str = "debug", viewer_id: str |
         # Yankees currently has no public payload fields. Fail closed for previews.
         pending["payload"] = {}
     scene = meta.get("scene") or {}
+    if scene.get("dark_mode") and not (scene.get("dark") or {}).get("revealed", False):
+        difficulty = scene.get("difficulty") or {}
+        difficulty.update(card_id=None, value=None)
+        scene["difficulty"] = difficulty
+        # Historical difficulty metadata must not provide an alternate leak path.
+        scene.pop("difficulty_value", None)
+        meta.pop("scene.difficulty_value", None)
+        (scene.get("dark") or {}).pop("must_discard_last", None)
+        zones = data.get("zones") or {}
+        for name in ("scene.difficulty", "scene.difficulty.cards", "scene.dark.marshal_hand"):
+            if name in zones:
+                zones[name] = []
+        # Discard-last moves a secret card here; hide identities until reveal.
+        if deck is not None:
+            deck["discard_pile"] = {"count": len(deck.get("discard_pile", []))}
+        meta["scene"] = scene
+
     azzardo = scene.get("azzardo") or {}
     if not bool(azzardo.get("revealed", False)):
         azzardo["card_id"] = None

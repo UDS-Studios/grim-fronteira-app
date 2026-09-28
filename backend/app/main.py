@@ -40,6 +40,8 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_set_mode,
     scene_roll_difficulty,
     scene_declare_dark,
+    scene_dark_draw,
+    scene_dark_discard_last,
     scene_draw_azzardo,
     scene_remove_azzardo,
     scene_skip_azzardo,
@@ -543,6 +545,17 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         mutated = True
         result = {"ok": True, "action": req.action, "actor_id": actor_id}
 
+    elif req.action in {"gf.scene_dark_draw", "gf.scene_dark_discard_last"}:
+        actor_id = req.params.get("actor_id")
+        if not isinstance(actor_id, str):
+            raise HTTPException(status_code=400, detail="params.actor_id must be a string")
+        handler = scene_dark_draw if req.action == "gf.scene_dark_draw" else scene_dark_discard_last
+        game, dark_result = handler(game, actor_id=actor_id)
+        mutated = True
+        result = {"ok": True, "action": req.action}
+        if req.view == "debug":
+            result.update(dark_result)
+
     elif req.action == "gf.scene_roll_difficulty":
         params = req.params
         actor_id = params.get("actor_id")
@@ -555,6 +568,8 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
 
         game, difficulty = scene_roll_difficulty(game, actor_id=actor_id, seed=seed)
         mutated = True
+        if req.view != "debug" and game.meta["scene"]["dark_mode"] and not game.meta["scene"]["dark"]["revealed"]:
+            difficulty = {**difficulty, "card_id": None, "value": None}
         result = {"ok": True, "action": req.action, "difficulty": difficulty}
 
     elif req.action == "gf.scene_draw_azzardo":

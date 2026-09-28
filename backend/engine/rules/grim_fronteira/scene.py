@@ -25,6 +25,7 @@ SCENE_DUEL_SUBTYPE_NPC = "npc"
 SCENE_DUEL_SUBTYPE_PVP = "pvp"
 
 SCENE_DIFFICULTY_ZONE = "scene.difficulty"
+SCENE_DARK_MARSHAL_HAND_ZONE = "scene.dark.marshal_hand"
 SCENE_AZZARDO_ZONE = "scene.azzardo"
 SCENE_HAND_PREFIX = "scene.hand."
 SCENE_SCUM_MOD_PREFIX = "scene.mod.scum."
@@ -44,7 +45,7 @@ def default_scene_state() -> dict[str, Any]:
         "deck_exhausted": False,
         "deck_exhausted_participants": [],
         "dark_mode": False,
-        "dark": {"revealed": False},
+        "dark": {"revealed": False, "must_discard_last": False},
         "bonus_assignments": {},
         "difficulty": {
             "rule_id": None,
@@ -175,6 +176,60 @@ def scene_declare_dark(game: GameState, *, actor_id: str) -> GameState:
 
     scene["dark_mode"] = True
     return _replace_scene(game, scene=scene)
+
+
+def _dark_marshal_total(game: GameState) -> int:
+    """Derive the hidden hand from physical cards using scene blackjack values."""
+    scene = _scene(game)
+    card_id = scene["difficulty"]["card_id"]
+    cards = ([card_id] if card_id is not None else []) + list(game.zones.get(SCENE_DARK_MARSHAL_HAND_ZONE, []))
+    return _scene_hand_value(figure_card_id=None, hand_cards=cards, base=10)
+
+
+def _require_dark_hand_action(game: GameState, actor_id: str) -> dict[str, Any]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+    scene = _scene(game)
+    if not scene["dark_mode"] or _is_pvp_duel(scene):
+        raise ValueError("Dark hand actions require a Dark encounter using Marshal difficulty.")
+    if scene["status"] not in {SCENE_STATUS_SETUP, SCENE_STATUS_ACTIVE}:
+        raise ValueError("Dark hand actions require setup or active scene status.")
+    if scene["dark"]["revealed"]:
+        raise ValueError("The Dark hand has already been revealed.")
+    if scene["difficulty"]["card_id"] is None:
+        raise ValueError("Scene difficulty must be rolled before Dark hand actions.")
+    return scene
+
+
+def scene_dark_draw(game: GameState, *, actor_id: str) -> tuple[GameState, dict[str, Any]]:
+    scene = _require_dark_hand_action(game, actor_id)
+    if scene["dark"]["must_discard_last"] or _dark_marshal_total(game) > 21:
+        raise ValueError("The last Dark card must be discarded before drawing again.")
+    game, card_id = _draw_to_zone(game, SCENE_DARK_MARSHAL_HAND_ZONE)
+    if card_id in {"RJ", "BJ"}:
+        game = _grant_joker_bonus_cards(game, bonus_type="scum" if card_id == "RJ" else "vengeance")
+    scene = _scene(game)
+    total = _dark_marshal_total(game)
+    scene["dark"]["must_discard_last"] = total > 21
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {"card_id": card_id, "marshal_total": total}
+
+
+def scene_dark_discard_last(game: GameState, *, actor_id: str) -> tuple[GameState, dict[str, Any]]:
+    scene = _require_dark_hand_action(game, actor_id)
+    cards = game.zones.get(SCENE_DARK_MARSHAL_HAND_ZONE, [])
+    if not scene["dark"]["must_discard_last"] or not cards:
+        raise ValueError("Discard-last requires a busting extra Dark card.")
+    card_id = cards[-1]
+    game = _move_zone_top_card_to_discard(game, SCENE_DARK_MARSHAL_HAND_ZONE)
+    total = _dark_marshal_total(game)
+    if total > 21:
+        raise ValueError("Discarding the last Dark card must restore a non-busting hand.")
+    scene["dark"]["must_discard_last"] = False
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {"card_id": card_id, "marshal_total": total}
 
 
 def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = None) -> tuple[GameState, dict[str, Any]]:
@@ -1833,7 +1888,10 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             pid for pid in scene_in.get("deck_exhausted_participants") or [] if isinstance(pid, str)
         ],
         "dark_mode": bool(scene_in.get("dark_mode", default["dark_mode"])),
-        "dark": {"revealed": bool(dark_in.get("revealed", False))},
+        "dark": {
+            "revealed": bool(dark_in.get("revealed", False)),
+            "must_discard_last": bool(dark_in.get("must_discard_last", False)),
+        },
         "bonus_assignments": {
             pid: bonus
             for pid, bonus in dict(scene_in.get("bonus_assignments") or {}).items()
@@ -2006,6 +2064,7 @@ def _discard_scene_modifier_zones(game: GameState) -> GameState:
 
 
 def _discard_scene_play_zones(game: GameState) -> GameState:
+    game = _discard_zone_if_present(game, SCENE_DARK_MARSHAL_HAND_ZONE)
     game = _discard_zone_if_present(game, SCENE_DIFFICULTY_ZONE)
     game = _discard_zone_if_present(game, SCENE_AZZARDO_ZONE)
     game = _discard_pvp_duel_play_zones(game)
@@ -2122,9 +2181,9 @@ def _cards_blackjack_value(cards: list[str]) -> int:
     return sum(_blackjack_value(card_id) for card_id in cards)
 
 
-def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str]) -> int:
+def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str], base: int = 0) -> int:
     cards = [card_id for card_id in [figure_card_id, *hand_cards] if isinstance(card_id, str) and card_id]
-    total = sum(_scene_card_value(card_id) for card_id in cards)
+    total = base + sum(_scene_card_value(card_id) for card_id in cards)
     aces = sum(1 for card_id in cards if _rank(card_id) == "A")
 
     # Count aces as 1 instead of 11 when that produces the best non-busting total.
