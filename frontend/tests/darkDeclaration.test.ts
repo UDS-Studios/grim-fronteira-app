@@ -61,7 +61,7 @@ test("icon, explanatory tooltip, both table atmospheres and privacy", async () =
         assert.ok(html.includes('class="saloon-table dark-mode-active"'));
         assert.ok(!html.includes('aria-label="Declare the Dark"'));
         if (actor === "marshal") {
-          assert.ok(html.includes("Dark declared. Draw the hidden difficulty."));
+          assert.ok(html.includes(revealed ? "Dark declared. Draw the hidden difficulty." : "Draw the hidden difficulty from the deck."));
           assert.ok(!html.includes("Click deck to draw azzardo"));
         }
         assert.ok(!html.includes("marshal_total") && !html.includes("must_discard_last"));
@@ -72,7 +72,7 @@ test("icon, explanatory tooltip, both table atmospheres and privacy", async () =
     Object.assign(resp.state.meta!.scene!, setup().meta!.scene, { dark_mode: true, difficulty: { card_id: "RJ", value: 20 } });
     const html = renderToStaticMarkup(createElement(Table, { resp, currentActorId: "marshal", view: "marshal",
       run: () => { throw Error("render must not act"); }, onBackHome: () => {} }));
-    assert.ok(html.includes("Dark declared. Start the scene when ready."));
+    assert.ok(html.includes("Start the scene before revealing."));
     assert.ok(!html.includes("Each player receives") && !html.includes("Click to draw azzardo"));
     assert.match(html, /<button[^>]*disabled=""[^>]*title="Dark setup: deck unavailable"/);
     // Public/player projection has no secret card, total or discard identities to render.

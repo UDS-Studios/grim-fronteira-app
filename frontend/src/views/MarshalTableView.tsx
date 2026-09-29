@@ -1,3 +1,4 @@
+import MarshalDarkHand from "../components/MarshalDarkHand";
 import DarkDeclareControl from "../components/DarkDeclareControl";
 import { hasDarkAtmosphere, isDarkScene } from "../utils/dark";
 import { getViewRequest } from "../utils/sessionView";
@@ -694,6 +695,8 @@ export default function MarshalTableView({
   const isEditable = !hasPendingInteraction && (scene.status === "idle" || scene.status === "setup");
   const isLocked = !isEditable;
   const darkMode = isDarkScene(meta.scene);
+  const showDarkHand = darkMode && meta.scene?.dark?.revealed !== true &&
+    view === "marshal" && currentActorId === marshalId;
   const hasDifficulty = scene.difficulty?.card_id != null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
   const hasAzzardo = azzardoStatus !== "unavailable";
@@ -1525,6 +1528,13 @@ export default function MarshalTableView({
             !darkMode && <DarkDeclareControl state={state} gameId={resp.game_id}
               actorId={currentActorId} view={view} run={run} />
           }>
+            {showDarkHand ? (
+              <>
+                <MarshalDarkHand resp={resp} actorId={currentActorId} view={view} run={run} />
+                {scene.status === "setup" && <ActionButton label="Start Scene" onClick={handleStartScene}
+                  disabled={!canStartScene} title="Lock setup and begin scene" />}
+              </>
+            ) : (
             <div
               style={{
                 display: "grid",
@@ -1678,6 +1688,7 @@ export default function MarshalTableView({
                 <SceneStatus message={getSceneInstruction()} />
               </div>
             </div>
+            )}
           </TableZone>
 
           <div style={{ minHeight: 0 }}>

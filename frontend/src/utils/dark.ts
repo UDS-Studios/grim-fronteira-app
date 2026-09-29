@@ -41,3 +41,36 @@ export function canDeclareDark(state: GameState, actorId: string): boolean {
 export function hasDarkAtmosphere(scene?: SceneState): boolean {
   return isDarkScene(scene) && scene?.status !== "closed";
 }
+
+function canUseDarkHand(state: GameState, actorId: string): boolean {
+  const meta = state.meta;
+  const scene = meta?.scene;
+  return meta?.phase === "table" && !!actorId.trim() && actorId === meta.marshal_id &&
+    !meta.pending_interaction && isDarkScene(scene) && !isDarkRevealed(scene) &&
+    !(scene?.mode === "duel" && scene.duel?.subtype === "pvp") &&
+    (scene?.status === "setup" || scene?.status === "active") && scene.difficulty?.card_id != null;
+}
+
+export function countUnfinishedDarkParticipants(scene?: SceneState): number {
+  return (scene?.participants ?? []).filter(pid => {
+    const player = scene?.players?.[pid];
+    return player?.standing !== true && player?.busted !== true;
+  }).length;
+}
+
+export function canDarkDraw(state: GameState, actorId: string): boolean {
+  const total = getDarkMarshalTotal(state.meta?.scene);
+  return canUseDarkHand(state, actorId) && !mustMarshalDiscardDarkCard(state.meta?.scene) &&
+    total !== null && total <= 21;
+}
+
+export function canDarkDiscardLast(state: GameState, actorId: string): boolean {
+  return canUseDarkHand(state, actorId) && mustMarshalDiscardDarkCard(state.meta?.scene) &&
+    (state.zones?.["scene.dark.marshal_hand"]?.length ?? 0) > 0;
+}
+
+export function canDarkReveal(state: GameState, actorId: string): boolean {
+  const scene = state.meta?.scene;
+  return canDarkDraw(state, actorId) && scene?.status === "active" &&
+    (scene.participants?.length ?? 0) > 0 && countUnfinishedDarkParticipants(scene) === 0;
+}

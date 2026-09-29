@@ -403,3 +403,33 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .dark-declare-button { transition: none !important; }
 }
+
+/* Bounded, ordered fan inside the existing Difficulty / Scene zone. */
+.marshal-dark-hand {
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid #b79860;
+  border-radius: 10px;
+  background: #24271f;
+  color: #eee5ce;
+  display: grid;
+  gap: 10px;
+}
+.marshal-dark-hand-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.marshal-dark-hand-heading > strong { letter-spacing: .08em; font-size: 15px; color: #d5bc87; }
+.marshal-dark-total { display: flex; align-items: center; gap: 12px; }
+.marshal-dark-total span { font-size: 12px; letter-spacing: .06em; }
+.marshal-dark-total strong { font-family: LavaArabic, serif; font-size: 38px; line-height: 1; }
+.marshal-dark-cards { display: grid; max-width: 100%; padding-right: 88px; height: 168px; align-items: start; }
+.marshal-dark-card { position: relative; min-width: 0; width: 86px; outline-offset: 3px; }
+.marshal-dark-card:hover, .marshal-dark-card:focus-visible { z-index: 30; }
+.marshal-dark-card-label { display: block; width: 86px; font-size: 11px; font-weight: 700; text-align: center; background: #24271f; }
+.marshal-dark-card[data-forced-discard="true"] { outline: 3px solid #eba497; border-radius: 10px; }
+.marshal-dark-card[data-forced-discard="true"] .marshal-dark-card-label { color: #ffd0bb; }
+.marshal-dark-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.marshal-dark-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.marshal-dark-actions button:focus-visible { outline: 3px solid #eee5ce; outline-offset: 3px; }
+.marshal-dark-reveal { border: 2px solid #d5bc87; background: #55452c; color: #fff3d9; font-weight: 800; margin-left: auto; }
+.marshal-dark-discard { border: 1px solid #eba497; }
+.marshal-dark-status, .marshal-dark-warning { margin: 0; min-height: 24px; font-size: 15px; }
+.marshal-dark-warning { color: #ffd0bb; font-weight: 700; border-left: 3px solid #eba497; padding-left: 8px; }
