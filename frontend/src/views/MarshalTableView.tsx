@@ -1,3 +1,5 @@
+import DarkDeclareControl from "../components/DarkDeclareControl";
+import { hasDarkAtmosphere, isDarkScene } from "../utils/dark";
 import { getViewRequest } from "../utils/sessionView";
 import ReclaimInteractionControl from "../components/ReclaimInteractionControl";
 import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
@@ -691,6 +693,7 @@ export default function MarshalTableView({
 
   const isEditable = !hasPendingInteraction && (scene.status === "idle" || scene.status === "setup");
   const isLocked = !isEditable;
+  const darkMode = isDarkScene(meta.scene);
   const hasDifficulty = scene.difficulty?.card_id != null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
   const hasAzzardo = azzardoStatus !== "unavailable";
@@ -818,7 +821,7 @@ export default function MarshalTableView({
   const canDeckClick =
     !isPvpDuelScene &&
     isEditable &&
-    (!hasDifficulty || (!hasAzzardo && !azzardoBlockedByDifficulty));
+    (!hasDifficulty || (!darkMode && !hasAzzardo && !azzardoBlockedByDifficulty));
 
   const canStartScene =
     !isLocked &&
@@ -943,7 +946,7 @@ export default function MarshalTableView({
       return;
     }
 
-    if (!hasAzzardo && !azzardoBlockedByDifficulty) {
+    if (!darkMode && !hasAzzardo && !azzardoBlockedByDifficulty) {
       await run(
         gfAction({
           game_id: resp.game_id,
@@ -1100,6 +1103,10 @@ export default function MarshalTableView({
   }
 
   function getSceneInstruction(): string {
+    if (darkMode && scene.status === "setup") {
+      if (!hasDifficulty) return "Dark declared. Draw the hidden difficulty.";
+      return participantIds.length ? "Dark declared. Start the scene when ready." : "Dark declared. Select participants before starting the scene.";
+    }
     if (scene.status === "idle") {
       if (isPvpDuelScene) {
         return "Select the two duelists and start the duel. No difficulty is drawn.";
@@ -1202,6 +1209,7 @@ export default function MarshalTableView({
 
   return (
     <div
+      className={hasDarkAtmosphere(meta.scene) ? "saloon-table dark-mode-active" : "saloon-table"}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -1401,7 +1409,9 @@ export default function MarshalTableView({
                 }}
                 title={
                   !canDeckClick
-                    ? azzardoBlockedByDifficulty
+                    ? darkMode
+                      ? "Dark setup: deck unavailable"
+                      : azzardoBlockedByDifficulty
                       ? isJokerDifficulty
                         ? "Joker difficulty: no azzardo allowed"
                         : isAceDifficulty
@@ -1511,7 +1521,10 @@ export default function MarshalTableView({
             minHeight: 0,
           }}
         >
-          <TableZone title="Difficulty / Scene">
+          <TableZone title="Difficulty / Scene" headerRight={
+            !darkMode && <DarkDeclareControl state={state} gameId={resp.game_id}
+              actorId={currentActorId} view={view} run={run} />
+          }>
             <div
               style={{
                 display: "grid",
@@ -1595,7 +1608,7 @@ export default function MarshalTableView({
                         />
                       )}
                     </button>
-                  ) : (
+                  ) : !darkMode && (
                     <div style={{ opacity: 0.35, fontSize: 13 }}>no azzardo</div>
                   )}
                 </div>

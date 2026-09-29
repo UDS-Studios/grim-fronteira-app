@@ -27,3 +27,17 @@ export function getDarkMarshalHand(state: GameState): string[] {
 export function mustMarshalDiscardDarkCard(scene?: SceneState): boolean {
   return isDarkScene(scene) && !isDarkRevealed(scene) && scene?.dark?.must_discard_last === true;
 }
+
+// Obvious setup gates only; the backend remains the final rules validator.
+export function canDeclareDark(state: GameState, actorId: string): boolean {
+  const scene = state.meta?.scene;
+  return !!actorId.trim() && actorId === state.meta?.marshal_id &&
+    !state.meta?.pending_interaction && scene?.status === "setup" &&
+    !(scene.mode === "duel" && scene.duel?.subtype === "pvp") &&
+    !isDarkScene(scene) && scene.difficulty?.card_id == null &&
+    (scene.azzardo?.status ?? "unavailable") === "unavailable" && scene.azzardo?.card_id == null;
+}
+
+export function hasDarkAtmosphere(scene?: SceneState): boolean {
+  return isDarkScene(scene) && scene?.status !== "closed";
+}

@@ -1,3 +1,4 @@
+import { hasDarkAtmosphere } from "../utils/dark";
 import { getViewRequest } from "../utils/sessionView";
 import { getFactionMedallion } from "./player_table/factionMedallion";
 import YankeeDeck from "./player_table/PTV-YankeeDeck";
@@ -1307,6 +1308,7 @@ export default function PlayerTableView({
 
   return (
     <div
+      className={hasDarkAtmosphere(meta.scene) ? "saloon-table dark-mode-active" : "saloon-table"}
       style={{
         height: "auto",
         display: "flex",

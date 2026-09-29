@@ -41,6 +41,8 @@ export type ScenePlayerState = {
 export type SceneState = {
   status?: string;
   mode?: string;
+  duel?: { subtype?: string | null };
+  azzardo?: { status?: string; card_id?: string | null };
   participants?: string[];
   players?: Record<string, ScenePlayerState>;
   dark_mode?: boolean;
