@@ -83,7 +83,7 @@ def test_difficulty_preserves_declaration_and_joker_bonuses(game_id, card, bonus
     if bonus:
         for pid, drawn in [("p1", "5H"), ("p2", "6C")]:
             zone = f"players.{pid}.{bonus}"
-            assert game.zones[zone] == before.zones.get(zone, []) + [drawn]
+            assert game.zones.get(zone, []) == before.zones.get(zone, []) + ([] if declared else [drawn])
 
 
 def test_wrong_actor_and_phase_are_atomic(game_id):
@@ -250,16 +250,15 @@ def test_order_bust_discard_and_resume(game_id):
     assert hand_action(game_id).result["marshal_total"] == 20
 
 
-@pytest.mark.parametrize("cards,total", [(["AH", "AC"], 12), (["BJ", "2C", "3D", "AS"], 21)])
+@pytest.mark.parametrize("cards,total", [(["AH", "AC"], 12), (["BJ", "AS"], 21)])
 def test_dark_total_soft_aces_and_initial_joker(game_id, cards, total):
-    # Initial Joker consumes two bonus cards before the extra hand draw.
     prepare_hand(game_id, cards)
     hand_action(game_id)
     assert _dark_marshal_total(GAMES[game_id].state) == total
 
 
 @pytest.mark.parametrize("joker,bonus", [("RJ", "scum"), ("BJ", "vengeance")])
-def test_dark_joker_grants_all_eligible_players(game_id, joker, bonus):
+def test_dark_joker_defers_bonus_for_all_eligible_players(game_id, joker, bonus):
     before = deepcopy(prepare_hand(game_id, ["4H", joker, "5H", "6C"]))
     response = hand_action(game_id)
     game = GAMES[game_id].state
@@ -268,7 +267,7 @@ def test_dark_joker_grants_all_eligible_players(game_id, joker, bonus):
     assert game.meta["scene"]["dark_mode"] is True
     for pid, card in [("p1", "5H"), ("p2", "6C")]:
         zone = f"players.{pid}.{bonus}"
-        assert game.zones[zone] == before.zones.get(zone, []) + [card]
+        assert game.zones.get(zone, []) == before.zones.get(zone, [])
     assert game.deck.discard_pile == before.deck.discard_pile
 
 
@@ -415,10 +414,11 @@ def test_dark_deck_exhaustion(game_id):
     reject(game_id, "scene_dark_draw")
 
 
-def test_joker_bonus_exhaustion_is_atomic(game_id):
+def test_hidden_joker_draw_does_not_require_bonus_cards(game_id):
     prepare_hand(game_id, ["2H"])
     GAMES[game_id].state = _with_exact_draw_pile(GAMES[game_id].state, ["RJ", "3C"])
-    reject(game_id, "scene_dark_draw")
+    hand_action(game_id)
+    assert GAMES[game_id].state.deck.draw_pile == ["3C"]
 
 # Checkpoint 3: completion defers resolution until an explicit Marshal reveal.
 def prepare_waiting(game_id, *, difficulty="2H", extras=("3C", "4D"), player_card="8S"):
@@ -565,7 +565,7 @@ def test_reveal_uses_scene_card_values(game_id, kind):
         prepare_waiting(game_id, difficulty="AH", extras=("AC",), player_card="2S")
         total = 12
     else:
-        prepare_hand(game_id, ["2H", "RJ", "3C", "4D", "2S"])
+        prepare_hand(game_id, ["2H", "RJ", "2S", "3C", "4D"])
         hand_action(game_id)
         dispatch(game_id, "scene_start")
         dispatch(game_id, "scene_stand", player_id="p1")
@@ -929,3 +929,132 @@ def test_dark_discard_does_not_cancel_started_overflow_at_21(game_id):
     reject(game_id, "scene_new")
     hand_action(game_id, "scene_discard_reward", player_id="p1", reward_card_id="4H")
     hand_action(game_id, "scene_new")
+
+
+@pytest.mark.parametrize("joker,bonus", [("RJ", "scum"), ("BJ", "vengeance")])
+@pytest.mark.parametrize("source", ["difficulty", "extra"])
+@pytest.mark.parametrize("view,viewer", [("public", None), ("player", "p1"), ("player", "host1")])
+def test_hidden_joker_privacy_and_reveal(game_id, joker, bonus, source, view, viewer):
+    dispatch(game_id)
+    if source == "extra":
+        GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["2H"])
+        hand_action(game_id, "scene_roll_difficulty")
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, [joker, "8S", "5H", "6C"])
+    before = deepcopy(GAMES[game_id].state)
+    response = hand_action(game_id, "scene_roll_difficulty" if source == "difficulty" else "scene_dark_draw",
+                           view=view, viewer_id=viewer)
+    game = GAMES[game_id].state
+    assert game.zones["scene.difficulty" if source == "difficulty" else DARK_HAND] == [joker]
+    assert joker not in str(response.result)
+    assert response.state["meta"]["scene"]["difficulty"]["card_id"] is None
+    assert response.state["zones"].get(DARK_HAND, []) == []
+    assert game.meta["scene"]["dark"] == {"revealed": False, "must_discard_last": False}
+    for pid in ["p1", "p2"]:
+        for resource in ["scum", "vengeance"]:
+            zone = f"players.{pid}.{resource}"
+            assert game.zones.get(zone, []) == before.zones.get(zone, [])
+            prior_view = game_state_to_dict(before, view=view, viewer_id=viewer)
+            assert response.state["zones"].get(zone) == prior_view["zones"].get(zone)
+    hand_action(game_id, "scene_start")
+    hand_action(game_id, "scene_stand", player_id="p1")
+    hand_action(game_id, "scene_dark_reveal")
+    game = GAMES[game_id].state
+    for pid, card in [("p1", "5H"), ("p2", "6C")]:
+        zone = f"players.{pid}.{bonus}"
+        assert game.zones[zone] == before.zones.get(zone, []) + [card]
+    assert game.meta["scene"]["status"] == "awaiting_ack"
+    reject(game_id, "scene_dark_reveal")
+
+
+@pytest.mark.parametrize("available", [1, 3])
+def test_multiple_jokers_atomic_failure_retry_and_reload(game_id, tmp_path, available):
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["RJ", "BJ", "8S"])
+    initial = deepcopy(GAMES[game_id].state)
+    prepare_waiting(game_id, difficulty="RJ", extras=("BJ",), player_card="8S")
+    before = deepcopy(GAMES[game_id].state)
+    path = tmp_path / "jokers.json"
+    save_game_state(before, path)
+    GAMES[game_id].state = load_game_state(path)
+    assert GAMES[game_id].state == before
+    for pid in ["p1", "p2"]:
+        for bonus in ["scum", "vengeance"]:
+            zone = f"players.{pid}.{bonus}"
+            assert before.zones.get(zone, []) == initial.zones.get(zone, [])
+    cards = ["2D", "3D", "4D", "5D"]
+    GAMES[game_id].state = _with_exact_draw_pile(before, cards[:available])
+    reject(game_id, "scene_dark_reveal", match="draw_pile is empty")
+    failed = GAMES[game_id].state
+    assert failed.meta["scene"]["dark"]["revealed"] is False
+    assert failed.meta["scene"]["status"] == "active"
+    assert not failed.meta["scene"]["resolution"]["completed"]
+    validate_game_state(failed)
+    GAMES[game_id].state = _with_draw_order(failed, cards)
+    hand_action(game_id, "scene_dark_reveal")
+    game = GAMES[game_id].state
+    for pid, scum, vengeance in [("p1", "2D", "4D"), ("p2", "3D", "5D")]:
+        assert game.zones[f"players.{pid}.scum"] == before.zones.get(f"players.{pid}.scum", []) + [scum]
+        assert game.zones[f"players.{pid}.vengeance"] == before.zones.get(f"players.{pid}.vengeance", []) + [vengeance]
+    save_game_state(game, path)
+    GAMES[game_id].state = load_game_state(path)
+    assert GAMES[game_id].state == game
+    reject(game_id, "scene_dark_reveal")
+    validate_game_state(GAMES[game_id].state)
+
+
+@pytest.mark.parametrize("joker", ["RJ", "BJ"])
+def test_discarded_dark_joker_has_no_reveal_effect(game_id, joker):
+    prepare_waiting(game_id, extras=(joker,))
+    # A zero-value Joker cannot naturally bust. Construct the discard-required
+    # flag to exercise physical-hand exclusion without changing the legal rules.
+    GAMES[game_id].state.meta["scene"]["dark"]["must_discard_last"] = True
+    hand_action(game_id, "scene_dark_discard_last")
+    before = deepcopy(GAMES[game_id].state)
+    assert joker in before.deck.discard_pile
+    hand_action(game_id, "scene_dark_reveal")
+    assert GAMES[game_id].state.zones == before.zones
+    assert GAMES[game_id].state.deck == before.deck
+
+
+@pytest.mark.parametrize("eligibility", ["dead", "no_character"])
+def test_reveal_preserves_joker_eligibility(game_id, eligibility):
+    prepare_waiting(game_id, difficulty="RJ", extras=())
+    game = GAMES[game_id].state
+    if eligibility == "dead":
+        game.meta["players"]["p2"]["wounds"] = 2
+    else:
+        game = _replace_zone_cards(game, "players.p2.character", [])
+    before = deepcopy(game)
+    GAMES[game_id].state = _with_draw_order(game, ["5H", "6C"])
+    hand_action(game_id, "scene_dark_reveal")
+    assert GAMES[game_id].state.zones["players.p1.scum"] == before.zones["players.p1.scum"] + ["5H"]
+    assert GAMES[game_id].state.zones["players.p2.scum"] == before.zones["players.p2.scum"]
+
+
+@pytest.mark.parametrize("joker,bonus", [("RJ", "scum"), ("BJ", "vengeance")])
+@pytest.mark.parametrize("initial", [True, False])
+def test_player_joker_stays_immediate_in_unrevealed_dark(game_id, joker, bonus, initial):
+    prepare_hand(game_id, ["2H", *([joker] if initial else ["3S", joker]), "5H"])
+    before = deepcopy(GAMES[game_id].state)
+    hand_action(game_id, "scene_start")
+    if not initial:
+        hand_action(game_id, "scene_draw_card", player_id="p1")
+    game = GAMES[game_id].state
+    assert joker in game.zones["scene.hand.p1"]
+    assert not game.meta["scene"]["dark"]["revealed"]
+    assert game.zones[f"players.p1.{bonus}"] == before.zones[f"players.p1.{bonus}"] + ["5H"]
+    assert game.zones[f"players.p2.{bonus}"] == before.zones[f"players.p2.{bonus}"]
+
+
+def test_resolution_failure_rolls_back_reveal_bonus_grants(game_id, monkeypatch):
+    import backend.engine.rules.grim_fronteira.scene as engine
+
+    prepare_waiting(game_id, difficulty="RJ", extras=("BJ",))
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["2D", "3D", "4D", "5D"])
+    def fail(game, **kwargs):
+        assert game.meta["scene"]["dark"]["revealed"]
+        assert game.zones["players.p1.scum"][-1] == "2D"
+        assert game.zones["players.p2.vengeance"][-1] == "5D"
+        raise ValueError("forced resolution failure after grants")
+    monkeypatch.setattr(engine, "scene_resolve", fail)
+    reject(game_id, "scene_dark_reveal", match="forced resolution failure after grants")
+    validate_game_state(GAMES[game_id].state)

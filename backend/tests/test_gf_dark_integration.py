@@ -181,3 +181,43 @@ def test_multiple_dark_chichimecas_resume_serially_after_reload(game_id, tmp_pat
         assert game.meta["scene"]["players"][pid]["wounds_applied"] == 1
     hand_action(game_id, "scene_close")
     hand_action(game_id, "scene_new")
+
+
+@pytest.mark.parametrize("joker,bonus,player_card", [("BJ", "vengeance", "8S"), ("RJ", "scum", "9S")])
+def test_hidden_joker_bonus_used_in_same_scene(game_id, joker, bonus, player_card):
+    from backend.tests.test_gf_dark import finish_acknowledgements
+
+    for pid in ["p1", "p2"]:
+        GAMES[game_id].state = _replace_zone_cards(GAMES[game_id].state, f"players.{pid}.{bonus}", [])
+    hand_action(game_id, "scene_declare_dark")
+    GAMES[game_id].state = _with_draw_order(
+        GAMES[game_id].state, ["9H", joker, player_card, "5H", "6C"])
+    hand_action(game_id, "scene_roll_difficulty")
+    before = deepcopy(GAMES[game_id].state)
+    hand_action(game_id, "scene_dark_draw", view="public")
+    for pid in ["p1", "p2"]:
+        zone = f"players.{pid}.{bonus}"
+        assert GAMES[game_id].state.zones.get(zone, []) == before.zones.get(zone, [])
+    hand_action(game_id, "scene_start")
+    hand_action(game_id, "scene_stand", player_id="p1")
+    hand_action(game_id, "scene_dark_reveal")
+    game = GAMES[game_id].state
+    assert game.meta["scene"]["status"] == "awaiting_ack"
+    assert not game.meta["scene"]["players"]["p1"]["acknowledged"]
+    assert game.zones[f"players.p1.{bonus}"] == ["5H"]
+    assert game.zones[f"players.p2.{bonus}"] == ["6C"]
+    prior = game.meta["scene"]["players"]["p1"]["result"]
+    if bonus == "vengeance":
+        assert prior == "failure"
+        hand_action(game_id, "scene_play_vengeance", player_id="p1")
+        assert GAMES[game_id].state.meta["scene"]["players"]["p1"]["result"] == "success"
+    else:
+        assert prior == "success"
+        hand_action(game_id, "scene_play_scum", player_id="p2", target_player_id="p1")
+        assert GAMES[game_id].state.meta["scene"]["players"]["p1"]["result"] == "failure"
+    finish_acknowledgements(game_id)
+    hand_action(game_id, "scene_close")
+    hand_action(game_id, "scene_new")
+    game = GAMES[game_id].state
+    assert not any(zone.startswith("scene.") for zone in game.zones)
+    validate_game_state(game)

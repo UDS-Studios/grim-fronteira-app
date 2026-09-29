@@ -206,8 +206,6 @@ def scene_dark_draw(game: GameState, *, actor_id: str) -> tuple[GameState, dict[
     if scene["dark"]["must_discard_last"] or _dark_marshal_total(game) > 21:
         raise ValueError("The last Dark card must be discarded before drawing again.")
     game, card_id = _draw_to_zone(game, SCENE_DARK_MARSHAL_HAND_ZONE)
-    if card_id in {"RJ", "BJ"}:
-        game = _grant_joker_bonus_cards(game, bonus_type="scum" if card_id == "RJ" else "vengeance")
     scene = _scene(game)
     total = _dark_marshal_total(game)
     scene["dark"]["must_discard_last"] = total > 21
@@ -244,6 +242,15 @@ def scene_dark_reveal(game: GameState, *, actor_id: str) -> tuple[GameState, dic
     total = _dark_marshal_total(game)
     if scene["dark"]["must_discard_last"] or total > 21:
         raise ValueError("The last Dark card must be discarded before reveal.")
+    # Only the current physical hand becomes public; discarded Jokers do not trigger.
+    # Bonus draws build replacement states, so a failure never publishes partial grants.
+    cards = list(game.zones.get(SCENE_DIFFICULTY_ZONE, [])) + list(
+        game.zones.get(SCENE_DARK_MARSHAL_HAND_ZONE, [])
+    )
+    for card_id in cards:
+        if card_id in {"RJ", "BJ"}:
+            game = _grant_joker_bonus_cards(game, bonus_type="scum" if card_id == "RJ" else "vengeance")
+    scene = _scene(game)
     scene["dark"]["revealed"] = True
     game = scene_resolve(_replace_scene(game, scene=scene), actor_id=actor_id)
     return game, {"marshal_total": total}
@@ -274,7 +281,7 @@ def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = 
 
     game = _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones, keep_hands=True))
     game, diff = marshal_roll_difficulty(game, seed=seed, zone_name=SCENE_DIFFICULTY_ZONE)
-    if diff.drawn_cards and diff.drawn_cards[0] in {"RJ", "BJ"}:
+    if not scene["dark_mode"] and diff.drawn_cards and diff.drawn_cards[0] in {"RJ", "BJ"}:
         game = _grant_joker_bonus_cards(
             game,
             bonus_type="scum" if diff.drawn_cards[0] == "RJ" else "vengeance",
