@@ -1,3 +1,4 @@
+import { getViewRequest } from "../utils/sessionView";
 // frontend/src/views/HookSelectionView.tsx
 import { useState } from "react";
 import { gfAction } from "../api/gf";
@@ -41,8 +42,7 @@ export default function HookSelectionView({
         game_id: resp.game_id,
         action: "gf.begin_table",
         params,
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }

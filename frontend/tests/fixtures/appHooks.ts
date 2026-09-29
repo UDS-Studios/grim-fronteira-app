@@ -34,3 +34,6 @@ export function flushEffects() {
   pending = [];
   for (const effect of scheduled) effect();
 }
+
+// Table callback tests need derived values, not React's memo cache.
+export function useMemo<T>(factory: () => T): T { return factory(); }

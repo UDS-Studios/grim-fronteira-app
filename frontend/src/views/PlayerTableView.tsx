@@ -1,3 +1,4 @@
+import { getViewRequest } from "../utils/sessionView";
 import { getFactionMedallion } from "./player_table/factionMedallion";
 import YankeeDeck from "./player_table/PTV-YankeeDeck";
 import { getYankeeInspectedCardId, getYankeeChoiceRequest, type YankeeChoice } from "./player_table/yankee";
@@ -562,8 +563,7 @@ export default function PlayerTableView({
         game_id: resp.game_id,
         action: CHICHIMECA_CHOOSE_TARGET_ACTION,
         params: { player_id: currentActorId, target_player_id: selectedChichimecaTarget },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       }));
     } finally {
       // Clear only local selection on success or rejection; run owns server state/errors.
@@ -938,8 +938,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
-          viewer_id: view === "player" ? currentActorId : undefined,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -960,8 +959,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
-          viewer_id: view === "player" ? currentActorId : undefined,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -982,8 +980,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
-          viewer_id: view === "player" ? currentActorId : undefined,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -1004,8 +1001,7 @@ export default function PlayerTableView({
         params: {
           player_id: currentActorId,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
@@ -1022,8 +1018,7 @@ export default function PlayerTableView({
           player_id: currentActorId,
           reward_card_ids: selectedRewardCardKeys.map((key) => key.split(":")[0]),
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
 
@@ -1050,8 +1045,7 @@ export default function PlayerTableView({
           player_id: currentActorId,
           reward_card_id: selectedRewardCardKeys[0].split(":")[0],
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
 
@@ -1126,8 +1120,7 @@ export default function PlayerTableView({
         game_id: resp.game_id,
         action: "gf.faction_paisa_claim_reward",
         params: { player_id: currentActorId, vengeance_card_ids: validPaisaSelection },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       }));
     } finally {
       cancelPaisaSelection();
@@ -1180,8 +1173,7 @@ export default function PlayerTableView({
           card_id: validCriolloSelection.cardId,
           from_resource: validCriolloSelection.resource,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       }));
     } finally {
       cancelCriolloSelection();
@@ -1287,8 +1279,7 @@ export default function PlayerTableView({
         params: {
           player_id: currentActorId,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
@@ -1306,8 +1297,7 @@ export default function PlayerTableView({
           player_id: currentActorId,
           target_player_id: targetPlayerId,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
 
@@ -1363,7 +1353,7 @@ export default function PlayerTableView({
             src={publicAsset("ui/refresh.png")}
             alt="Refresh"
             title="Refresh Table"
-            onClick={() => run(getGame(resp.game_id, view, view === "player" ? currentActorId : undefined))}
+            onClick={() => run(getGame(resp.game_id, view, getViewRequest(view, currentActorId).viewer_id))}
           />
         </div>
 
