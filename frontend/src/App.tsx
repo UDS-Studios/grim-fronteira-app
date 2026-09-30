@@ -1,3 +1,4 @@
+import { acceptResponse } from "./utils/responseOrdering";
 import { useEffect, useState } from "react";
 import { newGame, getGame, gfAction } from "./api/gf";
 import type { ActionResponse } from "./api/types";
@@ -51,7 +52,7 @@ export default function App() {
         if (cancelled) return;
 
         if (!r.error) {
-          setResp(r);
+          setResp(current => acceptResponse(current, r));
           return;
         }
 
@@ -75,7 +76,7 @@ export default function App() {
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
       const r = await p;
-      setResp(r);
+      setResp(current => acceptResponse(current, r));
       if (!r.error && r.game_id) {
         setGameId(r.game_id);
         setScreen("game");

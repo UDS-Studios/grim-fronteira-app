@@ -99,11 +99,16 @@ test("private ordered fan replaces difficulty once, reads total and remains boun
     assert.match(render(resp), />—<\/strong>/);
     resp.state.meta!.scene!.dark = { revealed: false, marshal_total: 27, must_discard_last: true };
     const bust = render(resp);
-    assert.ok(bust.includes("You have gone over 21. Discard the last Dark card before continuing."));
+    assert.ok(bust.includes("You have gone over 21. Click the last Dark card to discard it before continuing."));
     assert.match(bust, /data-forced-discard="true" aria-label="Extra draw 2: 5D. Must discard last"/);
-    assert.match(bust, /<button[^>]*disabled=""[^>]*>DRAW/);
+    assert.ok(!html.includes(">DRAW</button>") && !bust.includes(">DRAW</button>"));
+    assert.ok(!bust.includes(">DISCARD LAST</button>"));
+    assert.match(bust, /<button[^>]*aria-label="Draw from deck"[^>]*disabled=""/);
     assert.match(bust, /<button[^>]*class="marshal-dark-reveal"[^>]*disabled=""[^>]*>REVEAL/);
-    assert.match(bust, /<button[^>]*class="marshal-dark-discard"(?![^>]*disabled)[^>]*>DISCARD LAST/);
+    assert.match(bust, /<button[^>]*class="marshal-dark-discard-card"[^>]*aria-label="Discard last Dark card: 5D"(?![^>]*disabled)/);
+    assert.equal((bust.match(/<button[^>]*aria-label="Discard last Dark card:/g) ?? []).length, 1);
+    assert.ok(!bust.includes('aria-label="Discard last Dark card: RJ"'));
+    assert.ok(!bust.includes('aria-label="Discard last Dark card: AH"'));
     // Redacted backend projection contains no data to reconstruct or cache.
     const player = fixture();
     player.state.meta!.scene!.difficulty = { card_id: null, value: null };
@@ -139,22 +144,38 @@ function buttons(node: ReactNode): Record<string, unknown>[] {
   return node.type === "button" ? [node.props] : buttons(node.props.children as ReactNode);
 }
 
-test("all three Dark requests keep Marshal identity, serialize submissions and preserve errors", async () => {
+function findProps(node: ReactNode, type: unknown): Record<string, unknown> | undefined {
+  if (Array.isArray(node)) return node.map(child => findProps(child, type)).find(Boolean);
+  if (!isValidElement<Record<string, unknown>>(node)) return;
+  return node.type === type ? node.props : findProps(node.props.children as ReactNode, type);
+}
+
+test("physical Deck and forced card send exact requests and share the Reveal busy lock", async () => {
   const server = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)),
     server: { middlewareMode: true, hmr: false }, appType: "custom", plugins: [{
       name: "dark-hand-hooks", enforce: "pre", transform(code, id) {
-        if (id.endsWith("/src/components/MarshalDarkHand.tsx")) return code.replace('from "react";', 'from "/tests/fixtures/appHooks.ts";');
+        if (["/src/components/MarshalDarkHand.tsx", "/src/views/MarshalTableView.tsx", "/src/utils/useDarkHandActions.ts"].some(path => id.endsWith(path))) {
+          return code.replace('from "react";', 'from "/tests/fixtures/appHooks.ts";');
+        }
       },
     }] });
   const originalFetch = globalThis.fetch;
   try {
     const hooks = await server.ssrLoadModule("/tests/fixtures/appHooks.ts");
     const { default: Hand } = await server.ssrLoadModule("/src/components/MarshalDarkHand.tsx");
-    for (const [label, action] of [["DRAW", "gf.scene_dark_draw"], ["DISCARD LAST", "gf.scene_dark_discard_last"], ["REVEAL", "gf.scene_dark_reveal"]]) {
+    const { default: Table } = await server.ssrLoadModule("/src/views/MarshalTableView.tsx");
+    for (const [scenario, action] of [["opening", "gf.scene_roll_difficulty"], ["setup", "gf.scene_dark_draw"],
+      ["active", "gf.scene_dark_draw"], ["discard", "gf.scene_dark_discard_last"], ["reveal", "gf.scene_dark_reveal"]]) {
       for (const failure of [false, true]) {
         hooks.resetHooks();
         const resp = fixture();
-        if (label === "DISCARD LAST") resp.state.meta!.scene!.dark = { revealed: false, marshal_total: 27, must_discard_last: true };
+        if (scenario === "opening" || scenario === "setup") resp.state.meta!.scene!.status = "setup";
+        if (scenario === "opening") {
+          resp.state.meta!.scene!.difficulty = { card_id: null, value: null };
+          resp.state.meta!.scene!.dark = { revealed: false };
+          resp.state.zones!["scene.dark.marshal_hand"] = [];
+        }
+        if (scenario === "discard") resp.state.meta!.scene!.dark = { revealed: false, marshal_total: 27, must_discard_last: true };
         const before = structuredClone(resp);
         const requests: ActionRequest[] = [];
         let finish: (r: Response) => void = () => {};
@@ -163,24 +184,38 @@ test("all three Dark requests keep Marshal identity, serialize submissions and p
           return new Promise<Response>(resolve => { finish = resolve; });
         };
         let received: ActionResponse | undefined;
-        const props = { resp, actorId: "host", view: "marshal", run: async (p: Promise<ActionResponse>) => { received = await p; return received; } };
-        const render = () => { hooks.beginRender(); return buttons(Hand(props)); };
-        const originalButtons = render();
-        const click = originalButtons.find(b => b.children === label)!.onClick as () => Promise<void>;
+        const props = { resp, currentActorId: "host", view: "marshal", onBackHome: () => {},
+          run: async (p: Promise<ActionResponse>) => { received = await p; return received; } };
+        const render = () => {
+          hooks.beginRender();
+          const tree = Table(props);
+          const deck = buttons(tree).find(b => b["aria-label"] === "Draw from deck")!;
+          const hand = buttons(Hand(findProps(tree, Hand)!));
+          return { deck, hand };
+        };
+        const first = render();
+        const target = scenario === "discard" ? first.hand.find(b => b["aria-label"] === "Discard last Dark card: 5D")!
+          : scenario === "reveal" ? first.hand.find(b => b.children === "REVEAL")! : first.deck;
+        assert.equal(target.disabled, false, scenario);
+        if (scenario === "discard") assert.equal(first.deck.disabled, true);
+        const click = target.onClick as () => Promise<void>;
         const pending = click();
         await click();
-        for (const button of originalButtons) await (button.onClick as () => Promise<void>)();
-        assert.ok(render().every(b => b.disabled === true));
-        assert.deepEqual(resp, before, "cards, total and resources wait for backend");
+        await (first.deck.onClick as () => Promise<void>)();
+        for (const button of first.hand) await (button.onClick as () => Promise<void>)();
+        const waiting = render();
+        assert.equal(waiting.deck.disabled, true);
+        assert.ok(waiting.hand.every(b => b.disabled === true));
+        assert.deepEqual(resp, before);
         assert.deepEqual(requests, [{ game_id: "dark", action, params: { actor_id: "host" }, view: "marshal", viewer_id: "host" }]);
         const success = fixture();
         success.revision++;
-        success.state.meta!.scene!.dark!.revealed = label === "REVEAL";
         finish(new Response(JSON.stringify(failure ? { error: { code: "REJECTED", message: "Unavailable", details: null }, state: {} } : success)));
         await pending;
         assert.deepEqual(received?.state, failure ? before.state : success.state);
-        assert.equal(render().find(b => b.children === label)!.disabled, false);
-        assert.deepEqual(resp, before, "no local Joker effects or discarded-card cache");
+        const restored = render();
+        assert.equal(scenario === "discard" ? restored.hand[0].disabled : scenario === "reveal" ? restored.hand.at(-1)!.disabled : restored.deck.disabled, false);
+        assert.deepEqual(resp, before);
       }
     }
     hooks.resetHooks();

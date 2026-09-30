@@ -286,3 +286,27 @@ def test_marshal_frontend_visibility_contract(game_id):
         assert data["meta"]["scene"]["difficulty"]["card_id"] == "2H"
         assert data["zones"][DARK_HAND] == ["3C"]
     assert "marshal_total" not in GAMES[game_id].state.meta["scene"]["dark"]
+
+
+def test_discarded_dark_card_cannot_be_the_next_draw(game_id):
+    from backend.tests.test_gf_dark import prepare_hand
+    prepare_hand(game_id, ["9H", "8C", "2D"])
+
+    def locations(card):
+        game = GAMES[game_id].state
+        validate_game_state(game)
+        piles = {"draw": game.deck.draw_pile, "discard": game.deck.discard_pile,
+                 "in_play": game.deck.in_play, "removed": game.deck.removed, **game.zones}
+        return [name for name, cards in piles.items() if card in cards]
+
+    assert locations("8C") == ["draw"]
+    hand_action(game_id, "scene_dark_draw", view="marshal", viewer_id="host1")
+    assert locations("8C") == [DARK_HAND]
+    assert GAMES[game_id].state.meta["scene"]["dark"]["must_discard_last"]
+    response = hand_action(game_id, "scene_dark_discard_last", view="marshal", viewer_id="host1")
+    assert locations("8C") == ["discard"]
+    assert isinstance(response.state["deck"]["discard_pile"], dict)
+    response = hand_action(game_id, "scene_dark_draw", view="marshal", viewer_id="host1")
+    assert response.result["card_id"] == "2D"
+    assert locations("2D") == [DARK_HAND]
+    assert locations("8C") == ["discard"]

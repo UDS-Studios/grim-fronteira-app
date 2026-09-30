@@ -74,3 +74,12 @@ export function canDarkReveal(state: GameState, actorId: string): boolean {
   return canDarkDraw(state, actorId) && scene?.status === "active" &&
     (scene.participants?.length ?? 0) > 0 && countUnfinishedDarkParticipants(scene) === 0;
 }
+
+export function canRollDarkDifficulty(state: GameState, actorId: string): boolean {
+  const meta = state.meta;
+  const scene = meta?.scene;
+  return meta?.phase === "table" && !!actorId.trim() && actorId === meta.marshal_id &&
+    !meta.pending_interaction && isDarkScene(scene) && !isDarkRevealed(scene) &&
+    scene?.status === "setup" && scene.difficulty?.card_id == null &&
+    !(scene.mode === "duel" && scene.duel?.subtype === "pvp");
+}

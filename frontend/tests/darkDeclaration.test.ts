@@ -72,9 +72,9 @@ test("icon, explanatory tooltip, both table atmospheres and privacy", async () =
     Object.assign(resp.state.meta!.scene!, setup().meta!.scene, { dark_mode: true, difficulty: { card_id: "RJ", value: 20 } });
     const html = renderToStaticMarkup(createElement(Table, { resp, currentActorId: "marshal", view: "marshal",
       run: () => { throw Error("render must not act"); }, onBackHome: () => {} }));
-    assert.ok(html.includes("Start the scene before revealing."));
+    assert.ok(html.includes("Start the scene when ready."));
     assert.ok(!html.includes("Each player receives") && !html.includes("Click to draw azzardo"));
-    assert.match(html, /<button[^>]*disabled=""[^>]*title="Dark setup: deck unavailable"/);
+    assert.match(html, /<button[^>]*disabled=""[^>]*title="Dark draw unavailable."/);
     // Public/player projection has no secret card, total or discard identities to render.
     resp.state.meta!.scene!.difficulty = { card_id: null, value: null };
     resp.state.meta!.scene!.dark = { revealed: false };

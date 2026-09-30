@@ -430,6 +430,10 @@ button:focus-visible {
 .marshal-dark-actions button:disabled { opacity: .4; cursor: not-allowed; }
 .marshal-dark-actions button:focus-visible { outline: 3px solid #eee5ce; outline-offset: 3px; }
 .marshal-dark-reveal { border: 2px solid #d5bc87; background: #55452c; color: #fff3d9; font-weight: 800; margin-left: auto; }
-.marshal-dark-discard { border: 1px solid #eba497; }
 .marshal-dark-status, .marshal-dark-warning { margin: 0; min-height: 24px; font-size: 15px; }
 .marshal-dark-warning { color: #ffd0bb; font-weight: 700; border-left: 3px solid #eba497; padding-left: 8px; }
+.marshal-dark-discard-card { display: block; padding: 0; border: 0; background: transparent; color: inherit; }
+.marshal-dark-discard-card:not(:disabled):hover { outline: 3px solid #fff3d9; }
+.marshal-dark-discard-card:focus-visible { outline: 3px solid #fff3d9; outline-offset: 4px; }
+.marshal-dark-discard-card:disabled { opacity: .5; cursor: not-allowed; }
+.marshal-dark-card:focus-within { z-index: 30; }

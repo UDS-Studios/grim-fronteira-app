@@ -25,7 +25,7 @@ test("real Marshal and player table callbacks POST their private projection", as
     plugins: [{
       name: "table-callback-hooks", enforce: "pre",
       transform(code, id) {
-        if (id.endsWith("/src/views/MarshalTableView.tsx") || id.endsWith("/src/views/PlayerTableView.tsx")) {
+        if (id.endsWith("/src/views/MarshalTableView.tsx") || id.endsWith("/src/views/PlayerTableView.tsx") || id.endsWith("/src/utils/useDarkHandActions.ts")) {
           return code.replace('from "react";', 'from "/tests/fixtures/appHooks.ts";');
         }
       },

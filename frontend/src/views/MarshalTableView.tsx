@@ -1,6 +1,7 @@
+import { useDarkHandActions } from "../utils/useDarkHandActions";
 import MarshalDarkHand from "../components/MarshalDarkHand";
 import DarkDeclareControl from "../components/DarkDeclareControl";
-import { hasDarkAtmosphere, isDarkScene } from "../utils/dark";
+import { hasDarkAtmosphere, isDarkScene, canDarkDraw, canRollDarkDifficulty, mustMarshalDiscardDarkCard } from "../utils/dark";
 import { getViewRequest } from "../utils/sessionView";
 import ReclaimInteractionControl from "../components/ReclaimInteractionControl";
 import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
@@ -591,6 +592,7 @@ export default function MarshalTableView({
   run,
   onBackHome,
 }: MarshalTableViewProps) {
+  const { busy: darkBusy, submit: submitDark } = useDarkHandActions(resp, currentActorId, view, run);
   const duelBorderColor = "#caa23a";
   const duelBackground = "color-mix(in srgb, #d9b94b 20%, var(--surface-bg))";
   const duelTitleColor = "#7f5a12";
@@ -821,10 +823,18 @@ export default function MarshalTableView({
     ["J", "Q", "K"].includes(difficultyCardId.trim().toUpperCase().charAt(0));
   const azzardoBlockedByDifficulty = isJokerDifficulty || isAceDifficulty || isFigureDifficulty;
 
-  const canDeckClick =
-    !isPvpDuelScene &&
+  const canDeckClick = darkMode
+    ? view === "marshal" && !darkBusy && (canRollDarkDifficulty(state, currentActorId) || canDarkDraw(state, currentActorId))
+    : !isPvpDuelScene &&
     isEditable &&
     (!hasDifficulty || (!darkMode && !hasAzzardo && !azzardoBlockedByDifficulty));
+
+  const darkDeckInstruction = mustMarshalDiscardDarkCard(meta.scene)
+    ? "Discard the last Dark card before drawing again."
+    : meta.scene?.dark?.revealed ? "The Dark hand has been revealed."
+    : !hasDifficulty ? "Draw the hidden difficulty."
+    : canDarkDraw(state, currentActorId) ? "Click the deck to draw another Dark card."
+    : "Dark draw unavailable.";
 
   const canStartScene =
     !isLocked &&
@@ -931,6 +941,11 @@ export default function MarshalTableView({
   }
 
   async function handleDeckClick() {
+    if (darkMode) {
+      if (!canDeckClick) return;
+      await submitDark(hasDifficulty ? "gf.scene_dark_draw" : "gf.scene_roll_difficulty");
+      return;
+    }
     if (hasPendingInteraction) return;
     if (!isEditable) return;
     if (isPvpDuelScene) return;
@@ -1394,8 +1409,10 @@ export default function MarshalTableView({
 
           <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
             <TableZone title="Deck">
+              {darkMode && <p className="marshal-dark-status">{darkDeckInstruction}</p>}
               <button
                 type="button"
+                aria-label="Draw from deck"
                 onClick={handleDeckClick}
                 disabled={!canDeckClick}
                 style={{
@@ -1411,10 +1428,8 @@ export default function MarshalTableView({
                   opacity: canDeckClick ? 1 : 0.65,
                 }}
                 title={
-                  !canDeckClick
-                    ? darkMode
-                      ? "Dark setup: deck unavailable"
-                      : azzardoBlockedByDifficulty
+                  darkMode ? darkDeckInstruction : !canDeckClick
+                    ? azzardoBlockedByDifficulty
                       ? isJokerDifficulty
                         ? "Joker difficulty: no azzardo allowed"
                         : isAceDifficulty
@@ -1530,9 +1545,11 @@ export default function MarshalTableView({
           }>
             {showDarkHand ? (
               <>
-                <MarshalDarkHand resp={resp} actorId={currentActorId} view={view} run={run} />
+                <MarshalDarkHand resp={resp} actorId={currentActorId} view={view} busy={darkBusy}
+                  onDiscardLast={() => submitDark("gf.scene_dark_discard_last")}
+                  onReveal={() => submitDark("gf.scene_dark_reveal")} />
                 {scene.status === "setup" && <ActionButton label="Start Scene" onClick={handleStartScene}
-                  disabled={!canStartScene} title="Lock setup and begin scene" />}
+                  disabled={darkBusy || !canStartScene} title="Lock setup and begin scene" />}
               </>
             ) : (
             <div

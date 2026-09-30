@@ -64,6 +64,9 @@ test("Marshal Reclaim keeps its action and authorization with associated danger 
     plugins: [{
       name: "marshal-test-hooks", enforce: "pre",
       transform(code, id) {
+        if (id.endsWith("/src/utils/useDarkHandActions.ts")) {
+          return code.replace('from "react";', 'from "/tests/fixtures/appHooks.ts";');
+        }
         if (id.endsWith("/src/views/MarshalTableView.tsx")) {
           return code.replace('import { useEffect, useMemo, useState } from "react";',
             'import { useEffect, useState } from "/tests/fixtures/appHooks.ts"; const useMemo = (factory: () => unknown) => factory();');
