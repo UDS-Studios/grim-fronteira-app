@@ -86,6 +86,7 @@ type SceneState = {
     wounds_gained?: number;
     wounds_applied?: number;
     reward_gained?: boolean;
+    dark_reward_loss_pending?: boolean;
     result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
     recovery_action?: "healed" | "skipped" | null;
     reward_discard_started?: boolean;
@@ -151,6 +152,7 @@ function PlayerLane({
   onForceAcknowledge,
   mustHealOrSkip,
   mustDiscardRewards,
+  mustLoseDarkReward,
   onForceSkipHeal,
   onForceDiscardRewards,
 }: {
@@ -173,6 +175,7 @@ function PlayerLane({
   onForceAcknowledge: () => void;
   mustHealOrSkip: boolean;
   mustDiscardRewards: boolean;
+  mustLoseDarkReward: boolean;
   onForceSkipHeal: () => void;
   onForceDiscardRewards: () => void;
 }) {
@@ -307,6 +310,7 @@ function PlayerLane({
           </div>
         ) : null}
 
+        {mustLoseDarkReward && <div role="status">Dark Reward loss pending — player must choose 1 Reward.</div>}
         {mustHealOrSkip || mustDiscardRewards ? (
           <div
             style={{
@@ -847,6 +851,7 @@ export default function MarshalTableView({
   function getParticipantPostSceneRequirements(pid: string): {
     mustHealOrSkip: boolean;
     mustDiscardRewards: boolean;
+    mustLoseDarkReward: boolean;
   } {
     const wounds = getDisplayedWounds(pid);
     const rewardPoints = getPlayerRewardPoints(pid);
@@ -854,6 +859,7 @@ export default function MarshalTableView({
     const rewardDiscardStarted = !!scenePlayers?.[pid]?.reward_discard_started;
 
     return {
+      mustLoseDarkReward: scenePlayers?.[pid]?.dark_reward_loss_pending === true,
       mustHealOrSkip: wounds === 1 && rewardPoints > 11 && recoveryAction == null,
       mustDiscardRewards: rewardPoints > 21 || (rewardDiscardStarted && rewardPoints > 20),
     };
@@ -863,7 +869,7 @@ export default function MarshalTableView({
     scene.status === "closed" &&
     participantIds.some((pid) => {
       const requirements = getParticipantPostSceneRequirements(pid);
-      return requirements.mustHealOrSkip || requirements.mustDiscardRewards;
+      return requirements.mustLoseDarkReward || requirements.mustHealOrSkip || requirements.mustDiscardRewards;
     });
 
   const sortedNonMarshalPlayers = useMemo(() => {
@@ -1024,7 +1030,7 @@ export default function MarshalTableView({
   }
 
   async function handleNewScene() {
-    if (hasPendingInteraction) return;
+    if (hasPendingInteraction || hasBlockedParticipantForNewScene) return;
     setPendingBonusType(null);
     await run(
       gfAction({
@@ -1217,7 +1223,7 @@ export default function MarshalTableView({
         return scene.resolution.message;
       }
       if (hasBlockedParticipantForNewScene) {
-        return "Scene closed. Resolve participant heal/skip or reward discard requirements before opening a new scene.";
+        return "Scene closed. Resolve participant Dark Reward loss, heal/skip or reward discard requirements before opening a new scene.";
       }
       return "Scene closed. Click New Scene to prepare the next one.";
     }
@@ -1349,7 +1355,7 @@ export default function MarshalTableView({
                       disabled={hasPendingInteraction || hasBlockedParticipantForNewScene}
                       title={
                         hasBlockedParticipantForNewScene
-                          ? "Resolve participant heal/skip or reward discard requirements first"
+                          ? "Resolve participant Dark Reward loss, heal/skip or reward discard requirements first"
                           : "Prepare a new scene"
                       }
                     />
@@ -1795,6 +1801,7 @@ export default function MarshalTableView({
                             scene.status === "awaiting_ack" && !scenePlayers?.[pid]?.acknowledged
                           }
                           onForceAcknowledge={() => handleForceAcknowledge(pid)}
+                          mustLoseDarkReward={scene.status === "closed" && requirements.mustLoseDarkReward}
                           mustHealOrSkip={scene.status === "closed" && requirements.mustHealOrSkip}
                           mustDiscardRewards={
                             scene.status === "closed" && requirements.mustDiscardRewards

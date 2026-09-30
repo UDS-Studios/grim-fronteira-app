@@ -109,7 +109,9 @@ export function getDarkPlayerStatus(scene: SceneState, actorId: string, ownTurn:
   const player = scene.players?.[actorId];
   if (isDarkRevealed(scene)) {
     const outcome = player?.result === "success"
-      ? "The Dark is revealed. You beat the Marshal's hand."
+      ? player.reward_cards_gained === 2
+        ? "You survived the Dark and earned 2 Rewards."
+        : "The Dark is revealed. You beat the Marshal's hand."
       : player?.result === "failure" || player?.result === "bust" || player?.result === "wound"
         ? "The Dark is revealed. The Marshal's hand beat yours."
         : "The Marshal has revealed the hand. Resolve the outcome.";
