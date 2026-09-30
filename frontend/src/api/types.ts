@@ -81,11 +81,15 @@ export type GameMeta = {
   };
 };
 
+export type CardZoneProjection = string[] | { count?: number };
+
+// Ordinary player/lobby zones remain card arrays; Dark zones can be count-only.
+export type GameZones = Record<string, CardZoneProjection> &
+  Record<`players.${string}` | `scene.hand.${string}` | `lobby.${string}`, string[]>;
+
 export type GameState = {
   meta?: GameMeta;
-  zones?: Record<string, string[]> & {
-    "scene.dark.marshal_hand"?: string[];
-  };
+  zones?: GameZones;
   deck?: {
     draw_pile?: string[] | { count?: number };
     discard_pile?: string[] | { count?: number };

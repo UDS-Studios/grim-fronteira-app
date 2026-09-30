@@ -18,9 +18,10 @@ export function getDarkMarshalTotal(scene?: SceneState): number | null {
 export function getDarkMarshalHand(state: GameState): string[] {
   if (!isDarkScene(state.meta?.scene)) return [];
   const difficulty = state.meta?.scene?.difficulty?.card_id;
+  const extras = state.zones?.["scene.dark.marshal_hand"];
   return [
     ...(difficulty ? [difficulty] : []),
-    ...(state.zones?.["scene.dark.marshal_hand"] ?? []),
+    ...(Array.isArray(extras) ? extras : []),
   ];
 }
 
@@ -66,7 +67,7 @@ export function canDarkDraw(state: GameState, actorId: string): boolean {
 
 export function canDarkDiscardLast(state: GameState, actorId: string): boolean {
   return canUseDarkHand(state, actorId) && mustMarshalDiscardDarkCard(state.meta?.scene) &&
-    (state.zones?.["scene.dark.marshal_hand"]?.length ?? 0) > 0;
+    Array.isArray(state.zones?.["scene.dark.marshal_hand"]) && getDarkExtraCount(state) > 0;
 }
 
 export function canDarkReveal(state: GameState, actorId: string): boolean {
@@ -82,4 +83,52 @@ export function canRollDarkDifficulty(state: GameState, actorId: string): boolea
     !meta.pending_interaction && isDarkScene(scene) && !isDarkRevealed(scene) &&
     scene?.status === "setup" && scene.difficulty?.card_id == null &&
     !(scene.mode === "duel" && scene.duel?.subtype === "pvp");
+}
+
+// Counts never inspect identities or derive card values.
+export function getProjectedCardCount(zone: unknown): number {
+  if (Array.isArray(zone)) return zone.length;
+  if (!zone || typeof zone !== "object" || !("count" in zone)) return 0;
+  const count = zone.count;
+  return typeof count === "number" && Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+export function getDarkOpeningCount(state: GameState): number {
+  return getProjectedCardCount(state.zones?.["scene.difficulty"]);
+}
+
+export function getDarkExtraCount(state: GameState): number {
+  return getProjectedCardCount(state.zones?.["scene.dark.marshal_hand"]);
+}
+
+export function getDarkHiddenCardCount(state: GameState): number {
+  return getDarkOpeningCount(state) + getDarkExtraCount(state);
+}
+
+export function getDarkPlayerStatus(scene: SceneState, actorId: string, ownTurn: boolean, paused = false): string {
+  const player = scene.players?.[actorId];
+  if (isDarkRevealed(scene)) {
+    const outcome = player?.result === "success"
+      ? "The Dark is revealed. You beat the Marshal's hand."
+      : player?.result === "failure" || player?.result === "bust" || player?.result === "wound"
+        ? "The Dark is revealed. The Marshal's hand beat yours."
+        : "The Marshal has revealed the hand. Resolve the outcome.";
+    const next = paused ? "An interaction is pending."
+      : scene.status === "awaiting_ack"
+        ? player?.acknowledged ? "Waiting for the other participants to acknowledge."
+          : scene.participants?.includes(actorId) ? "You can still play Scum or Vengeance before you acknowledge." : "Waiting for the participants to acknowledge."
+        : "";
+    return `THE DARK IS REVEALED\n${outcome}${next ? `\n${next}` : ""}`;
+  }
+  if (!scene.participants?.includes(actorId)) {
+    return "IN THE DARK\nThe scene is in the Dark. Waiting for the participants and the Marshal's reveal.";
+  }
+  if (player?.standing || player?.busted) {
+    return "IN THE DARK\nYour choice is made. Waiting for the Marshal to reveal the Dark.";
+  }
+  const action = paused ? "An interaction is pending."
+    : scene.status !== "active" ? "Waiting for the Marshal to start the scene."
+      : ownTurn ? "Your turn. Draw or stand without knowing what waits in the dark."
+        : "Waiting for your turn to draw or stand.";
+  return `IN THE DARK\nThe Marshal's hand is hidden. ${action}`;
 }

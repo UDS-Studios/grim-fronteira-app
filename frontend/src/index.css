@@ -437,3 +437,40 @@ button:focus-visible {
 .marshal-dark-discard-card:focus-visible { outline: 3px solid #fff3d9; outline-offset: 4px; }
 .marshal-dark-discard-card:disabled { opacity: .5; cursor: not-allowed; }
 .marshal-dark-card:focus-within { z-index: 30; }
+
+/* Player Dark hand: a fixed-height fan, independent of the number of cards. */
+.player-dark-scene { display: grid; gap: 8px; min-width: 0; }
+.player-dark-hand {
+  min-width: 0;
+  padding: 10px 16px;
+  border: 1px solid #847348;
+  border-radius: 14px;
+  background: #24271f;
+  color: #eee5ce;
+  display: grid;
+  gap: 8px;
+}
+.player-dark-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.player-dark-heading span { white-space: nowrap; }
+.player-dark-cards {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 74px;
+  height: 112px;
+  align-items: start;
+}
+.player-dark-card { position: relative; min-width: 0; width: 72px; }
+.player-dark-card:hover, .player-dark-card:focus-visible { z-index: 20; }
+.player-dark-card:focus-visible { outline: 2px solid #cfb772; outline-offset: 3px; border-radius: 10px; }
+.player-dark-total { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+.player-dark-total strong { font-size: 20px; }
+.player-dark-cards--revealed { animation: dark-hand-reveal 240ms ease-out; }
+@keyframes dark-hand-reveal {
+  from { opacity: .35; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-dark-cards--revealed { animation: none; }
+  .player-dark-card img { transition: none !important; }
+}

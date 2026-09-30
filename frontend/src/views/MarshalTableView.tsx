@@ -610,7 +610,7 @@ export default function MarshalTableView({
     if (pendingIdentity !== null) setPendingBonusType(null);
   }, [pendingIdentity]);
   const meta = state.meta ?? {};
-  const zones: Record<string, string[]> = state.zones ?? {};
+  const zones = state.zones ?? {};
   const deck = state.deck ?? {};
 
   const playersOrder: string[] = meta.players_order ?? [];

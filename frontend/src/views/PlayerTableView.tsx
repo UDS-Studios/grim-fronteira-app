@@ -1,4 +1,5 @@
-import { hasDarkAtmosphere } from "../utils/dark";
+import PlayerDarkHand from "../components/PlayerDarkHand";
+import { getDarkPlayerStatus, isDarkScene, hasDarkAtmosphere } from "../utils/dark";
 import { getViewRequest } from "../utils/sessionView";
 import { getFactionMedallion } from "./player_table/factionMedallion";
 import YankeeDeck from "./player_table/PTV-YankeeDeck";
@@ -587,7 +588,7 @@ export default function PlayerTableView({
   }, [pendingIdentity]);
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
-  const zones: Record<string, string[]> = state.zones ?? {};
+  const zones = state.zones ?? {};
 
   const scene = (meta.scene ?? {}) as SceneState;
   const isDuelScene = scene.mode === "duel";
@@ -796,7 +797,7 @@ export default function PlayerTableView({
       }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
-    return getSceneOutcome(total, effectiveDifficultyValue);
+    return isDarkScene(meta.scene) ? null : getSceneOutcome(total, effectiveDifficultyValue);
   }
 
   const participantOrderLookup = new Map(participantIds.map((pid, idx) => [pid, idx]));
@@ -849,6 +850,9 @@ export default function PlayerTableView({
     difficultyCardId.trim().toUpperCase().charAt(0) === "A";
 
   function getSceneInstruction(): string {
+    if (meta.scene && isDarkScene(meta.scene) && scene.status !== "closed") {
+      return getDarkPlayerStatus(meta.scene, currentActorId, isCurrentViewerActive, hasPendingInteraction);
+    }
     if (scene.status === "idle") {
       return "Waiting for the Marshal to prepare the scene.";
     }
@@ -1393,7 +1397,7 @@ export default function PlayerTableView({
           <div><b>phase:</b> {meta.phase ?? "-"}</div>
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
-          <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>
+          {!isDarkScene(meta.scene) && <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>}
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
         </div>
@@ -1423,6 +1427,13 @@ export default function PlayerTableView({
         >
           <div style={{ width: "100%" }}>
             <TableZone title="Difficulty / Scene">
+              {isDarkScene(meta.scene) ? (
+                <div className="player-dark-scene">
+                  <PlayerDarkHand state={state} />
+                  <SceneStatus message={getSceneInstruction()}
+                    ownTurn={scene.status === "active" && isCurrentViewerActive && !hasPendingInteraction} />
+                </div>
+              ) : (
               <div
                 style={{
                   display: "grid",
@@ -1555,6 +1566,7 @@ export default function PlayerTableView({
                   />
                 </div>
               </div>
+              )}
             </TableZone>
           </div>
 

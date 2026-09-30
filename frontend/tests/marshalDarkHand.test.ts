@@ -113,7 +113,7 @@ test("private ordered fan replaces difficulty once, reads total and remains boun
     const player = fixture();
     player.state.meta!.scene!.difficulty = { card_id: null, value: null };
     player.state.meta!.scene!.dark = { revealed: false };
-    player.state.zones = { "scene.difficulty": [], "scene.dark.marshal_hand": [] };
+    player.state.zones = { "scene.difficulty": { count: 1 }, "scene.dark.marshal_hand": { count: 2 } };
     const publicHtml = render(player, "p1", "player");
     for (const secret of ["RJ", "AH", "5D", "MARSHAL TOTAL", "marshal_total", "must_discard_last", "DISCARD LAST", "marshal-dark-hand"]) {
       assert.ok(!publicHtml.includes(secret), secret);
