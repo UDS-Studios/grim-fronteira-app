@@ -344,8 +344,8 @@ def test_hidden_state_and_action_results(game_id, view, viewer):
     assert data["meta"]["scene"]["difficulty"]["card_id"] is None
     assert data["meta"]["scene"]["difficulty"]["value"] is None
     assert "scene.difficulty_value" not in data["meta"]
-    assert data["zones"]["scene.difficulty"] == []
-    assert data["zones"][DARK_HAND] == []
+    assert data["zones"]["scene.difficulty"] == {"count": 1}
+    assert data["zones"][DARK_HAND] == {"count": 1}
     assert "must_discard_last" not in data["meta"]["scene"]["dark"]
     debug = game_state_to_dict(GAMES[game_id].state, view="debug")
     assert debug["zones"][DARK_HAND] == ["8C"]
@@ -464,7 +464,7 @@ def test_real_reveal_visibility_total_and_conservation(game_id, view, player_car
     game = prepare_waiting(game_id, player_card=player_card)
     before = deepcopy(game)
     hidden = game_state_to_dict(game, view="player", viewer_id="host1")
-    assert hidden["zones"][DARK_HAND] == []
+    assert hidden["zones"][DARK_HAND] == {"count": 2}
     assert hidden["meta"]["scene"]["difficulty"]["value"] is None
     response = hand_action(game_id, "scene_dark_reveal", view, "p1")
     assert response.result == {"ok": True, "action": "gf.scene_dark_reveal", "marshal_total": 19}
@@ -947,7 +947,7 @@ def test_hidden_joker_privacy_and_reveal(game_id, joker, bonus, source, view, vi
     assert game.zones["scene.difficulty" if source == "difficulty" else DARK_HAND] == [joker]
     assert joker not in str(response.result)
     assert response.state["meta"]["scene"]["difficulty"]["card_id"] is None
-    assert response.state["zones"].get(DARK_HAND, []) == []
+    assert response.state["zones"][DARK_HAND] == {"count": int(source == "extra")}
     assert game.meta["scene"]["dark"] == {"revealed": False, "must_discard_last": False}
     for pid in ["p1", "p2"]:
         for resource in ["scum", "vengeance"]:

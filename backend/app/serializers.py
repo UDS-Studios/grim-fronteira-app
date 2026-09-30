@@ -97,10 +97,13 @@ def game_state_to_dict(game: GameState, *, view: str = "debug", viewer_id: str |
             scene.pop("difficulty_value", None)
             meta.pop("scene.difficulty_value", None)
             (scene.get("dark") or {}).pop("must_discard_last", None)
-            zones = data.get("zones") or {}
-            for name in ("scene.difficulty", "scene.difficulty.cards", "scene.dark.marshal_hand"):
-                if name in zones:
-                    zones[name] = []
+            zones = data.setdefault("zones", {})
+            # Counts describe current physical cards, never identities or values.
+            # Canonical zones are always present, even before the first draw.
+            for name in ("scene.difficulty", "scene.dark.marshal_hand"):
+                zones[name] = {"count": len(zones.get(name, []))}
+            if "scene.difficulty.cards" in zones:
+                zones["scene.difficulty.cards"] = {"count": len(zones["scene.difficulty.cards"])}
         # Discard-last moves a secret card here; hide identities until reveal.
         if deck is not None:
             deck["discard_pile"] = {"count": len(deck.get("discard_pile", []))}

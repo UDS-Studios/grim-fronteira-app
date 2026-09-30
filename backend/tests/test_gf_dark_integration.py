@@ -97,7 +97,7 @@ def test_complete_dark_encounter_with_reload_at_each_transition(game_id, tmp_pat
     snapshot = deepcopy(GAMES[game_id].state)
     for view, viewer in [("public", None), ("player", "p1"), ("player", "host1")]:
         data = game_state_to_dict(snapshot, view=view, viewer_id=viewer)
-        assert data["zones"][DARK_HAND] == []
+        assert data["zones"][DARK_HAND] == {"count": len(snapshot.zones[DARK_HAND])}
         assert data["meta"]["scene"]["difficulty"]["card_id"] is None
         assert data["meta"]["scene"]["difficulty"]["value"] is None
         assert "must_discard_last" not in data["meta"]["scene"]["dark"]
@@ -252,7 +252,7 @@ def test_marshal_frontend_visibility_contract(game_id):
                 assert scene["dark"]["must_discard_last"] is bust
             else:
                 assert scene["difficulty"]["card_id"] is None
-                assert data["zones"].get(DARK_HAND, []) == []
+                assert data["zones"][DARK_HAND] == {"count": len(cards)}
                 assert "marshal_total" not in scene["dark"]
                 assert "must_discard_last" not in scene["dark"]
             assert isinstance(data["deck"]["discard_pile"], dict)
