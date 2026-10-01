@@ -1058,3 +1058,61 @@ def test_resolution_failure_rolls_back_reveal_bonus_grants(game_id, monkeypatch)
     monkeypatch.setattr(engine, "scene_resolve", fail)
     reject(game_id, "scene_dark_reveal", match="forced resolution failure after grants")
     validate_game_state(GAMES[game_id].state)
+
+
+@pytest.mark.parametrize("rewards,chosen,remaining", [
+    (["7D", "5D", "6H"], "5D", ["7D", "6H"]),
+    (["6H", "5D", "5H", "7D"], "5D", ["6H", "5H", "7D"]),
+    (["6H", "5H", "5D", "7D"], "5H", ["6H", "5D", "7D"]),
+])
+def test_force_dark_loss_selection_conservation_and_progression(game_id, rewards, chosen, remaining):
+    from backend.engine.state.validators import validate_unique_cards, validate_card_conservation
+    closed_loser(game_id, rewards)
+    hand_action(game_id, "scene_skip_heal", player_id="p1")
+    reject(game_id, "scene_new")
+    before = deepcopy(GAMES[game_id].state)
+    response = dispatch(game_id, "scene_force_discard_dark_reward", player_id="p1")
+    game = GAMES[game_id].state
+    assert response.result == {"ok": True, "action": "gf.scene_force_discard_dark_reward",
+                               "player_id": "p1", "reward_card_id": chosen,
+                               "remaining_reward_points": sum(int(c[:-1]) for c in remaining)}
+    assert game.zones["players.p1.rewards"] == remaining
+    assert game.deck.discard_pile == before.deck.discard_pile + [chosen]
+    assert not game.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"]
+    validate_card_conservation(game)
+    validate_unique_cards(game)
+    hand_action(game_id, "scene_new")
+
+
+@pytest.mark.parametrize("case", ["actor", "phase", "active", "awaiting_ack", "resolved", "participant", "pending", "empty", "interaction", "actor_type", "player_type"])
+def test_force_dark_loss_rejects_atomically(game_id, case):
+    closed_loser(game_id, ["5D"])
+    game = GAMES[game_id].state
+    params = {"player_id": "p1"}
+    if case == "actor": params["actor_id"] = "p2"
+    elif case == "phase": game.meta["phase"] = "lobby"
+    elif case in {"active", "awaiting_ack", "resolved"}: game.meta["scene"]["status"] = case
+    elif case == "participant": params["player_id"] = "p2"
+    elif case == "pending": game.meta["scene"]["players"]["p1"]["dark_reward_loss_pending"] = False
+    elif case == "empty": set_rewards(game_id, [])
+    elif case == "actor_type": params["actor_id"] = 1
+    elif case == "player_type": params["player_id"] = 1
+    elif case == "interaction":
+        GAMES[game_id].state = begin_pending_interaction(game, {
+            "kind": "test", "actor_id": "p1", "allowed_actions": ["gf.debug_resolve_pending"],
+            "payload": {}, "continuation": None,
+        })
+    reject(game_id, "scene_force_discard_dark_reward", **params)
+
+
+def test_force_dark_loss_rechecks_victory(game_id):
+    prepare_waiting(game_id)
+    set_rewards(game_id, ["5D"])
+    set_rewards(game_id, ["10H", "AH"], player_id="p2")
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    hand_action(game_id, "scene_close")
+    assert GAMES[game_id].state.meta["phase"] == "table"
+    dispatch(game_id, "scene_force_discard_dark_reward", player_id="p1")
+    assert GAMES[game_id].state.meta["phase"] == "victory"
+    assert GAMES[game_id].state.meta["victory"]["winner"] == "p2"

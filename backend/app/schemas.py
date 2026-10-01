@@ -79,6 +79,7 @@ class ActionRequest(ViewRequest):
         "gf.scene_discard_reward",
         "gf.scene_discard_dark_reward",
         "gf.scene_force_discard_rewards",
+        "gf.scene_force_discard_dark_reward",
         "gf.scene_assign_bonus_card",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)

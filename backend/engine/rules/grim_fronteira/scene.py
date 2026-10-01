@@ -1598,6 +1598,24 @@ def scene_discard_dark_reward(game: GameState, *, player_id: str, reward_card_id
     }
 
 
+def scene_force_discard_dark_reward(game: GameState, *, actor_id: str, player_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Dark Reward loss is only available after the scene is closed.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can discard a Dark Reward.")
+    if not scene["players"][player_id]["dark_reward_loss_pending"]:
+        raise ValueError("Player has no pending Dark Reward loss.")
+    cards = game.zones.get(f"players.{player_id}.rewards", [])
+    if not cards:
+        raise ValueError("Player has no reward cards available to discard.")
+    # min preserves the earliest zone entry on equal values.
+    reward_card_id = min(cards, key=reward_card_points)
+    return scene_discard_dark_reward(game, player_id=player_id, reward_card_id=reward_card_id)
+
+
 def scene_force_discard_rewards(game: GameState, *, actor_id: str, player_id: str) -> tuple[GameState, dict[str, Any]]:
     _require_table_phase(game)
     _require_marshal(game, actor_id)

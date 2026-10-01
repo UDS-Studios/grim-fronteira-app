@@ -285,3 +285,76 @@ test("visible Dark lifecycle: count-only setup, player choices, reveal, interact
     hooks.resetHooks();
   } finally { globalThis.fetch = originalFetch; await server.close(); }
 });
+
+test("Marshal emergency Dark loss request, warning, busy gating and authoritative recovery", async () => {
+  const server = await createServer({ ...serverOptions, plugins: [{ name: "marshal-recovery-hooks", enforce: "pre",
+    transform(code, id) { if (id.endsWith("/src/views/MarshalTableView.tsx") || id.endsWith("/src/utils/useDarkHandActions.ts")) return code.replace('from "react";', 'from "/tests/fixtures/appHooks.ts";'); },
+  }] });
+  const originalFetch = globalThis.fetch;
+  try {
+    const hooks = await server.ssrLoadModule("/tests/fixtures/appHooks.ts");
+    const { default: Marshal } = await server.ssrLoadModule("/src/views/MarshalTableView.tsx");
+    const { default: Player } = await server.ssrLoadModule("/src/views/PlayerTableView.tsx");
+    let r = fixture();
+    r.state.meta!.players!.p1 = { reward_points: 7, wounds: 0 };
+    const requests: ActionRequest[] = [];
+    let finish: (response: Response) => void = () => {};
+    globalThis.fetch = async (_url, options) => {
+      requests.push(JSON.parse(String(options?.body)));
+      return new Promise<Response>(resolve => { finish = resolve; });
+    };
+    const run = async (p: Promise<ActionResponse>) => { const next = await p; if (!next.error) r = next; return next; };
+    const render = () => {
+      hooks.beginRender();
+      const tree = Marshal({ resp: r, view: "marshal", currentActorId: "host", run, onBackHome: () => {} });
+      hooks.flushEffects();
+      const lane = nodes(tree).find(p => p.playerId === "p1" && "onForceDarkLoss" in p)!;
+      return { lane, html: renderToStaticMarkup(tree) };
+    };
+    let current = render();
+    assert.ok(current.html.includes("Dark Reward loss pending"));
+    assert.match(current.html, /<button[^>]*aria-describedby="([^"]+)"[^>]*>Force Dark Loss/);
+    const warningId = current.html.match(/aria-describedby="([^"]+)"[^>]*>Force Dark Loss/)![1];
+    assert.ok(current.html.includes(`id="${warningId}" role="tooltip"`));
+    assert.ok(current.html.includes("Emergency action. Use only if the player is unavailable. This automatically discards their lowest-value Reward to clear the pending Dark loss."));
+    assert.ok(!renderToStaticMarkup(createElement(Player, { resp: r, view: "player", currentActorId: "p1", run, onBackHome: () => {} })).includes("Force Dark Loss"));
+    r.state.meta!.pending_interaction = { kind: "test", actor_id: "p1", allowed_actions: [], payload: {}, continuation: null };
+    current = render();
+    assert.equal(current.lane.actionsLocked, true);
+    await (current.lane.onForceDarkLoss as () => Promise<void>)();
+    assert.equal(requests.length, 0);
+    delete r.state.meta!.pending_interaction;
+    const promise = (render().lane.onForceDarkLoss as () => Promise<void>)();
+    assert.deepEqual(requests, [{ game_id: "consequences", action: "gf.scene_force_discard_dark_reward",
+      params: { actor_id: "host", player_id: "p1" }, view: "marshal", viewer_id: "host" }]);
+    current = render();
+    assert.equal(current.lane.actionsLocked, true);
+    assert.ok(current.html.includes("Dark Reward loss pending"));
+    await (current.lane.onForceDarkLoss as () => Promise<void>)();
+    assert.equal(requests.length, 1);
+    const next = structuredClone(r);
+    next.revision = 21;
+    next.state.meta!.scene!.players!.p1.dark_reward_loss_pending = false;
+    finish(new Response(JSON.stringify(next), { status: 200, headers: { "Content-Type": "application/json" } }));
+    await promise;
+    current = render();
+    assert.ok(!current.html.includes("Dark Reward loss pending") && !current.html.includes("Force Dark Loss"));
+    assert.match(current.html, /<button(?![^>]*disabled)[^>]*>New Scene/);
+    await (current.lane.onForceDarkLoss as () => Promise<void>)();
+    assert.equal(requests.length, 1);
+    globalThis.fetch = async (_url, options) => {
+      requests.push(JSON.parse(String(options?.body)));
+      return new Response(JSON.stringify(r), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    for (const [callback, action] of [
+      ["onForceSkipHeal", "gf.scene_force_skip_heal"],
+      ["onForceDiscardRewards", "gf.scene_force_discard_rewards"],
+      ["onForceAcknowledge", "gf.scene_force_acknowledge_resolution"],
+    ]) {
+      await (render().lane[callback] as () => Promise<void>)();
+      assert.deepEqual(requests.at(-1), { game_id: "consequences", action,
+        params: { actor_id: "host", player_id: "p1" }, view: "marshal", viewer_id: "host" });
+    }
+    hooks.resetHooks();
+  } finally { globalThis.fetch = originalFetch; await server.close(); }
+});

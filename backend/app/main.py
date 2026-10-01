@@ -62,6 +62,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_discard_reward,
     scene_discard_dark_reward,
     scene_force_discard_rewards,
+    scene_force_discard_dark_reward,
     scene_assign_bonus_card,
 )
 
@@ -815,7 +816,7 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         mutated = True
         result = {"ok": True, "action": req.action, **discard_result}
 
-    elif req.action == "gf.scene_force_discard_rewards":
+    elif req.action in {"gf.scene_force_discard_rewards", "gf.scene_force_discard_dark_reward"}:
         params = req.params
         actor_id = params.get("actor_id")
         player_id = params.get("player_id")
@@ -825,7 +826,8 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         if not isinstance(player_id, str):
             raise HTTPException(status_code=400, detail="params.player_id must be a string")
 
-        game, discard_result = scene_force_discard_rewards(
+        handler = scene_force_discard_dark_reward if req.action == "gf.scene_force_discard_dark_reward" else scene_force_discard_rewards
+        game, discard_result = handler(
             game,
             actor_id=actor_id,
             player_id=player_id,

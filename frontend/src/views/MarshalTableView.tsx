@@ -9,6 +9,7 @@ import SceneStatus from "../components/SceneStatus";
 import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
 import { useEffect, useMemo, useState } from "react";
+import { useId } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
@@ -155,6 +156,7 @@ function PlayerLane({
   mustLoseDarkReward,
   onForceSkipHeal,
   onForceDiscardRewards,
+  onForceDarkLoss,
 }: {
   playerId: string;
   pstate: LobbyPlayerState;
@@ -178,7 +180,9 @@ function PlayerLane({
   mustLoseDarkReward: boolean;
   onForceSkipHeal: () => void;
   onForceDiscardRewards: () => void;
+  onForceDarkLoss: () => void;
 }) {
+  const darkLossWarningId = useId();
   const totalColor = getTwentyOneColor(total);
   const displayName = pstate.chosen_name ?? playerId;
   const requirementTint =
@@ -310,7 +314,16 @@ function PlayerLane({
           </div>
         ) : null}
 
-        {mustLoseDarkReward && <div role="status">Dark Reward loss pending — player must choose 1 Reward.</div>}
+        {mustLoseDarkReward && <div style={{ display: "grid", gap: 8 }}>
+          <div role="status">Dark Reward loss pending — player must choose 1 Reward.</div>
+          <div className="reclaim-control">
+            <button type="button" className="reclaim-button" aria-describedby={darkLossWarningId}
+              onClick={onForceDarkLoss} disabled={actionsLocked}>Force Dark Loss</button>
+            <div id={darkLossWarningId} role="tooltip" className="reclaim-warning">
+              Emergency action. Use only if the player is unavailable. This automatically discards their lowest-value Reward to clear the pending Dark loss.
+            </div>
+          </div>
+        </div>}
         {mustHealOrSkip || mustDiscardRewards ? (
           <div
             style={{
@@ -604,6 +617,7 @@ export default function MarshalTableView({
   const playersRailScale = 1.6;
   const [pendingBonusType, setPendingBonusType] = useState<"scum" | "vengeance" | null>(null);
   const ds = (value: number) => value * deckScale;
+  const [darkLossBusy, setDarkLossBusy] = useState(false);
   const [reclaimPending, setReclaimPending] = useState(false);
   const state = resp.state ?? {};
   const pendingInteraction = getPendingInteraction(state);
@@ -1012,6 +1026,21 @@ export default function MarshalTableView({
         ...getViewRequest(view, currentActorId),
       })
     );
+  }
+
+  async function handleForceDarkLoss(pid: string) {
+    if (hasPendingInteraction || darkLossBusy || scene.status !== "closed" || !scenePlayers?.[pid]?.dark_reward_loss_pending) return;
+    setDarkLossBusy(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_force_discard_dark_reward",
+        params: { actor_id: currentActorId, player_id: pid },
+        ...getViewRequest(view, currentActorId),
+      }));
+    } finally {
+      setDarkLossBusy(false);
+    }
   }
 
   async function handleForceDiscardRewards(pid: string) {
@@ -1796,7 +1825,7 @@ export default function MarshalTableView({
                           stateLabel={getParticipantStateLabel(pid)}
                           laneState={getParticipantLaneState(pid)}
                           outcome={getParticipantOutcome(pid)}
-                          actionsLocked={hasPendingInteraction}
+                          actionsLocked={hasPendingInteraction || darkLossBusy}
                           canForceAcknowledge={
                             scene.status === "awaiting_ack" && !scenePlayers?.[pid]?.acknowledged
                           }
@@ -1808,6 +1837,7 @@ export default function MarshalTableView({
                           }
                           onForceSkipHeal={() => handleForceSkipHeal(pid)}
                           onForceDiscardRewards={() => handleForceDiscardRewards(pid)}
+                          onForceDarkLoss={() => handleForceDarkLoss(pid)}
                         />
                       );
                     })()
