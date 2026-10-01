@@ -31,6 +31,7 @@ test("closed registration reconnects a registered player", () => {
 test("Marshal reconnects even if absent from lobby players", () => {
   assert.equal(getGameEntryMode(closedGame, "marshal"), "reconnect");
   assert.equal(getGameEntryMode({ marshal_id: "marshal" }, "marshal"), "reconnect");
+  assert.equal(getGameEntryMode({ ...closedGame, lobby: { registration_open: true } }, "marshal"), "reconnect");
 });
 
 test("closed registration rejects unknown, empty and inherited identities", () => {

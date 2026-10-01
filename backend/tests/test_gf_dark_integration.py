@@ -97,7 +97,7 @@ def test_complete_dark_encounter_with_reload_at_each_transition(game_id, tmp_pat
     snapshot = deepcopy(GAMES[game_id].state)
     for view, viewer in [("public", None), ("player", "p1"), ("player", "host1")]:
         data = game_state_to_dict(snapshot, view=view, viewer_id=viewer)
-        assert data["zones"][DARK_HAND] == []
+        assert data["zones"][DARK_HAND] == {"count": len(snapshot.zones[DARK_HAND])}
         assert data["meta"]["scene"]["difficulty"]["card_id"] is None
         assert data["meta"]["scene"]["difficulty"]["value"] is None
         assert "must_discard_last" not in data["meta"]["scene"]["dark"]
@@ -221,3 +221,92 @@ def test_hidden_joker_bonus_used_in_same_scene(game_id, joker, bonus, player_car
     game = GAMES[game_id].state
     assert not any(zone.startswith("scene.") for zone in game.zones)
     validate_game_state(game)
+
+
+def test_marshal_frontend_visibility_contract(game_id):
+    from backend.tests.test_yankees import http_request
+
+    def step(name, **params):
+        before = GAMES[game_id].state.meta.get("revision", 0)
+        status, response = http_request("/api/gf/action", method="POST", body={
+            "game_id": game_id, "action": f"gf.{name}",
+            "params": {"actor_id": "host1", **params}, "view": "marshal", "viewer_id": "host1",
+        })
+        assert status == 200, response
+        assert response["revision"] == before + 1
+        validate_game_state(GAMES[game_id].state)
+        return response
+
+    def check_hidden(total, cards, bust=False):
+        before = deepcopy(GAMES[game_id].state)
+        for query in ["view=public", "view=player&viewer_id=p1", "view=player&viewer_id=host1", "view=marshal&viewer_id=host1"]:
+            status, response = http_request(f"/api/game/{game_id}", query=query)
+            assert status == 200
+            data = response["state"]
+            scene = data["meta"]["scene"]
+            if query.startswith("view=marshal"):
+                assert scene["difficulty"]["card_id"] == "2H"
+                assert scene["difficulty"]["value"] == 12
+                assert data["zones"].get(DARK_HAND, []) == cards
+                assert scene["dark"]["marshal_total"] == total
+                assert scene["dark"]["must_discard_last"] is bust
+            else:
+                assert scene["difficulty"]["card_id"] is None
+                assert data["zones"][DARK_HAND] == {"count": len(cards)}
+                assert "marshal_total" not in scene["dark"]
+                assert "must_discard_last" not in scene["dark"]
+            assert isinstance(data["deck"]["discard_pile"], dict)
+        assert GAMES[game_id].state == before
+
+    GAMES[game_id].state = _with_draw_order(GAMES[game_id].state, ["2H", "3C", "9S", "8S"])
+    step("scene_declare_dark")
+    response = step("scene_roll_difficulty")
+    assert response["result"]["difficulty"]["card_id"] == "2H"
+    assert response["state"]["meta"]["scene"]["dark"]["marshal_total"] == 12
+    check_hidden(12, [])
+    response = step("scene_dark_draw")
+    assert response["result"]["card_id"] == "3C"
+    assert response["state"]["zones"][DARK_HAND] == ["3C"]
+    check_hidden(15, ["3C"])
+    step("scene_dark_draw")
+    check_hidden(24, ["3C", "9S"], bust=True)
+    response = step("scene_dark_discard_last")
+    assert response["result"]["card_id"] == "9S"
+    assert response["result"]["marshal_total"] == 15
+    assert isinstance(response["state"]["deck"]["discard_pile"], dict)
+    check_hidden(15, ["3C"])
+    step("scene_start")
+    step("scene_stand", player_id="p1")
+    step("scene_dark_reveal")
+    for query in ["view=public", "view=player&viewer_id=p1", "view=marshal&viewer_id=host1", "view=debug"]:
+        status, response = http_request(f"/api/game/{game_id}", query=query)
+        assert status == 200
+        data = response["state"]
+        assert data["meta"]["scene"]["dark"]["marshal_total"] == 15
+        assert data["meta"]["scene"]["difficulty"]["card_id"] == "2H"
+        assert data["zones"][DARK_HAND] == ["3C"]
+    assert "marshal_total" not in GAMES[game_id].state.meta["scene"]["dark"]
+
+
+def test_discarded_dark_card_cannot_be_the_next_draw(game_id):
+    from backend.tests.test_gf_dark import prepare_hand
+    prepare_hand(game_id, ["9H", "8C", "2D"])
+
+    def locations(card):
+        game = GAMES[game_id].state
+        validate_game_state(game)
+        piles = {"draw": game.deck.draw_pile, "discard": game.deck.discard_pile,
+                 "in_play": game.deck.in_play, "removed": game.deck.removed, **game.zones}
+        return [name for name, cards in piles.items() if card in cards]
+
+    assert locations("8C") == ["draw"]
+    hand_action(game_id, "scene_dark_draw", view="marshal", viewer_id="host1")
+    assert locations("8C") == [DARK_HAND]
+    assert GAMES[game_id].state.meta["scene"]["dark"]["must_discard_last"]
+    response = hand_action(game_id, "scene_dark_discard_last", view="marshal", viewer_id="host1")
+    assert locations("8C") == ["discard"]
+    assert isinstance(response.state["deck"]["discard_pile"], dict)
+    response = hand_action(game_id, "scene_dark_draw", view="marshal", viewer_id="host1")
+    assert response.result["card_id"] == "2D"
+    assert locations("2D") == [DARK_HAND]
+    assert locations("8C") == ["discard"]

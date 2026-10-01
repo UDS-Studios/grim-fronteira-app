@@ -1,3 +1,4 @@
+import { getViewRequest } from "../utils/sessionView";
 import React, { useState } from "react";
 import { gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
@@ -191,8 +192,7 @@ export default function PlayerLobbyView({
           name: trimmed,
           seed,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
@@ -210,8 +210,7 @@ export default function PlayerLobbyView({
           player_id: currentPlayerId,
           feature: trimmed,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
@@ -503,8 +502,7 @@ export default function PlayerLobbyView({
                       game_id: resp.game_id,
                       action: "gf.draw_character",
                       params: { player_id: currentPlayerId, seed: 321 + idx },
-                      view,
-                      viewer_id: view === "player" ? currentActorId : undefined,
+                      ...getViewRequest(view, currentActorId),
                     })
                   );
                 }}
@@ -537,8 +535,7 @@ export default function PlayerLobbyView({
                       game_id: resp.game_id,
                       action: "gf.claim_character",
                       params: { player_id: currentPlayerId, card_id: c },
-                      view,
-                      viewer_id: view === "player" ? currentActorId : undefined,
+                      ...getViewRequest(view, currentActorId),
                     })
                   );
                 }}

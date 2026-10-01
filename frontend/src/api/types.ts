@@ -1,4 +1,4 @@
-export type View = "public" | "player" | "debug";
+export type View = "public" | "player" | "marshal" | "debug";
 
 export type ErrorPayload = {
   code: string;
@@ -21,11 +21,36 @@ export type FactionName = "criollo" | "paisa" | "yankee" | "chichimeca";
 export type SceneFactionPowerUsage =
   Record<string, Partial<Record<FactionName, boolean>>>;
 
+export type SceneDarkState = {
+  revealed?: boolean;
+  must_discard_last?: boolean;
+  marshal_total?: number | null;
+};
+
+export type ScenePlayerState = {
+  dark_reward_loss_pending?: boolean;
+  reward_cards_gained?: number;
+  wounds_gained?: number;
+  wounds_applied?: number;
+  result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
+  standing?: boolean;
+  busted?: boolean;
+  acknowledged?: boolean;
+};
+
 export type SceneState = {
   status?: string;
   mode?: string;
+  duel?: { subtype?: string | null };
+  azzardo?: { status?: string; card_id?: string | null };
   participants?: string[];
-  players?: Record<string, { acknowledged?: boolean }>;
+  players?: Record<string, ScenePlayerState>;
+  dark_mode?: boolean;
+  dark?: SceneDarkState;
+  difficulty?: {
+    card_id?: string | null;
+    value?: number | null;
+  };
   faction_power_usage?: SceneFactionPowerUsage;
 };
 
@@ -56,12 +81,18 @@ export type GameMeta = {
   };
 };
 
+export type CardZoneProjection = string[] | { count?: number };
+
+// Ordinary player/lobby zones remain card arrays; Dark zones can be count-only.
+export type GameZones = Record<string, CardZoneProjection> &
+  Record<`players.${string}` | `scene.hand.${string}` | `lobby.${string}`, string[]>;
+
 export type GameState = {
   meta?: GameMeta;
-  zones?: Record<string, string[]>;
+  zones?: GameZones;
   deck?: {
     draw_pile?: string[] | { count?: number };
-    discard_pile?: string[];
+    discard_pile?: string[] | { count?: number };
   };
 };
 

@@ -1,15 +1,18 @@
-import type { View } from "../api/types";
+import { getProjectedCardCount } from "../utils/dark";
+import type { CardZoneProjection, View } from "../api/types";
 import CardImg from "./CardImg";
 
 type ZonePanelProps = {
   name: string;
-  cards: string[];
+  cards: CardZoneProjection;
   view: View;
 };
 
 export default function ZonePanel({ name, cards, view }: ZonePanelProps) {
+  const count = getProjectedCardCount(cards);
+  const visibleCards = Array.isArray(cards) ? cards : [];
   const isSecretPile = name.endsWith(".scum") || name.endsWith(".vengeance");
-  const renderAsFacedownStack = view === "public" && isSecretPile;
+  const renderAsFacedownStack = !Array.isArray(cards) || (view === "public" && isSecretPile);
 
   return (
     <div
@@ -30,19 +33,19 @@ export default function ZonePanel({ name, cards, view }: ZonePanelProps) {
         }}
       >
         <div style={{ fontWeight: 700 }}>{name}</div>
-        <div style={{ opacity: 0.75, fontSize: 13 }}>({cards.length})</div>
+        <div style={{ opacity: 0.75, fontSize: 13 }}>({count})</div>
       </div>
 
-      {cards.length === 0 ? (
+      {count === 0 ? (
         <div style={{ opacity: 0.6 }}>— empty —</div>
       ) : renderAsFacedownStack ? (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <CardImg cardId="BACK" faceDown width={86} title={`${cards.length} cards`} />
-          <div style={{ fontSize: 14, opacity: 0.9 }}>x {cards.length}</div>
+          <CardImg cardId="BACK" faceDown width={86} title={`${count} cards`} />
+          <div style={{ fontSize: 14, opacity: 0.9 }}>x {count}</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          {cards.map((c, idx) => (
+          {visibleCards.map((c, idx) => (
             <CardImg key={`${name}:${c}:${idx}`} cardId={c} width={86} />
           ))}
         </div>

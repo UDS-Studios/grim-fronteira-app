@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
-from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection
+from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection, validate_marshal_view
 from backend.app.pending_interactions import (
     DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM, PENDING_STATE_ACTIONS,
     effective_actor, enforce_pending_action_gate,
@@ -62,6 +62,7 @@ from backend.engine.rules.grim_fronteira.scene import (
     scene_discard_reward,
     scene_discard_dark_reward,
     scene_force_discard_rewards,
+    scene_force_discard_dark_reward,
     scene_assign_bonus_card,
 )
 
@@ -204,6 +205,7 @@ def new_game(req: NewGameRequest) -> ActionResponse:
 
     game = GameState(deck=deck, zones={}, meta={"game": "grim_fronteira", **(req.meta or {})})
     game = initialize_lobby(game, creator_id=req.creator_id)
+    validate_marshal_view(game, view=req.view, viewer_id=req.viewer_id)
     game = enrich_meta_for_ui(game)
     game = _bump_revision(game)
     validate_game_state(game)
@@ -221,11 +223,12 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     )
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
-def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug", viewer_id: str | None = None) -> ActionResponse:
+def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "debug", viewer_id: str | None = None) -> ActionResponse:
     if view == "player" and (not isinstance(viewer_id, str) or not viewer_id.strip()):
         raise HTTPException(status_code=422, detail="viewer_id is required for player view")
     g = _get_game(game_id)
     game = g.state
+    validate_marshal_view(game, view=view, viewer_id=viewer_id)
     validate_game_state(game)
     game = enrich_meta_for_ui(game)
     game = ensure_scene_state(game)
@@ -244,6 +247,7 @@ def get_state(game_id: str, view: Literal["public", "player", "debug"] = "debug"
 def action(req: ActionRequest) -> ActionResponse:
     g = _get_game(req.game_id)
     with g.lock:
+        validate_marshal_view(g.state, view=req.view, viewer_id=req.viewer_id)
         try:
             return _action_transition(req, g)
         except ValueError:
@@ -574,7 +578,7 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         game, dark_result = handler(game, actor_id=actor_id)
         mutated = True
         result = {"ok": True, "action": req.action}
-        if req.view == "debug":
+        if req.view in {"debug", "marshal"}:
             result.update(dark_result)
 
     elif req.action == "gf.scene_roll_difficulty":
@@ -589,7 +593,7 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
 
         game, difficulty = scene_roll_difficulty(game, actor_id=actor_id, seed=seed)
         mutated = True
-        if req.view != "debug" and game.meta["scene"]["dark_mode"] and not game.meta["scene"]["dark"]["revealed"]:
+        if req.view not in {"debug", "marshal"} and game.meta["scene"]["dark_mode"] and not game.meta["scene"]["dark"]["revealed"]:
             difficulty = {**difficulty, "card_id": None, "value": None}
         result = {"ok": True, "action": req.action, "difficulty": difficulty}
 
@@ -812,7 +816,7 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         mutated = True
         result = {"ok": True, "action": req.action, **discard_result}
 
-    elif req.action == "gf.scene_force_discard_rewards":
+    elif req.action in {"gf.scene_force_discard_rewards", "gf.scene_force_discard_dark_reward"}:
         params = req.params
         actor_id = params.get("actor_id")
         player_id = params.get("player_id")
@@ -822,7 +826,8 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         if not isinstance(player_id, str):
             raise HTTPException(status_code=400, detail="params.player_id must be a string")
 
-        game, discard_result = scene_force_discard_rewards(
+        handler = scene_force_discard_dark_reward if req.action == "gf.scene_force_discard_dark_reward" else scene_force_discard_rewards
+        game, discard_result = handler(
             game,
             actor_id=actor_id,
             player_id=player_id,

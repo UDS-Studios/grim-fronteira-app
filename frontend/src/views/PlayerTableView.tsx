@@ -1,3 +1,7 @@
+import DarkRewardPayment from "../components/DarkRewardPayment";
+import PlayerDarkHand from "../components/PlayerDarkHand";
+import { getDarkPlayerStatus, isDarkScene, hasDarkAtmosphere } from "../utils/dark";
+import { getViewRequest } from "../utils/sessionView";
 import { getFactionMedallion } from "./player_table/factionMedallion";
 import YankeeDeck from "./player_table/PTV-YankeeDeck";
 import { getYankeeInspectedCardId, getYankeeChoiceRequest, type YankeeChoice } from "./player_table/yankee";
@@ -7,7 +11,7 @@ import DiscardPile from "../components/DiscardPile";
 import { getWoundDisplay } from "../utils/wounds";
 import { CHICHIMECA_CHOOSE_TARGET_ACTION, getChichimecaEligibleTargetIds, isChichimecaPendingForActor, reconcileChichimecaSelection, toggleChichimecaSelection } from "./player_table/chichimeca";
 import { isPaisaAvailable, isPaisaSelectionValid, reconcilePaisaSelection, togglePaisaSelection } from "./player_table/paisa";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
@@ -60,6 +64,8 @@ type ScenePlayerState = {
   wounds_gained?: number;
   wounds_applied?: number;
   reward_gained?: boolean;
+  dark_reward_loss_pending?: boolean;
+  reward_cards_gained?: number;
   result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
   recovery_action?: "healed" | "skipped" | null;
   reward_discard_started?: boolean;
@@ -513,9 +519,10 @@ export default function PlayerTableView({
   const ds = (value: number) => value * deckScale;
   const [scumTargetingActive, setScumTargetingActive] = useState(false);
   const [selectedScumTargetId, setSelectedScumTargetId] = useState<string | null>(null);
-  const [rewardSelectionMode, setRewardSelectionMode] = useState<"heal" | "discard" | null>(null);
+  const [rewardSelectionMode, setRewardSelectionMode] = useState<"heal" | "discard" | "dark-discard" | null>(null);
   const [selectedRewardCardKeys, setSelectedRewardCardKeys] = useState<string[]>([]);
   const [sceneActionPending, setSceneActionPending] = useState(false);
+  const rewardActionInFlight = useRef(false);
   const state = resp.state ?? {};
   const pendingInteraction = getPendingInteraction(state);
   const hasPendingInteraction = pendingInteraction !== null;
@@ -562,8 +569,7 @@ export default function PlayerTableView({
         game_id: resp.game_id,
         action: CHICHIMECA_CHOOSE_TARGET_ACTION,
         params: { player_id: currentActorId, target_player_id: selectedChichimecaTarget },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       }));
     } finally {
       // Clear only local selection on success or rejection; run owns server state/errors.
@@ -586,7 +592,7 @@ export default function PlayerTableView({
   }, [pendingIdentity]);
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
-  const zones: Record<string, string[]> = state.zones ?? {};
+  const zones = state.zones ?? {};
 
   const scene = (meta.scene ?? {}) as SceneState;
   const isDuelScene = scene.mode === "duel";
@@ -695,15 +701,22 @@ export default function PlayerTableView({
     scene.status === "closed" &&
     (currentPlayerRewardPoints > 21 ||
       (!!currentPlayerState.reward_discard_started && currentPlayerRewardPoints > 20));
+  const currentPlayerNeedsDarkRewardLoss = scene.status === "closed" && currentPlayerInScene &&
+    currentPlayerState.dark_reward_loss_pending === true;
+  const darkDiscardSelectionActive = !hasPendingInteraction && rewardSelectionMode === "dark-discard";
+  const selectedRewardsOwned = selectedRewardCardKeys.every(key =>
+    currentPlayerRewardCards.some((card, index) => key === `${card}:${index}`));
+  const canConfirmDarkDiscard = currentPlayerNeedsDarkRewardLoss && darkDiscardSelectionActive &&
+    selectedRewardCardKeys.length === 1 && selectedRewardsOwned;
   const healSelectionActive = !hasPendingInteraction && rewardSelectionMode === "heal";
   const discardSelectionActive = !hasPendingInteraction && rewardSelectionMode === "discard";
   const selectedRewardPoints = selectedRewardCardKeys.reduce((sum, key) => {
     const [cardId] = key.split(":");
     return sum + getRewardCardPoints(cardId);
   }, 0);
-  const canConfirmHeal = currentPlayerNeedsHealOrSkip && healSelectionActive && selectedRewardPoints >= 11;
+  const canConfirmHeal = currentPlayerNeedsHealOrSkip && healSelectionActive && selectedRewardsOwned && selectedRewardPoints >= 11;
   const canConfirmDiscard =
-    currentPlayerNeedsDiscardRewards && discardSelectionActive && selectedRewardCardKeys.length === 1;
+    currentPlayerNeedsDiscardRewards && discardSelectionActive && selectedRewardsOwned && selectedRewardCardKeys.length === 1;
 
   function getParticipantTotal(pid: string): number | null {
     if (!participantIds.includes(pid)) return null;
@@ -795,7 +808,7 @@ export default function PlayerTableView({
       }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
-    return getSceneOutcome(total, effectiveDifficultyValue);
+    return isDarkScene(meta.scene) ? null : getSceneOutcome(total, effectiveDifficultyValue);
   }
 
   const participantOrderLookup = new Map(participantIds.map((pid, idx) => [pid, idx]));
@@ -848,6 +861,9 @@ export default function PlayerTableView({
     difficultyCardId.trim().toUpperCase().charAt(0) === "A";
 
   function getSceneInstruction(): string {
+    if (meta.scene && isDarkScene(meta.scene) && scene.status !== "closed") {
+      return getDarkPlayerStatus(meta.scene, currentActorId, isCurrentViewerActive, hasPendingInteraction);
+    }
     if (scene.status === "idle") {
       return "Waiting for the Marshal to prepare the scene.";
     }
@@ -910,14 +926,23 @@ export default function PlayerTableView({
     }
 
     if (scene.status === "closed") {
-      if (scene.resolution?.message) {
-        return scene.resolution.message;
+      if (currentPlayerNeedsDarkRewardLoss) {
+        return "THE DARK DEMANDS PAYMENT\nChoose 1 Reward to lose before the next scene can begin.";
+      }
+      if (currentPlayerNeedsHealOrSkip) {
+        return "You must heal or skip before the Marshal can open the next scene.";
       }
       if (currentPlayerNeedsDiscardRewards) {
         return "You must discard rewards until you reach 20 points or less before the Marshal can open the next scene.";
       }
-      if (currentPlayerNeedsHealOrSkip) {
-        return "You must heal or skip before the Marshal can open the next scene.";
+      if (meta.scene && isDarkScene(meta.scene) && currentPlayerState.result === "success" && currentPlayerState.reward_cards_gained === 2) {
+        return `${getDarkPlayerStatus(meta.scene, currentActorId, false)}\nWaiting for the Marshal to start a new scene.`;
+      }
+      if (isDarkScene(meta.scene) && (currentPlayerState.wounds_applied ?? 0) > 0) {
+        return "The Dark claimed a wound. Scene closed. Waiting for the Marshal to start a new scene.";
+      }
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
       }
       return "Scene closed. Waiting for the Marshal to start a new scene.";
     }
@@ -938,8 +963,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
-          viewer_id: view === "player" ? currentActorId : undefined,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -960,8 +984,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
-          viewer_id: view === "player" ? currentActorId : undefined,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -982,8 +1005,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
-          viewer_id: view === "player" ? currentActorId : undefined,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -991,93 +1013,66 @@ export default function PlayerTableView({
     }
   }
 
-  async function handleSkipHeal() {
-    if (hasPendingInteraction) return;
-    if (!currentPlayerNeedsHealOrSkip) return;
+  // One synchronous lock also protects rapid clicks before React re-renders.
+  async function submitRewardAction(action: string, params: Record<string, unknown>) {
+    if (hasPendingInteraction || sceneActionPending || rewardActionInFlight.current) return;
+    rewardActionInFlight.current = true;
+    setSceneActionPending(true);
+    try {
+      const response = await run(gfAction({ game_id: resp.game_id, action,
+        params: { player_id: currentActorId, ...params }, ...getViewRequest(view, currentActorId) }));
+      if (!response.error) {
+        setRewardSelectionMode(null);
+        setSelectedRewardCardKeys([]);
+      }
+    } finally {
+      rewardActionInFlight.current = false;
+      setSceneActionPending(false);
+    }
+  }
 
-    setRewardSelectionMode(null);
-    setSelectedRewardCardKeys([]);
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_skip_heal",
-        params: {
-          player_id: currentActorId,
-        },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
-      })
-    );
+  async function handleSkipHeal() {
+    if (!currentPlayerNeedsHealOrSkip) return;
+    await submitRewardAction("gf.scene_skip_heal", {});
   }
 
   async function handleConfirmHeal() {
-    if (hasPendingInteraction) return;
     if (!canConfirmHeal) return;
+    await submitRewardAction("gf.scene_heal_wound", {
+      reward_card_ids: selectedRewardCardKeys.map(key => key.split(":")[0]),
+    });
+  }
 
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_heal_wound",
-        params: {
-          player_id: currentActorId,
-          reward_card_ids: selectedRewardCardKeys.map((key) => key.split(":")[0]),
-        },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
-      })
-    );
-
-    setRewardSelectionMode(null);
+  function toggleRewardMode(mode: "heal" | "discard" | "dark-discard", needed: boolean) {
+    if (!needed || hasPendingInteraction || sceneActionPending || rewardActionInFlight.current) return;
+    setRewardSelectionMode(prev => prev === mode ? null : mode);
     setSelectedRewardCardKeys([]);
   }
 
-  function handleToggleHealSelection() {
-    if (hasPendingInteraction) return;
-    if (!currentPlayerNeedsHealOrSkip) return;
-    setRewardSelectionMode((prev) => (prev === "heal" ? null : "heal"));
-    setSelectedRewardCardKeys([]);
-  }
+  function handleToggleHealSelection() { toggleRewardMode("heal", currentPlayerNeedsHealOrSkip); }
+  function handleToggleDiscardSelection() { toggleRewardMode("discard", currentPlayerNeedsDiscardRewards); }
 
   async function handleConfirmDiscardReward() {
-    if (hasPendingInteraction) return;
     if (!canConfirmDiscard) return;
-
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_discard_reward",
-        params: {
-          player_id: currentActorId,
-          reward_card_id: selectedRewardCardKeys[0].split(":")[0],
-        },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
-      })
-    );
-
-    setRewardSelectionMode(null);
-    setSelectedRewardCardKeys([]);
+    await submitRewardAction("gf.scene_discard_reward", { reward_card_id: selectedRewardCardKeys[0].split(":")[0] });
   }
 
-  function handleToggleDiscardSelection() {
-    if (hasPendingInteraction) return;
-    if (!currentPlayerNeedsDiscardRewards) return;
-    setRewardSelectionMode((prev) => (prev === "discard" ? null : "discard"));
-    setSelectedRewardCardKeys([]);
+  async function handleConfirmDarkReward() {
+    if (!canConfirmDarkDiscard) return;
+    await submitRewardAction("gf.scene_discard_dark_reward", { reward_card_id: selectedRewardCardKeys[0].split(":")[0] });
   }
 
   function handleToggleRewardCard(cardId: string, index: number) {
-    if (hasPendingInteraction) return;
-    if (rewardSelectionMode === null) return;
+    if (hasPendingInteraction || sceneActionPending || rewardActionInFlight.current) return;
+    if (rewardSelectionMode === null || currentPlayerRewardCards[index] !== cardId) return;
     const key = `${cardId}:${index}`;
-    if (rewardSelectionMode === "discard") {
-      setSelectedRewardCardKeys((prev) => (prev[0] === key ? [] : [key]));
+    if ((rewardSelectionMode === "discard" && currentPlayerNeedsDiscardRewards) ||
+        (rewardSelectionMode === "dark-discard" && currentPlayerNeedsDarkRewardLoss)) {
+      setSelectedRewardCardKeys(prev => prev[0] === key ? [] : [key]);
       return;
     }
-    if (!currentPlayerNeedsHealOrSkip) return;
-    setSelectedRewardCardKeys((prev) =>
-      prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key]
-    );
+    if (rewardSelectionMode !== "heal" || !currentPlayerNeedsHealOrSkip) return;
+    setSelectedRewardCardKeys(prev => prev.includes(key) ? prev.filter(entry => entry !== key) : [...prev, key]);
   }
 
   const paisaAvailable = isPaisaAvailable(state, currentActorId) && !getIsDead(currentActorId);
@@ -1126,8 +1121,7 @@ export default function PlayerTableView({
         game_id: resp.game_id,
         action: "gf.faction_paisa_claim_reward",
         params: { player_id: currentActorId, vengeance_card_ids: validPaisaSelection },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       }));
     } finally {
       cancelPaisaSelection();
@@ -1180,8 +1174,7 @@ export default function PlayerTableView({
           card_id: validCriolloSelection.cardId,
           from_resource: validCriolloSelection.resource,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       }));
     } finally {
       cancelCriolloSelection();
@@ -1257,6 +1250,10 @@ export default function PlayerTableView({
   }, [canPlayScum, scumTargetingActive]);
 
   useEffect(() => {
+    if ((!currentPlayerNeedsDarkRewardLoss && rewardSelectionMode === "dark-discard") || !selectedRewardsOwned) {
+      setRewardSelectionMode(null);
+      setSelectedRewardCardKeys([]);
+    }
     if (!currentPlayerNeedsHealOrSkip && rewardSelectionMode === "heal") {
       setRewardSelectionMode(null);
       setSelectedRewardCardKeys([]);
@@ -1265,7 +1262,7 @@ export default function PlayerTableView({
       setRewardSelectionMode(null);
       setSelectedRewardCardKeys([]);
     }
-  }, [currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode]);
+  }, [currentPlayerNeedsDarkRewardLoss, currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode, selectedRewardsOwned]);
 
   async function handleToggleScumTargeting() {
     if (hasPendingInteraction) return;
@@ -1287,8 +1284,7 @@ export default function PlayerTableView({
         params: {
           player_id: currentActorId,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
@@ -1306,8 +1302,7 @@ export default function PlayerTableView({
           player_id: currentActorId,
           target_player_id: targetPlayerId,
         },
-        view,
-        viewer_id: view === "player" ? currentActorId : undefined,
+        ...getViewRequest(view, currentActorId),
       })
     );
 
@@ -1317,6 +1312,7 @@ export default function PlayerTableView({
 
   return (
     <div
+      className={hasDarkAtmosphere(meta.scene) ? "saloon-table dark-mode-active" : "saloon-table"}
       style={{
         height: "auto",
         display: "flex",
@@ -1363,7 +1359,7 @@ export default function PlayerTableView({
             src={publicAsset("ui/refresh.png")}
             alt="Refresh"
             title="Refresh Table"
-            onClick={() => run(getGame(resp.game_id, view, view === "player" ? currentActorId : undefined))}
+            onClick={() => run(getGame(resp.game_id, view, getViewRequest(view, currentActorId).viewer_id))}
           />
         </div>
 
@@ -1401,7 +1397,7 @@ export default function PlayerTableView({
           <div><b>phase:</b> {meta.phase ?? "-"}</div>
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
-          <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>
+          {!isDarkScene(meta.scene) && <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>}
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
         </div>
@@ -1431,6 +1427,13 @@ export default function PlayerTableView({
         >
           <div style={{ width: "100%" }}>
             <TableZone title="Difficulty / Scene">
+              {isDarkScene(meta.scene) ? (
+                <div className="player-dark-scene">
+                  <PlayerDarkHand state={state} />
+                  <SceneStatus message={getSceneInstruction()}
+                    ownTurn={scene.status === "active" && isCurrentViewerActive && !hasPendingInteraction} />
+                </div>
+              ) : (
               <div
                 style={{
                   display: "grid",
@@ -1563,6 +1566,7 @@ export default function PlayerTableView({
                   />
                 </div>
               </div>
+              )}
             </TableZone>
           </div>
 
@@ -1714,12 +1718,12 @@ export default function PlayerTableView({
                     rewardPoints={currentPlayerRewardPoints}
                     selectedRewardCardIds={hasPendingInteraction ? [] : selectedRewardCardKeys}
                     rewardSelectionEnabled={!hasPendingInteraction && rewardSelectionMode !== null}
-                    rewardSelectionLocked={
+                    rewardSelectionLocked={sceneActionPending || (
                       rewardSelectionMode === "heal"
                         ? !currentPlayerNeedsHealOrSkip
                         : rewardSelectionMode === "discard"
                           ? !currentPlayerNeedsDiscardRewards
-                          : true
+                          : rewardSelectionMode === "dark-discard" ? !currentPlayerNeedsDarkRewardLoss : true)
                     }
                     rewardSelectionTotal={selectedRewardPoints}
                     rewardSelectionHint={
@@ -1729,7 +1733,7 @@ export default function PlayerTableView({
                           : "Select reward cards worth at least 11"
                         : rewardSelectionMode === "discard"
                           ? "Select one reward card to discard"
-                        : null
+                        : rewardSelectionMode === "dark-discard" ? "Choose exactly one Reward to lose to the Dark" : null
                     }
                     mustHealOrSkip={currentPlayerNeedsHealOrSkip}
                     mustDiscardRewards={currentPlayerNeedsDiscardRewards}
@@ -1737,7 +1741,7 @@ export default function PlayerTableView({
                     inScene={currentPlayerInScene}
                     onClickScum={!criolloActive && !paisaActive && !sceneActionPending && canPlayScum ? handleToggleScumTargeting : undefined}
                     onClickVengeance={!criolloActive && !paisaActive && !sceneActionPending && canPlayVengeance ? handlePlayVengeance : undefined}
-                    onClickRewardCard={!hasPendingInteraction && rewardSelectionMode ? handleToggleRewardCard : undefined}
+                    onClickRewardCard={!hasPendingInteraction && !sceneActionPending && rewardSelectionMode ? handleToggleRewardCard : undefined}
                     criolloSelecting={criolloActive}
                     criolloSelection={validCriolloSelection}
                     criolloSelectionLocked={hasPendingInteraction || sceneActionPending}
@@ -1798,13 +1802,18 @@ export default function PlayerTableView({
                       </div>
                     ) : null}
                     rewardActions={
-                      currentPlayerNeedsHealOrSkip || currentPlayerNeedsDiscardRewards ? (
+                      currentPlayerNeedsDarkRewardLoss || currentPlayerNeedsHealOrSkip || currentPlayerNeedsDiscardRewards ? (
                         <div
                           style={{
                             display: "grid",
                             gap: 10,
                           }}
                         >
+                          {currentPlayerNeedsDarkRewardLoss && <DarkRewardPayment
+                            active={darkDiscardSelectionActive} busy={hasPendingInteraction || sceneActionPending}
+                            canConfirm={canConfirmDarkDiscard}
+                            onToggle={() => toggleRewardMode("dark-discard", currentPlayerNeedsDarkRewardLoss)}
+                            onConfirm={handleConfirmDarkReward} />}
                           {currentPlayerNeedsHealOrSkip ? (
                             <div
                               style={{
@@ -1817,7 +1826,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleToggleHealSelection}
-                                disabled={hasPendingInteraction}
+                                disabled={hasPendingInteraction || sceneActionPending}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1836,7 +1845,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleSkipHeal}
-                                disabled={hasPendingInteraction}
+                                disabled={hasPendingInteraction || sceneActionPending}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1854,7 +1863,7 @@ export default function PlayerTableView({
                                 <button
                                   type="button"
                                   onClick={handleConfirmHeal}
-                                  disabled={!canConfirmHeal}
+                                  disabled={!canConfirmHeal || sceneActionPending}
                                   style={{
                                     border: "1px solid var(--border-muted)",
                                     borderRadius: 10,
@@ -1886,7 +1895,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleToggleDiscardSelection}
-                                disabled={hasPendingInteraction}
+                                disabled={hasPendingInteraction || sceneActionPending}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1906,7 +1915,7 @@ export default function PlayerTableView({
                                 <button
                                   type="button"
                                   onClick={handleConfirmDiscardReward}
-                                  disabled={!canConfirmDiscard}
+                                  disabled={!canConfirmDiscard || sceneActionPending}
                                   style={{
                                     border: "1px solid var(--border-muted)",
                                     borderRadius: 10,

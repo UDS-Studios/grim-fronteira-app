@@ -1,3 +1,4 @@
+import { acceptResponse } from "./utils/responseOrdering";
 import { useEffect, useState } from "react";
 import { newGame, getGame, gfAction } from "./api/gf";
 import type { ActionResponse } from "./api/types";
@@ -51,7 +52,7 @@ export default function App() {
         if (cancelled) return;
 
         if (!r.error) {
-          setResp(r);
+          setResp(current => acceptResponse(current, r));
           return;
         }
 
@@ -75,7 +76,7 @@ export default function App() {
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
       const r = await p;
-      setResp(r);
+      setResp(current => acceptResponse(current, r));
       if (!r.error && r.game_id) {
         setGameId(r.game_id);
         setScreen("game");
@@ -149,7 +150,7 @@ export default function App() {
                 newGame({
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
-                  // The creator becomes Marshal, so creation uses the non-player view.
+                  // No authoritative role exists yet; the response establishes the Marshal session.
                   view: inspectionView,
                 })
               )
@@ -235,7 +236,9 @@ export default function App() {
           <div className={isTable ? "table-dev-controls" : undefined} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
             <label>
               Non-player inspection:&nbsp;
-              <select value={inspectionView} disabled={view === "player"} onChange={(e) => setInspectionView(e.target.value as InspectionView)}>
+              <select value={inspectionView} disabled={view === "player" || view === "marshal"} onChange={(e) => {
+                if (e.target.value === "public" || e.target.value === "debug") setInspectionView(e.target.value);
+              }}>
                 <option value="public">public</option>
                 <option value="debug">debug</option>
               </select>

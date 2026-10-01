@@ -1,3 +1,4 @@
+import { getViewRequest } from "../utils/sessionView";
 import { getGame, gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
@@ -152,7 +153,7 @@ export default function MarshalLobbyView({
           src={publicAsset("ui/refresh.png")}
           alt="Refresh"
           title="Refresh Lobby"
-          onClick={() => run(getGame(resp.game_id, view, view === "player" ? currentActorId : undefined))}
+          onClick={() => run(getGame(resp.game_id, view, getViewRequest(view, currentActorId).viewer_id))}
         />
       </div>
 
@@ -243,8 +244,7 @@ export default function MarshalLobbyView({
                         game_id: resp.game_id,
                         action: "gf.set_character_assignment_mode",
                         params: { actor_id: effectiveActorId, mode: "choice" },
-                        view,
-                        viewer_id: view === "player" ? currentActorId : undefined,
+                        ...getViewRequest(view, currentActorId),
                       })
                     )
                   }
@@ -284,8 +284,7 @@ export default function MarshalLobbyView({
                         game_id: resp.game_id,
                         action: "gf.set_character_assignment_mode",
                         params: { actor_id: effectiveActorId, mode: "random" },
-                        view,
-                        viewer_id: view === "player" ? currentActorId : undefined,
+                        ...getViewRequest(view, currentActorId),
                       })
                     )
                   }
@@ -349,8 +348,7 @@ export default function MarshalLobbyView({
                       game_id: resp.game_id,
                       action: "gf.set_registration_open",
                       params: { actor_id: effectiveActorId, is_open: !registrationOpen },
-                      view,
-                      viewer_id: view === "player" ? currentActorId : undefined,
+                      ...getViewRequest(view, currentActorId),
                     })
                   )
                 }
@@ -378,8 +376,7 @@ export default function MarshalLobbyView({
                       game_id: resp.game_id,
                       action: "gf.start_game",
                       params: { actor_id: effectiveActorId },
-                      view,
-                      viewer_id: view === "player" ? currentActorId : undefined,
+                      ...getViewRequest(view, currentActorId),
                     })
                   )
                 }

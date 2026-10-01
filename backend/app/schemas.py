@@ -13,13 +13,13 @@ class ErrorPayload(BaseModel):
 
 
 class ViewRequest(BaseModel):
-    view: Literal["public", "player", "debug"] = "debug"
+    view: Literal["public", "player", "marshal", "debug"] = "debug"
     viewer_id: str | None = None
 
     @model_validator(mode="after")
-    def require_player_viewer(self):
-        if self.view == "player" and (not self.viewer_id or not self.viewer_id.strip()):
-            raise PydanticCustomError("player_viewer_required", "viewer_id is required for player view")
+    def require_private_viewer(self):
+        if self.view in {"player", "marshal"} and (not self.viewer_id or not self.viewer_id.strip()):
+            raise PydanticCustomError(f"{self.view}_viewer_required", f"viewer_id is required for {self.view} view")
         return self
 
 
@@ -79,6 +79,7 @@ class ActionRequest(ViewRequest):
         "gf.scene_discard_reward",
         "gf.scene_discard_dark_reward",
         "gf.scene_force_discard_rewards",
+        "gf.scene_force_discard_dark_reward",
         "gf.scene_assign_bonus_card",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)

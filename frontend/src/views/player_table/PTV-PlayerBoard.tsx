@@ -281,6 +281,8 @@ function AdaptiveRewardsRow({
               onClick={selectable && !selectionLocked ? () => onClickCard?.(cardId, idx) : undefined}
               disabled={!selectable || selectionLocked}
               title={selectable ? "Select reward card" : cardId}
+              aria-label={`Select Reward: ${cardId}`}
+              aria-pressed={selectable ? selectedCardKeys.has(`${cardId}:${idx}`) : undefined}
               style={{
                 border: selectedCardKeys.has(`${cardId}:${idx}`)
                   ? `${Math.max(2, Math.round(3 * scale))}px solid #d11f1f`

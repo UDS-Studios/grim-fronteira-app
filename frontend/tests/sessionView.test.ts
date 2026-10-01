@@ -4,18 +4,30 @@ import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
 import { createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { getSessionView } from "../src/utils/sessionView.ts";
+import { getSessionView, getViewRequest } from "../src/utils/sessionView.ts";
 import { yankeeLiveState, YANKEE_A, YANKEE_B, INSPECTED_CARD } from "./fixtures/yankeeLiveState.ts";
 
-test("registered players override developer inspection; Marshal keeps non-player views", () => {
+test("registered players override developer inspection; Marshal overrides inspection too", () => {
   const meta = yankeeLiveState().state.meta!;
   for (const inspection of ["public", "debug"] as const) {
     assert.deepEqual(getSessionView(meta, YANKEE_A, inspection), { view: "player", viewer_id: YANKEE_A });
     assert.deepEqual(getSessionView(meta, YANKEE_B, inspection), { view: "player", viewer_id: YANKEE_B });
-    assert.deepEqual(getSessionView(meta, "marshal", inspection), { view: inspection });
+    assert.deepEqual(getSessionView(meta, "marshal", inspection), { view: "marshal", viewer_id: "marshal" });
   }
   assert.deepEqual(getSessionView({}, "unknown"), { view: "public" });
+  assert.deepEqual(getSessionView({}, "unknown", "debug"), { view: "debug" });
+  assert.deepEqual(getSessionView({ marshal_id: "host" }, "host", "debug"), { view: "marshal", viewer_id: "host" });
+  assert.deepEqual(getSessionView({ marshal_id: "" }, ""), { view: "public" });
   assert.deepEqual(getSessionView(meta, "toString"), { view: "public" });
+});
+
+test("request view fields preserve gameplay identity and omit inspection identity", () => {
+  for (const view of ["marshal", "player"] as const) {
+    assert.deepEqual(getViewRequest(view, "actor"), { view, viewer_id: "actor" });
+  }
+  for (const view of ["public", "debug"] as const) {
+    assert.deepEqual(getViewRequest(view, "actor"), { view });
+  }
 });
 
 // Traverse App's returned elements without evaluating child components.
@@ -31,7 +43,7 @@ function findElement(node: ReactNode, type: unknown): ReturnType<typeof createEl
   }
 }
 
-test("App default session reconnects, polls, refreshes and renders private Yankee state; Marshal stays public", async () => {
+test("App default session reconnects, polls, refreshes and renders private Yankee state; Marshal uses its restricted view", async () => {
   const server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),
     server: { middlewareMode: true, hmr: false }, appType: "custom",
@@ -78,6 +90,8 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
         const viewer = url.searchParams.get("view") === "player" ? url.searchParams.get("viewer_id")! : "public";
         const response = yankeeLiveState(viewer);
         response.state.meta!.scene!.status = "active";
+        // An open lobby must not turn the existing Marshal into a fresh player.
+        if (actor === "marshal") response.state.meta!.lobby!.registration_open = true;
         return new Response(JSON.stringify(response));
       };
       let tree = render();
@@ -85,12 +99,14 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
       (findElement(tree, Home)!.props.setJoinGameId as (id: string) => void)("yankee-live");
       tree = render();
       await (findElement(tree, Home)!.props.onJoinGame as () => Promise<void>)();
-      const expectedView = actor === "marshal" ? "public" : "player";
+      const expectedView = actor === "marshal" ? "marshal" : "player";
       assert.equal(requests[0].url.searchParams.get("view"), "public", "discovery stays public");
       assert.equal(requests.length, 2, "reconnect must fetch the session view before entering gameplay");
       assert.equal(requests[1].url.searchParams.get("view"), expectedView, "reconnect fetches correct privacy before entering game");
-      assert.equal(requests[1].url.searchParams.get("viewer_id"), actor === "marshal" ? null : actor);
+      assert.equal(requests[1].url.searchParams.get("viewer_id"), actor);
       tree = render();
+      const inspection = findElement(tree, "select")!;
+      assert.equal(inspection.props.disabled, true, "private sessions disable inspection selection");
       const table = findElement(tree, Table)!;
       assert.equal(table.props.view, expectedView, "App must pass the effective view to TableRouterView");
       const routed = Table(table.props);
@@ -119,7 +135,7 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
       await (refresh.props.onClick as () => Promise<void>)();
       for (const request of requests.slice(1)) {
         assert.equal(request.url.searchParams.get("view"), expectedView);
-        assert.equal(request.url.searchParams.get("viewer_id"), actor === "marshal" ? null : actor);
+        assert.equal(request.url.searchParams.get("viewer_id"), actor);
       }
       assert.equal(tab.get("gf_player_id"), actor, "reconnect preserves session identity");
     }
@@ -168,8 +184,20 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
     home = render();
     await (findElement(home, Home)!.props.onNewGame as () => Promise<void>)();
     const createdTable = findElement(render(), Table)!;
-    assert.equal(createdTable.props.view, "public");
+    assert.equal(createdTable.props.view, "marshal");
     assert.equal(Table(createdTable.props).props.children.type, MarshalTable);
+    const creator = createdTable.props.currentActorId;
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input), "http://localhost");
+      assert.equal(url.searchParams.get("view"), "marshal");
+      assert.equal(url.searchParams.get("viewer_id"), creator);
+      const response = yankeeLiveState("marshal");
+      response.state.meta!.marshal_id = String(creator);
+      requests.push({ url });
+      return new Response(JSON.stringify(response));
+    };
+    await flush();
+    assert.ok(requests.length > 1, "creation automatically transitions to Marshal polling");
     hooks.resetHooks();
   } finally {
     globalThis.fetch = originalFetch;
