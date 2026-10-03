@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
+from backend.app.debug_policy import enforce_debug_api_policy
 from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection, validate_marshal_view
 from backend.app.pending_interactions import (
     DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM, PENDING_STATE_ACTIONS,
@@ -198,6 +199,7 @@ def _bump_revision(game: GameState) -> GameState:
 
 @app.post("/api/gf/new", response_model=ActionResponse)
 def new_game(req: NewGameRequest) -> ActionResponse:
+    enforce_debug_api_policy(view=req.view)
     deck = load_deck(req.template_path)
 
     if req.seed is not None:
@@ -223,7 +225,8 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     )
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
-def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "debug", viewer_id: str | None = None) -> ActionResponse:
+def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "public", viewer_id: str | None = None) -> ActionResponse:
+    enforce_debug_api_policy(view=view)
     if view == "player" and (not isinstance(viewer_id, str) or not viewer_id.strip()):
         raise HTTPException(status_code=422, detail="viewer_id is required for player view")
     g = _get_game(game_id)
@@ -245,6 +248,7 @@ def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"
 
 @app.post("/api/gf/action", response_model=ActionResponse)
 def action(req: ActionRequest) -> ActionResponse:
+    enforce_debug_api_policy(view=req.view, action=req.action)
     g = _get_game(req.game_id)
     with g.lock:
         validate_marshal_view(g.state, view=req.view, viewer_id=req.viewer_id)
@@ -274,8 +278,6 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         result = {"ok": True, "action": req.action}
 
     elif req.action == DEBUG_BEGIN:
-        if req.view != "debug":
-            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
         actor_id = effective_actor(req.params)
         if actor_id is None:
             raise HTTPException(status_code=400, detail="A non-empty actor_id or player_id is required")
@@ -293,8 +295,6 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         result = {"ok": True, "action": req.action}
 
     elif req.action in {DEBUG_RESOLVE, RECLAIM}:
-        if req.action == DEBUG_RESOLVE and req.view != "debug":
-            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
         pending = get_pending_interaction(game)
         if pending is None:
             raise HTTPException(status_code=400, detail="No pending interaction to resolve")
@@ -337,8 +337,6 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         params = req.params
         card_id = params.get("card_id")
 
-        if req.view != "debug":
-            raise HTTPException(status_code=403, detail="gf.debug_stack_top_card is debug-only")
         if not isinstance(card_id, str):
             raise HTTPException(status_code=400, detail="params.card_id must be a string")
 

@@ -14,6 +14,9 @@ from backend.engine.state.game_state import GameState
 from backend.engine.state.pending_interaction import begin_pending_interaction
 from backend.engine.state.validators import validate_game_state
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 PAISA_ACTION = "gf.faction_paisa_claim_reward"
 CRIOLLO_ACTION = "gf.faction_criollo_convert_resource"
 SPEND = ["2H", "3H", "4H"]
@@ -51,7 +54,7 @@ def install(game):
 def dispatch(name=PAISA_ACTION, **params):
     defaults = ({"player_id": "p1", "vengeance_card_ids": SPEND} if name == PAISA_ACTION else
                 {"player_id": "p1", "card_id": "8D", "from_resource": "scum"} if name == CRIOLLO_ACTION else {})
-    return main.action(ActionRequest(game_id="test", action=name, params={**defaults, **params}))
+    return main.action(ActionRequest(game_id="test", action=name, params={**defaults, **params}, view="debug"))
 
 
 def rejected(name, **params):

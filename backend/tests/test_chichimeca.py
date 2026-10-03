@@ -15,6 +15,9 @@ from backend.engine.state.game_state import GameState
 from backend.engine.state.pending_interaction import begin_pending_interaction
 from backend.engine.state.validators import validate_game_state
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 RECLAIM = "gf.pending_reclaim"
 
 
@@ -61,7 +64,7 @@ def current():
 
 
 def dispatch(action, **params):
-    return main.action(ActionRequest(game_id="test", action=action, params=params))
+    return main.action(ActionRequest(game_id="test", action=action, params=params, view="debug"))
 
 
 def start(game=None):

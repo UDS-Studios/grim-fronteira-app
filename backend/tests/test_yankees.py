@@ -22,6 +22,9 @@ from backend.engine.state.game_state_io import save_game_state, load_game_state
 from backend.engine.state.pending_interaction import begin_pending_interaction
 from backend.engine.state.validators import validate_game_state
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 RECLAIM = "gf.pending_reclaim"
 
 

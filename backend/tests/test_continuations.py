@@ -14,6 +14,9 @@ from backend.engine.state.continuations import complete_pending_interaction
 from backend.engine.state.pending_interaction import normalize_pending_interaction
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 @pytest.fixture
 def game_id():
     GAMES.clear()
@@ -25,7 +28,7 @@ def game_id():
 
 def dispatch(game_id, name):
     actor = "host" if name == RECLAIM else "p1"
-    return main.action(ActionRequest(game_id=game_id, action=name, params={"actor_id": actor}))
+    return main.action(ActionRequest(game_id=game_id, action=name, params={"actor_id": actor}, view="debug"))
 
 
 @pytest.mark.parametrize("first,second", [
@@ -143,7 +146,7 @@ def test_wrong_actor_is_rejected_before_continuation(game_id, monkeypatch):
         pytest.fail("Unauthorized request reached continuation")
     monkeypatch.setattr(continuations, "_dispatch_continuation", forbidden)
     with pytest.raises(HTTPException, match="Wrong actor"):
-        main.action(ActionRequest(game_id=game_id, action=DEBUG_RESOLVE,
+        main.action(ActionRequest(game_id=game_id, action=DEBUG_RESOLVE, view="debug",
                                   params={"actor_id": "host"}))
     assert GAMES[game_id].state is original
     assert original == snapshot

@@ -13,6 +13,9 @@ from backend.app.store import GAMES
 from backend.engine.state.pending_interaction import begin_pending_interaction
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 @pytest.fixture
 def game_id():
     GAMES.clear()

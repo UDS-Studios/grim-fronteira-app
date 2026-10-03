@@ -16,6 +16,9 @@ from backend.tests.test_gf_dark import (
 from backend.tests.test_yankees import http_request
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 @pytest.mark.parametrize("viewer,expected", [(None, 422), ("", 422), ("   ", 422), ("p1", 403), (" host1 ", 403), ("host1", 200)])
 @pytest.mark.parametrize("method", ["GET", "POST"])
 def test_marshal_http_validation_before_mutation(game_id, viewer, expected, method):
@@ -110,7 +113,7 @@ def test_marshal_preserves_hidden_azzardo_and_debug_only_actions(game_id):
         assert data["meta"]["scene"]["azzardo"]["value"] is None
         assert data["zones"]["scene.azzardo"] == []
         assert "marshal_total" not in data["meta"]["scene"]["dark"]
-    assert get_state(game_id).state["zones"]["scene.azzardo"] == ["3C"]
+    assert get_state(game_id, view="debug").state["zones"]["scene.azzardo"] == ["3C"]
     before = deepcopy(GAMES[game_id].state)
     status, _ = http_request("/api/gf/action", method="POST", body={
         "game_id": game_id, "action": "gf.debug_stack_top_card", "params": {"card_id": "RJ"},

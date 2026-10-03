@@ -13,6 +13,9 @@ from backend.tests.test_gf_dark import (
 )
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 def test_legacy_difficulty_cannot_bypass_dark(game_id):
     dispatch(game_id)
     reject(game_id, "roll_difficulty", player_ids=["p1"], match="Dark")

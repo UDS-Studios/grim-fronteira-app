@@ -33,6 +33,9 @@ from backend.engine.rules.grim_fronteira.scene import (
 )
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 @pytest.fixture
 def game_id():
     game = scene_set_participants(_ready_table_game(), actor_id="host1", participant_ids=["p1"])

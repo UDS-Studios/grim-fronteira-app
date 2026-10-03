@@ -13,7 +13,7 @@ class ErrorPayload(BaseModel):
 
 
 class ViewRequest(BaseModel):
-    view: Literal["public", "player", "marshal", "debug"] = "debug"
+    view: Literal["public", "player", "marshal", "debug"] = "public"
     viewer_id: str | None = None
 
     @model_validator(mode="after")
