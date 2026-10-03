@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from uuid import uuid4
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Annotated, Any, Dict, List, Literal, Tuple
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,10 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
 from backend.app.session_authority import (
-    ReconnectInvalid, issue_seat_credentials, resolve_reconnect_seat,
+    AuthorityError, ReconnectInvalid, issue_seat_credentials, resolve_reconnect_seat,
     replace_active_session, role_for_seat,
 )
 from backend.app.debug_policy import enforce_debug_api_policy
+from backend.app.request_authority import authorize_request
 from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection, validate_marshal_view
 from backend.app.pending_interactions import (
     DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM, PENDING_STATE_ACTIONS,
@@ -152,6 +153,15 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(status_code=422, content=payload.model_dump())
 
 
+@app.exception_handler(AuthorityError)
+async def authority_error_handler(request: Request, exc: AuthorityError):
+    game_id, revision = await _extract_game_context(request)
+    return JSONResponse(status_code=exc.status, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code=exc.code, message=str(exc), details=None),
+    ).model_dump())
+
+
 @app.exception_handler(ReconnectInvalid)
 async def reconnect_invalid_handler(request: Request, exc: ReconnectInvalid):
     game_id, revision = await _extract_game_context(request)
@@ -265,12 +275,18 @@ def reconnect(req: ReconnectRequest) -> ActionResponse:
 
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
-def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "public", viewer_id: str | None = None) -> ActionResponse:
+def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "public", viewer_id: str | None = None,
+              x_gf_session: Annotated[str | None, Header(alias="X-GF-Session")] = None) -> ActionResponse:
     enforce_debug_api_policy(view=view)
-    if view == "player" and (not isinstance(viewer_id, str) or not viewer_id.strip()):
-        raise HTTPException(status_code=422, detail="viewer_id is required for player view")
+    if view in {"player", "marshal"} and (not isinstance(viewer_id, str) or not viewer_id.strip()):
+        raise HTTPException(status_code=422, detail=f"viewer_id is required for {view} view")
     g = _get_game(game_id)
-    game = g.state
+    with g.lock:
+        authorize_request(g.state, g.sessions, x_gf_session, view=view, viewer_id=viewer_id)
+        return _get_state_response(game_id, g.state, view, viewer_id)
+
+
+def _get_state_response(game_id: str, game: GameState, view: str, viewer_id: str | None) -> ActionResponse:
     validate_marshal_view(game, view=view, viewer_id=viewer_id)
     validate_game_state(game)
     game = enrich_meta_for_ui(game)
@@ -287,10 +303,12 @@ def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"
 
 
 @app.post("/api/gf/action", response_model=ActionResponse)
-def action(req: ActionRequest) -> ActionResponse:
+def action(req: ActionRequest, x_gf_session: Annotated[str | None, Header(alias="X-GF-Session")] = None) -> ActionResponse:
     enforce_debug_api_policy(view=req.view, action=req.action)
     g = _get_game(req.game_id)
     with g.lock:
+        authorize_request(g.state, g.sessions, x_gf_session, view=req.view, viewer_id=req.viewer_id,
+                          action=req.action, params=req.params)
         validate_marshal_view(g.state, view=req.view, viewer_id=req.viewer_id)
         try:
             return _action_transition(req, g)

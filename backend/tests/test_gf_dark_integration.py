@@ -233,7 +233,9 @@ def test_marshal_frontend_visibility_contract(game_id):
         before = GAMES[game_id].state.meta.get("revision", 0)
         status, response = http_request("/api/gf/action", method="POST", body={
             "game_id": game_id, "action": f"gf.{name}",
-            "params": {"actor_id": "host1", **params}, "view": "marshal", "viewer_id": "host1",
+            "params": {"actor_id": "host1", **params},
+            "view": "player" if name == "scene_stand" else "marshal",
+            "viewer_id": params["player_id"] if name == "scene_stand" else "host1",
         })
         assert status == 200, response
         assert response["revision"] == before + 1

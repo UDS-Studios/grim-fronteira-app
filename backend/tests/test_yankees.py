@@ -364,7 +364,7 @@ def test_engine_resumption_has_no_api_dispatch_or_revision_increment(monkeypatch
     assert current() is original
 
 
-def http_request(path, *, method="GET", body=None, query=""):
+def http_request(path, *, method="GET", body=None, query="", headers=None):
     """Exercise actual ASGI routes without adding an HTTP-client dependency."""
     async def request():
         messages = []
@@ -379,7 +379,7 @@ def http_request(path, *, method="GET", body=None, query=""):
             messages.append(message)
         await asyncio.wait_for(main.app({"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
                         "method": method, "scheme": "http", "path": path, "raw_path": path.encode(),
-                        "query_string": query.encode(), "headers": [(b"content-type", b"application/json")],
+                        "query_string": query.encode(), "headers": [(b"content-type", b"application/json"), *[(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]],
                         "server": ("test", 80), "client": ("test", 123)}, receive, send), timeout=2)
         status = next(m["status"] for m in messages if m["type"] == "http.response.start")
         data = json.loads(b"".join(m.get("body", b"") for m in messages if m["type"] == "http.response.body"))

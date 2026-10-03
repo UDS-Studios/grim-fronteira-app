@@ -1,4 +1,4 @@
-"""Application-only issuance and reconnect; gameplay authentication comes later."""
+"""Application-only seat credential issuance, reconnect, and authentication."""
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -18,6 +18,21 @@ class ReconnectInvalid(RuntimeError):
 
     def __init__(self):
         super().__init__("Invalid reconnect credential")
+
+
+class AuthorityError(RuntimeError):
+    ERRORS = {
+        "SESSION_REQUIRED": (401, "Active session credential required"),
+        "SESSION_INVALID": (401, "Invalid active session credential"),
+        "SESSION_REPLACED": (401, "Active session has been replaced"),
+        "ACTOR_MISMATCH": (403, "Session does not control the requested actor"),
+        "VIEWER_MISMATCH": (403, "Session does not control the requested private view"),
+    }
+
+    def __init__(self, code: str):
+        self.code = code
+        self.status, message = self.ERRORS[code]
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -56,6 +71,24 @@ def replace_active_session(record: SeatSessionRecord) -> tuple[SeatSessionRecord
         superseded_session_hashes=record.superseded_session_hashes | {record.active_session_hash},
     )
     return replacement, active_session
+
+
+def resolve_active_session(
+    sessions: Mapping[str, SeatSessionRecord], token: str | None,
+) -> SeatSessionRecord:
+    if token is None or token == "":
+        raise AuthorityError("SESSION_REQUIRED")
+    try:
+        digest = hash_credential(token)
+    except (UnicodeError, AttributeError):
+        raise AuthorityError("SESSION_INVALID") from None
+    current = [r for r in sessions.values() if compare_digest(digest, r.active_session_hash)]
+    if len(current) == 1:
+        return current[0]
+    if not current and any(compare_digest(digest, old) for r in sessions.values()
+                           for old in r.superseded_session_hashes):
+        raise AuthorityError("SESSION_REPLACED")
+    raise AuthorityError("SESSION_INVALID")
 
 
 def role_for_seat(game: GameState, player_id: str) -> Literal["marshal", "player"]:

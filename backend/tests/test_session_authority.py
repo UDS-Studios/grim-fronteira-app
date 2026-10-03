@@ -18,6 +18,9 @@ from backend.engine.state.game_state_io import load_game_state, save_game_state
 from backend.tests.test_yankees import http_request
 
 
+pytestmark = pytest.mark.usefixtures("authenticated_application_requests")
+
+
 @pytest.fixture(autouse=True)
 def isolated_store(monkeypatch):
     monkeypatch.delenv("GF_ENABLE_DEBUG_API", raising=False)
