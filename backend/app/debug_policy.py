@@ -3,15 +3,14 @@ import os
 
 from fastapi import HTTPException
 
+from backend.app.action_authority import ACTION_AUTHORITIES, AuthorityKind
 
-DEBUG_ONLY_ACTIONS = frozenset({
-    "gf.debug_stack_top_card",
-    "gf.debug_begin_pending_interaction",
-    "gf.debug_resolve_pending_interaction",
-    "gf.setup_players",
-    # Legacy HTTP wrapper; gf.scene_roll_difficulty is the production route.
-    "gf.roll_difficulty",
-})
+
+# Legacy difficulty stays quarantined; gf.scene_roll_difficulty is production.
+DEBUG_ONLY_ACTIONS = frozenset(
+    action for action, spec in ACTION_AUTHORITIES.items()
+    if spec.kind in {AuthorityKind.DEBUG_ONLY, AuthorityKind.LEGACY_DEBUG_ONLY}
+)
 
 
 def debug_api_enabled() -> bool:
