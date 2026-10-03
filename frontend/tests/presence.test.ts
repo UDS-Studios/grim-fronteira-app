@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 import { getPresenceStatus } from "../src/utils/presence.ts";
 import { acceptResponse } from "../src/utils/responseOrdering.ts";
 import type { GameMeta } from "../src/api/types.ts";
@@ -29,10 +30,15 @@ test("pure indicators, lobby/table integrations, equal-revision updates and unch
     const { default: Table } = await server.ssrLoadModule("/src/views/TableRouterView.tsx");
     for (const status of ["online", "offline"]) {
       const html = renderToStaticMarkup(createElement(Indicator, { status }));
-      assert.match(html, /aria-hidden="true"/);
+      assert.match(html, /class="presence-light" aria-hidden="true"/);
+      assert.ok(html.includes(`presence-indicator--${status}`));
       assert.ok(html.includes(status === "online" ? "Online" : "Offline"));
     }
     assert.equal(renderToStaticMarkup(createElement(Indicator, { status: "unknown" })), "");
+    const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
+    assert.match(css, /presence-indicator--online\s*\{[^}]*#28a745/);
+    assert.match(css, /presence-indicator--offline\s*\{[^}]*#e04444/);
+    assert.match(css, /\.presence-light\s*\{[^}]*border-radius: 50%/);
     const response = structuredClone(chichimecaLiveResponse);
     response.state.meta!.presence = { marshal: { online: false }, "player-nnu30f": { online: true }, "player-o2o9sa": { online: false } };
     response.state.meta!.pending_interaction = null;
@@ -52,12 +58,14 @@ test("pure indicators, lobby/table integrations, equal-revision updates and unch
       assert.match(render(PlayerLobby), /Marshal:<\/b> marshal.*?presence-indicator--offline/);
     }
     const marshalTable = render(Table, { ...common, currentActorId: "marshal" });
+    assert.ok(!marshalTable.includes("marshal-offline-banner"));
     assert.match(marshalTable, /Chichimeca[^]*?presence-indicator--online/);
     assert.match(marshalTable, /Paisà[^]*?presence-indicator--offline/);
     assert.match(render(Table), /Marshal:<\/b> marshal.*?presence-indicator--offline/);
     delete response.state.meta!.presence;
     for (const component of [MarshalLobby, PlayerLobby, Table]) {
       assert.ok(!render(component).includes("presence-indicator"));
+      assert.ok(!render(component).includes("marshal-offline-banner"));
     }
     response.state.meta!.scene = { status: "active", participants: ["player-nnu30f", "player-o2o9sa"],
       players: { "player-nnu30f": {} }, difficulty: { value: 12 } };
@@ -72,6 +80,15 @@ test("pure indicators, lobby/table integrations, equal-revision updates and unch
     const offlineHtml = render(Table, { ...common, resp: updated });
     assert.match(onlineHtml, /Marshal:<\/b> marshal.*?presence-indicator--online/);
     assert.match(offlineHtml, /Marshal:<\/b> marshal.*?presence-indicator--offline/);
+    assert.ok(!onlineHtml.includes("marshal-offline-banner"));
+    assert.match(offlineHtml, /class="marshal-offline-banner" role="status"/);
+    assert.ok(offlineHtml.includes("THE MARSHAL IS OFFLINE"));
+    assert.ok(offlineHtml.includes("Waiting for the Marshal to reconnect."));
+    const banner = offlineHtml.match(/class="marshal-offline-banner"[^]*?<\/div><\/div>/)![0];
+    assert.doesNotMatch(banner, /paused|actions disabled/i);
+    const missingSeat = structuredClone(offline);
+    missingSeat.state.meta!.presence = {};
+    assert.ok(!render(Table, { ...common, resp: missingSeat }).includes("marshal-offline-banner"));
     assert.ok(onlineHtml.includes('title="Draw a card"'));
     assert.ok(onlineHtml.includes('title="Stay"'));
     const buttons = (html: string) => html.match(/<button\b[^>]*>/g);

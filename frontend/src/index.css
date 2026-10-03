@@ -11,12 +11,12 @@
   gap: 0.3em;
   margin-inline-start: 0.35em;
   font-family: system-ui, sans-serif;
-  font-size: 0.75rem;
-  font-weight: 400;
+  font-size: 0.875rem;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
   vertical-align: middle;
-  color: var(--text-muted);
+  color: var(--text-primary);
 }
 
 :root {
@@ -500,3 +500,33 @@ button:focus-visible {
 .dark-reward-payment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .dark-reward-payment button { padding: 6px 10px; font-weight: 800; }
 .dark-reward-payment button:focus-visible { outline: 2px solid #cfb772; outline-offset: 2px; }
+
+/* Filled semantic lights retain visible status text for accessibility. */
+.presence-light {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--presence-light-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary) 25%, transparent);
+}
+
+.presence-indicator--online { --presence-light-color: #28a745; }
+.presence-indicator--offline { --presence-light-color: #e04444; }
+
+.marshal-offline-banner {
+  --presence-light-color: #e04444;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 10px 14px;
+  border: 2px solid var(--danger-border);
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.marshal-offline-banner strong { display: block; font-weight: 800; }

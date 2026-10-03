@@ -1366,6 +1366,16 @@ export default function PlayerTableView({
           />
         </div>
 
+        {view === "player" && getPresenceStatus(meta, marshalId) === "offline" && (
+          <div className="marshal-offline-banner" role="status">
+            <span className="presence-light" aria-hidden="true" />
+            <div>
+              <strong>THE MARSHAL IS OFFLINE</strong>
+              <span>Waiting for the Marshal to reconnect.</span>
+            </div>
+          </div>
+        )}
+
         {hasPendingInteraction && (
           <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
             {yankeeCardId !== null ? (

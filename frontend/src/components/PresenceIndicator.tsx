@@ -4,7 +4,7 @@ export default function PresenceIndicator({ status }: { status: PresenceStatus }
   if (status === "unknown") return null;
   return (
     <span className={`presence-indicator presence-indicator--${status}`}>
-      <span aria-hidden="true">{status === "online" ? "●" : "○"}</span>
+      <span className="presence-light" aria-hidden="true" />
       {status === "online" ? "Online" : "Offline"}
     </span>
   );

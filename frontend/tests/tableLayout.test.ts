@@ -35,9 +35,11 @@ test("both roles share viewport fitting and retain every functional region", asy
         assert.ok(html.includes(region), `${currentActorId}: ${region}`);
       }
       if (currentActorId === "marshal") {
+        assert.ok(!html.includes("marshal-offline-banner"));
         assert.ok(html.includes("Next Scene"));
         assert.ok(html.includes("Reclaim interaction"));
       } else {
+        assert.match(html, /class="marshal-offline-banner" role="status"/);
         for (const region of ["Scene Participation", "Other Players", "REWARDS", "Confirm target", "DESCRIPTION", "FACTION POWER", "SCUM", "VENGEANCE"]) {
           assert.ok(html.includes(region), region);
         }
