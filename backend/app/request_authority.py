@@ -21,7 +21,8 @@ def authorize_request(
     game: GameState, sessions: Mapping[str, SeatSessionRecord], token: str | None,
     *, view: str, viewer_id: str | None, action: str | None = None,
     params: Mapping[str, Any] | None = None,
-) -> None:
+) -> SeatSessionRecord | None:
+    """Return the proven seat after ownership checks, or None for uncredentialed paths."""
     if view == "debug":
         return  # The route must first enforce the server-side debug policy.
     spec = get_action_authority(action) if action is not None else None
@@ -48,3 +49,5 @@ def authorize_request(
             raise AuthorityError("ACTOR_MISMATCH")
         if spec.kind in {AuthorityKind.MARSHAL_ACTOR, AuthorityKind.MARSHAL_WITH_PLAYER_TARGET} and seat.player_id != game.meta.get("marshal_id"):
             raise AuthorityError("ACTOR_MISMATCH")
+
+    return seat

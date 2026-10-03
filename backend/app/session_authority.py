@@ -7,6 +7,7 @@ import secrets
 from typing import Literal
 
 from backend.engine.state.game_state import GameState
+from backend.app import presence
 
 
 class SessionIssuanceError(RuntimeError):
@@ -41,6 +42,8 @@ class SeatSessionRecord:
     reconnect_token_hash: str
     active_session_hash: str
     superseded_session_hashes: frozenset[str] = frozenset()
+    # Monotonic runtime timestamp belongs to active_session_hash on this record.
+    last_seen: float | None = None
 
 
 def hash_credential(token: str) -> str:
@@ -67,7 +70,7 @@ def replace_active_session(record: SeatSessionRecord) -> tuple[SeatSessionRecord
     """Stage an immutable replacement; caller commits only after response creation."""
     active_session = secrets.token_urlsafe(32)
     replacement = replace(
-        record, active_session_hash=hash_credential(active_session),
+        record, active_session_hash=hash_credential(active_session), last_seen=presence.now(),
         superseded_session_hashes=record.superseded_session_hashes | {record.active_session_hash},
     )
     return replacement, active_session
@@ -121,6 +124,7 @@ def issue_seat_credentials(
         player_id=player_id,
         reconnect_token_hash=hash_credential(reconnect_token),
         active_session_hash=hash_credential(active_session),
+        last_seen=presence.now(),
     )
     sessions[player_id] = record
     return {

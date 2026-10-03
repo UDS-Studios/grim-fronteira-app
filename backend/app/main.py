@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
+from backend.app.presence import enrich_presence, refresh_presence
 from backend.app.session_authority import (
     AuthorityError, ReconnectInvalid, issue_seat_credentials, resolve_reconnect_seat,
     replace_active_session, role_for_seat,
@@ -244,6 +245,7 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     projected_state = game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id)
     session = issue_seat_credentials(game, stored_game.sessions, game.meta["marshal_id"])
 
+    projected_state = enrich_presence(projected_state, stored_game.sessions)
     response = ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
@@ -263,6 +265,8 @@ def reconnect(req: ReconnectRequest) -> ActionResponse:
         role = role_for_seat(g.state, record.player_id)
         projected_state = game_state_to_dict(g.state, view=role, viewer_id=record.player_id)
         replacement, active_session = replace_active_session(record)
+        staged_sessions = {**g.sessions, record.player_id: replacement}
+        projected_state = enrich_presence(projected_state, staged_sessions)
         response = ActionResponse(
             game_id=req.game_id, revision=g.state.meta.get("revision", 0),
             state=projected_state, events=[],
@@ -282,8 +286,12 @@ def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"
         raise HTTPException(status_code=422, detail=f"viewer_id is required for {view} view")
     g = _get_game(game_id)
     with g.lock:
-        authorize_request(g.state, g.sessions, x_gf_session, view=view, viewer_id=viewer_id)
-        return _get_state_response(game_id, g.state, view, viewer_id)
+        seat = authorize_request(g.state, g.sessions, x_gf_session, view=view, viewer_id=viewer_id)
+        if seat is not None:
+            refresh_presence(g.sessions, seat)
+        response = _get_state_response(game_id, g.state, view, viewer_id)
+        response.state = enrich_presence(response.state, g.sessions)
+        return response
 
 
 def _get_state_response(game_id: str, game: GameState, view: str, viewer_id: str | None) -> ActionResponse:
@@ -307,8 +315,10 @@ def action(req: ActionRequest, x_gf_session: Annotated[str | None, Header(alias=
     enforce_debug_api_policy(view=req.view, action=req.action)
     g = _get_game(req.game_id)
     with g.lock:
-        authorize_request(g.state, g.sessions, x_gf_session, view=req.view, viewer_id=req.viewer_id,
+        seat = authorize_request(g.state, g.sessions, x_gf_session, view=req.view, viewer_id=req.viewer_id,
                           action=req.action, params=req.params)
+        if seat is not None:
+            refresh_presence(g.sessions, seat)
         validate_marshal_view(g.state, view=req.view, viewer_id=req.viewer_id)
         try:
             return _action_transition(req, g)
@@ -964,6 +974,7 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         staged_sessions = dict(g.sessions)
         result["session"] = issue_seat_credentials(game, staged_sessions, req.params["player_id"])
 
+    projected_state = enrich_presence(projected_state, staged_sessions if staged_sessions is not None else g.sessions)
     response = ActionResponse(
         game_id=req.game_id,
         revision=game.meta.get("revision", 0),
