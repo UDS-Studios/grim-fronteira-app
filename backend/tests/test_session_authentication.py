@@ -222,3 +222,24 @@ def test_authenticated_dark_privacy(seats):
     assert status == 200 and response["state"]["zones"][SCENE_DARK_MARSHAL_HAND_ZONE] == {"count": 1}
     status, response = request(seats, view="marshal", viewer="host", token=seats[1]["p1"]["active_session"])
     assert status == 403 and response["error"]["code"] == "VIEWER_MISMATCH"
+
+
+def test_stale_record_for_removed_seat_fails_closed(seats):
+    stored = GAMES[seats[0]]
+    stored.state = replace(stored.state, meta={**stored.state.meta,
+        "players_order": [p for p in stored.state.meta["players_order"] if p != "p1"]})
+    original, records = stored.state, dict(stored.sessions)
+    for action in [None, "gf.get_state", "gf.scene_stand"]:
+        status, response = request(seats, action, {"player_id": "p1"}, view="player", viewer="p1",
+                                   token=seats[1]["p1"]["active_session"])
+        assert status == 401 and response["error"]["code"] == "SESSION_INVALID"
+    assert stored.state is original and stored.sessions == records
+
+
+def test_malformed_header_is_generic_and_secret_free(seats):
+    for token in [" ", "Bearer secret-do-not-echo", "not-a-valid-token"]:
+        status, response = request(seats, view="player", viewer="p1", token=token)
+        assert status == 401 and response["error"]["code"] == "SESSION_INVALID"
+        assert response["error"]["details"] is None
+        if token.strip():
+            assert token not in str(response)

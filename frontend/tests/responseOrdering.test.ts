@@ -32,13 +32,22 @@ test("late polling and refresh responses cannot resurrect a discarded Dark card"
     const { default: App } = await server.ssrLoadModule("/src/App.tsx");
     const { default: Home } = await server.ssrLoadModule("/src/views/HomeView.tsx");
     const { default: Table } = await server.ssrLoadModule("/src/views/TableRouterView.tsx");
-    const storage = { getItem: () => "host", setItem: () => {} };
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) };
     for (const key of ["sessionStorage", "localStorage"]) Object.defineProperty(globalThis, key, { configurable: true, value: storage });
     Object.defineProperty(globalThis, "window", { configurable: true, value: { setInterval: () => 1, clearInterval: () => {} } });
     let finishPoll: (r: Response) => void = () => {};
-    globalThis.fetch = async (_input, options) => options?.method === "POST"
-      ? new Response(JSON.stringify(snapshot(3, ["8C"])))
-      : new Promise<Response>(resolve => { finishPoll = resolve; });
+    globalThis.fetch = async (_input, options) => {
+      if (options?.method === "POST") {
+        const created = snapshot(3, ["8C"]);
+        const body = JSON.parse(String(options.body));
+        created.state.meta!.marshal_id = body.creator_id;
+        created.result = { session: { player_id: body.creator_id, role: "marshal", active_session: "test-active", reconnect_token: "test-reconnect" } };
+        return new Response(JSON.stringify(created));
+      }
+      return new Promise<Response>(resolve => { finishPoll = resolve; });
+    };
     hooks.resetHooks();
     const render = () => { hooks.beginRender(); return App(); };
     await (find(render(), Home)!.onNewGame as () => Promise<void>)();

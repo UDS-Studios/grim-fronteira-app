@@ -1,10 +1,11 @@
 import { acceptResponse } from "./utils/responseOrdering";
 import { useEffect, useState } from "react";
-import { newGame, getGame, gfAction } from "./api/gf";
+import { newGame, getGame, gfAction, reconnectGame } from "./api/gf";
 import type { ActionResponse } from "./api/types";
-import { getFreshPlayerId, getOrCreatePlayerId, persistPlayerId } from "./utils/identity";
+import { getFreshPlayerId } from "./utils/identity";
 import { getSessionView, type InspectionView } from "./utils/sessionView";
 import { getGameEntryMode } from "./utils/reconnect";
+import { loadSession, getReconnectToken, getActiveSession, getLastGame, setLastGame } from "./utils/session";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
@@ -16,23 +17,21 @@ import type { MetaAny } from "./views/types";
 
 export default function App() {
   const [inspectionView, setInspectionView] = useState<InspectionView>("public");
-  const [gameId, setGameId] = useState("");
+  const [gameId, setGameId] = useState(getLastGame);
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
-  const [currentActorId, setCurrentActorId] = useState(getOrCreatePlayerId);
+  const [currentActorId, setCurrentActorId] = useState(() => loadSession(getLastGame())?.player_id ?? getFreshPlayerId());
   const [joinPlayerId, setJoinPlayerId] = useState("");
   const [selectedPlayerId, setSelectedPlayerId] = useState(currentActorId);
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
-  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">("home");
+  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">(() => getLastGame() ? "game" : "home");
   const [closedGameId, setClosedGameId] = useState("");
 
-  const { view, viewer_id: viewerId } = getSessionView(resp?.state.meta ?? {}, currentActorId, inspectionView);
-
-  useEffect(() => {
-    // Also retain an already-joined in-memory actor when a development tab hot-reloads.
-    persistPlayerId(currentActorId);
-  }, [currentActorId]);
+  const seat = loadSession(gameId);
+  const { view, viewer_id: viewerId } = seat && seat.player_id === currentActorId
+    ? { view: seat.role, viewer_id: seat.player_id }
+    : getSessionView({}, "", inspectionView);
 
   useEffect(() => {
     if (screen !== "game" || !gameId) return;
@@ -42,6 +41,7 @@ export default function App() {
     const resetToHome = () => {
       setResp(null);
       setGameId("");
+      setLastGame("");
       setJoinGameId("");
       setScreen("home");
     };
@@ -56,6 +56,10 @@ export default function App() {
           return;
         }
 
+        if (["SESSION_REQUIRED", "SESSION_INVALID", "SESSION_REPLACED", "ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID"].includes(r.error.code)) {
+          setResp(r);
+          setScreen("error");
+        }
         if (r.error.code === "HTTP_404") {
           resetToHome();
         }
@@ -78,10 +82,16 @@ export default function App() {
       const r = await p;
       setResp(current => acceptResponse(current, r));
       if (!r.error && r.game_id) {
+        const seat = loadSession(r.game_id);
+        if (seat) {
+          setCurrentActorId(seat.player_id);
+          setSelectedPlayerId(seat.player_id);
+        }
+        setLastGame(r.game_id);
         setGameId(r.game_id);
         setScreen("game");
       } else if (r.error) {
-        console.error("API action error:", r);
+        console.error("API action error:", r.error.code);
         // stay on the current screen so we can inspect the real error
       }
       return r;
@@ -162,10 +172,13 @@ export default function App() {
                 const loaded = await getGame(joinGameId, "public");
                 if (loaded.error) return loaded;
                 const loadedMeta = loaded.state.meta ?? {};
-                entryMode = getGameEntryMode(loadedMeta, currentActorId);
+                const stored = loadSession(loaded.game_id);
+                const hasCredential = getActiveSession(loaded.game_id) || getReconnectToken(loaded.game_id);
+                entryMode = hasCredential && stored ? "reconnect" : getGameEntryMode(loadedMeta, "");
                 if (entryMode === "closed") return loaded;
                 if (entryMode === "reconnect") {
-                  const session = getSessionView(loadedMeta, currentActorId, inspectionView);
+                  if (!getActiveSession(loaded.game_id)) return reconnectGame(loaded.game_id);
+                  const session = { view: stored!.role, viewer_id: stored!.player_id };
                   return getGame(loaded.game_id, session.view, session.viewer_id);
                 }
 
@@ -178,7 +191,7 @@ export default function App() {
                   viewer_id: freshPlayerId,
                 });
                 if (!joined.error) {
-                  setCurrentActorId(persistPlayerId(freshPlayerId));
+                  setCurrentActorId(freshPlayerId);
                   setSelectedPlayerId(freshPlayerId);
                 }
                 return joined;
@@ -199,6 +212,7 @@ export default function App() {
             onBackHome={() => {
               setResp(null);
               setGameId("");
+              setLastGame("");
               setJoinGameId("");
               setClosedGameId("");
               setScreen("home");
@@ -214,6 +228,7 @@ export default function App() {
             onBackHome={() => {
               setResp(null);
               setGameId("");
+              setLastGame("");
               setJoinGameId("");
               setScreen("home");
             }}
@@ -309,6 +324,7 @@ export default function App() {
                 onBackHome={() => {
                   setResp(null);
                   setGameId("");
+                  setLastGame("");
                   setJoinGameId("");
                   setScreen("home");
                 }}
@@ -333,6 +349,7 @@ export default function App() {
                 onBackHome={() => {
                   setResp(null);
                   setGameId("");
+                  setLastGame("");
                   setJoinGameId("");
                   setScreen("home");
                 }}
@@ -348,6 +365,7 @@ export default function App() {
                 onBackHome={() => {
                   setResp(null);
                   setGameId("");
+                  setLastGame("");
                   setJoinGameId("");
                   setScreen("home");
                 }}

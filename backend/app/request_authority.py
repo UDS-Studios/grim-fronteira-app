@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from backend.app.action_authority import AuthorityKind, get_action_authority, get_claimed_actor
-from backend.app.session_authority import AuthorityError, SeatSessionRecord, resolve_active_session
+from backend.app.session_authority import AuthorityError, SeatSessionRecord, SessionIssuanceError, resolve_active_session, role_for_seat
 from backend.engine.state.game_state import GameState
 
 
@@ -37,6 +37,11 @@ def authorize_request(
     if not needs_actor and view not in {"player", "marshal"}:
         return
     seat = resolve_active_session(sessions, token)
+    try:
+        role_for_seat(game, seat.player_id)
+    except SessionIssuanceError:
+        # A leftover credential record must not authorize a removed seat.
+        raise AuthorityError("SESSION_INVALID") from None
     authorize_private_view(game, view, viewer_id, seat)
     if needs_actor:
         if get_claimed_actor(params or {}, spec) != seat.player_id:

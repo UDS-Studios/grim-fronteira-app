@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from backend.app.main import get_state
 from backend.app.serializers import game_state_to_dict
 from backend.app.store import GAMES
+from backend.app.session_authority import issue_seat_credentials
 from backend.engine.state.game_state_io import load_game_state, save_game_state
 from backend.engine.state.pending_interaction import begin_pending_interaction
 from backend.tests.test_gf_dark import (
@@ -23,14 +24,16 @@ pytestmark = pytest.mark.usefixtures("enabled_debug_api")
 @pytest.mark.parametrize("method", ["GET", "POST"])
 def test_marshal_http_validation_before_mutation(game_id, viewer, expected, method):
     original = GAMES[game_id].state
+    session = issue_seat_credentials(original, GAMES[game_id].sessions, "host1")
+    headers = {"X-GF-Session": session["active_session"]}
     before = deepcopy(original)
     if method == "GET":
         query = {"view": "marshal"}
         if viewer is not None:
             query["viewer_id"] = viewer
-        status, response = http_request(f"/api/game/{game_id}", query=urlencode(query))
+        status, response = http_request(f"/api/game/{game_id}", query=urlencode(query), headers=headers)
     else:
-        status, response = http_request("/api/gf/action", method="POST", body={
+        status, response = http_request("/api/gf/action", method="POST", headers=headers, body={
             "game_id": game_id, "action": "gf.scene_declare_dark", "params": {"actor_id": "host1"},
             "view": "marshal", "viewer_id": viewer,
         })

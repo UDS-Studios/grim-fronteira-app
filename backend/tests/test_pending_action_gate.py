@@ -68,6 +68,7 @@ def test_no_pending_retains_existing_dispatch(game_id):
 
 @pytest.mark.parametrize("view", ["public", "player", "debug"])
 def test_read_only_routes_remain_available_without_mutation(game_id, view):
+    dispatch(game_id, "gf.join_lobby", {"player_id": "p1"})
     begin(game_id)
     original = GAMES[game_id].state
     snapshot = deepcopy(original)
