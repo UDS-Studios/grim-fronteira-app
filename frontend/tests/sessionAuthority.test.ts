@@ -80,6 +80,58 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
         assert.equal(calls[2].headers.get("X-GF-Session"), "active-B");
       });
     }
+    await t.test("replacement on the retry surfaces and consumes the allowance", async () => {
+      reset(); storeIssuedSession("A", session);
+      replies = [response("SESSION_REPLACED"), response(undefined, session), response("SESSION_REPLACED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
+      replies = [response("SESSION_REPLACED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
+      assert.equal(calls.length, 4);
+      assert.equal(calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length, 1);
+    });
+    await t.test("later replacement polls stay blocked across successful requests and ordinary recovery", async () => {
+      reset(); storeIssuedSession("A", session);
+      replies = [response("SESSION_REPLACED"), response(undefined, { ...session, active_session: "active-B" }), response()];
+      assert.equal((await getGame("A", "player", "p1")).error, null);
+      for (const code of ["SESSION_REQUIRED", "SESSION_INVALID"]) {
+        replies = [response(code), response(undefined, { ...session, active_session: `active-${code}` }), response()];
+        assert.equal((await getGame("A", "player", "p1")).error, null);
+      }
+      const reconnectCount = calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length;
+      replies = [response(), ...Array.from({ length: 10 }, () => response("SESSION_REPLACED"))];
+      assert.equal((await getGame("A", "player", "p1")).error, null);
+      for (let poll = 0; poll < 10; poll++) {
+        assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
+      }
+      assert.equal(calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length, reconnectCount);
+      assert.equal(replies.length, 0);
+      // Another game has its own allowance.
+      storeIssuedSession("B", session);
+      replies = [response("SESSION_REPLACED"), { ...response(undefined, session), game_id: "B" }, response()];
+      assert.equal((await getGame("B", "player", "p1")).error, null);
+    });
+    for (const lifecycle of ["join", "manual reconnect", "clear", "replace"]) {
+      await t.test(`${lifecycle} resets replacement recovery eligibility`, async () => {
+        reset(); storeIssuedSession("A", session);
+        replies = [response("SESSION_REPLACED"), response(undefined, session), response()];
+        await getGame("A", "player", "p1");
+        replies = [response("SESSION_REPLACED")];
+        assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
+        if (lifecycle === "join") {
+          replies = [response(undefined, session)];
+          await gfAction({ game_id: "A", action: "gf.join_lobby", params: { player_id: "p1" }, view: "player" });
+        } else if (lifecycle === "manual reconnect") {
+          replies = [response(undefined, session)];
+          await reconnectGame("A");
+        } else {
+          if (lifecycle === "clear") clearSession("A");
+          storeIssuedSession("A", session);
+        }
+        replies = [response("SESSION_REPLACED"), response(undefined, session), response()];
+        assert.equal((await getGame("A", "player", "p1")).error, null);
+        assert.equal(replies.length, 0);
+      });
+    }
     await t.test("mutation recovery preserves original body and retries only once", async () => {
       reset(); storeIssuedSession("A", session);
       replies = [response("SESSION_INVALID"), response(undefined, { ...session, active_session: "active-B" }), response("SESSION_INVALID")];
@@ -98,6 +150,9 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       reset(); storeIssuedSession("A", session); replies = [response("SESSION_REPLACED"), response("RECONNECT_INVALID")];
       assert.equal((await getGame("A", "player", "p1")).error?.code, "RECONNECT_INVALID");
       assert.equal(calls.length, 2);
+      replies = [response("SESSION_REPLACED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
+      assert.equal(calls.length, 3);
     });
     await t.test("legacy IDs alone never supply credentials or trigger reconnect", async () => {
       reset(); tab.setItem("gf_player_id", "p1"); persistent.setItem("gf_client_id", "host");
@@ -121,6 +176,8 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       replies = [response("SESSION_REPLACED"), response("SESSION_REPLACED"), response(undefined, { ...session, active_session: "active-B" }), response(), response()];
       const results = await Promise.all([getGame("A", "player", "p1"), getGame("A", "player", "p1")]);
       assert.ok(results.every(r => !r.error));
+      replies = [response("SESSION_REPLACED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
       assert.equal(calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length, 1);
     });
   } finally {
