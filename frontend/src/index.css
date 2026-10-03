@@ -5,6 +5,20 @@
   font-style: normal;
 }
 
+.presence-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin-inline-start: 0.35em;
+  font-family: system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--text-muted);
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

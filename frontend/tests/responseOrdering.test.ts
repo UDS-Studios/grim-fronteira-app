@@ -65,6 +65,14 @@ test("late polling and refresh responses cannot resurrect a discarded Dark card"
     current = find(render(), Table)!.resp as ActionResponse;
     assert.equal(current.revision, 5);
     assert.deepEqual(current.state.zones!["scene.dark.marshal_hand"], ["2D"]);
+    const presencePoll = { ...snapshot(5, ["2D"]), state: {
+      ...snapshot(5, ["2D"]).state,
+      meta: { ...snapshot(5, ["2D"]).state.meta, presence: { host: { online: false } } },
+    } };
+    await run(Promise.resolve(presencePoll));
+    current = find(render(), Table)!.resp as ActionResponse;
+    assert.equal(current.revision, 5);
+    assert.deepEqual(current.state.meta!.presence, { host: { online: false } });
     hooks.resetHooks();
   } finally {
     globalThis.fetch = originalFetch;

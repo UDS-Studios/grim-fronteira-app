@@ -1,3 +1,5 @@
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus } from "../utils/presence";
 import { getViewRequest } from "../utils/sessionView";
 import { getGame, gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
@@ -453,6 +455,7 @@ export default function MarshalLobbyView({
         >
           <Section title="Informations">
             <div style={{ display: "grid", gap: 8 }}>
+              <div><b>Marshal:</b> {marshalId} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>
               <div><b>players joined:</b> {joinedPlayers.length}</div>
               <div><b>registration:</b> {registrationOpen ? "open" : "closed"}</div>
               <div><b>assignment:</b> {assignmentMode}</div>
@@ -516,7 +519,7 @@ export default function MarshalLobbyView({
 
                         <div style={{ fontSize: 14, opacity: 0.9, color: "var(--text-primary)" }}>
                           {prefix}
-                          <b>{summary}</b>
+                          <b>{summary}</b> <PresenceIndicator status={getPresenceStatus(meta, pid)} />
                         </div>
                       </div>
                     </button>

@@ -1,3 +1,5 @@
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus, type PresenceStatus } from "../utils/presence";
 import { useDarkHandActions } from "../utils/useDarkHandActions";
 import MarshalDarkHand from "../components/MarshalDarkHand";
 import DarkDeclareControl from "../components/DarkDeclareControl";
@@ -135,6 +137,7 @@ function ActionButton({
 
 function PlayerLane({
   playerId,
+  presenceStatus,
   pstate,
   figureCardId,
   playedCards,
@@ -159,6 +162,7 @@ function PlayerLane({
   onForceDarkLoss,
 }: {
   playerId: string;
+  presenceStatus: PresenceStatus;
   pstate: LobbyPlayerState;
   figureCardId?: string | null;
   playedCards: string[];
@@ -247,7 +251,7 @@ function PlayerLane({
             lineHeight: 1.15,
           }}
         >
-          {displayName}
+          {displayName} <PresenceIndicator status={presenceStatus} />
         </div>
       </div>
 
@@ -1812,6 +1816,7 @@ export default function MarshalTableView({
                         <PlayerLane
                           key={pid}
                           playerId={pid}
+                          presenceStatus={getPresenceStatus(meta, pid)}
                           pstate={lobbyPlayers[pid] ?? {}}
                           figureCardId={getPlayerFigureCardId(pid)}
                           playedCards={getPlayerSceneHand(pid)}
@@ -1887,6 +1892,7 @@ export default function MarshalTableView({
                       >
                         <PlayerSummaryCard
                           playerId={pid}
+                          presenceStatus={getPresenceStatus(meta, pid)}
                           pstate={lobbyPlayers[pid] ?? {}}
                           figureCardId={getPlayerFigureCardId(pid)}
                           scumCount={getPlayerScumCount(pid)}

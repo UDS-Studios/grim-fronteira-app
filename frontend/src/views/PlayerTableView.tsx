@@ -1,3 +1,5 @@
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus } from "../utils/presence";
 import DarkRewardPayment from "../components/DarkRewardPayment";
 import PlayerDarkHand from "../components/PlayerDarkHand";
 import { getDarkPlayerStatus, isDarkScene, hasDarkAtmosphere } from "../utils/dark";
@@ -817,6 +819,7 @@ export default function PlayerTableView({
     .map((pid) => ({
       playerId: pid,
       displayName: lobbyPlayers?.[pid]?.chosen_name ?? pid,
+      presenceStatus: getPresenceStatus(meta, pid),
       figureCardId: getPlayerFigureCardId(pid),
       busted: !!scenePlayers?.[pid]?.busted,
       wounded: getFigureRotated(pid),
@@ -1397,6 +1400,7 @@ export default function PlayerTableView({
           <div><b>phase:</b> {meta.phase ?? "-"}</div>
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
+          <div><b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>
           {!isDarkScene(meta.scene) && <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>}
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>

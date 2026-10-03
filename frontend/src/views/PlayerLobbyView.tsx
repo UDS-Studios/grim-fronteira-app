@@ -1,3 +1,5 @@
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus } from "../utils/presence";
 import { getViewRequest } from "../utils/sessionView";
 import React, { useState } from "react";
 import { gfAction } from "../api/gf";
@@ -296,7 +298,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 10 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
 
           <div style={{ marginTop: 12, opacity: 0.8 }}>
@@ -312,7 +314,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
 
           {renderAnimatedSentence()}
@@ -365,7 +367,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
           {renderAnimatedSentence()}
 
@@ -417,7 +419,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
 
           {renderAnimatedSentence()}

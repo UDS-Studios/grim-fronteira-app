@@ -54,7 +54,12 @@ export type SceneState = {
   faction_power_usage?: SceneFactionPowerUsage;
 };
 
+export type SeatPresence = {
+  online: boolean;
+};
+
 export type GameMeta = {
+  presence?: Record<string, SeatPresence>;
   phase?: string;
   marshal_id?: string;
   players_order?: string[];
