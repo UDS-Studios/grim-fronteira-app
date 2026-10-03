@@ -1,7 +1,8 @@
-"""Application-only credential issuance; authentication and reconnect come later."""
-from collections.abc import MutableMapping
-from dataclasses import dataclass
+"""Application-only issuance and reconnect; gameplay authentication comes later."""
+from collections.abc import Mapping, MutableMapping
+from dataclasses import dataclass, replace
 from hashlib import sha256
+from hmac import compare_digest
 import secrets
 from typing import Literal
 
@@ -10,6 +11,13 @@ from backend.engine.state.game_state import GameState
 
 class SessionIssuanceError(RuntimeError):
     """Invalid issuance request; distinct from engine gameplay errors."""
+
+
+class ReconnectInvalid(RuntimeError):
+    """Uniform failure without credential or seat details."""
+
+    def __init__(self):
+        super().__init__("Invalid reconnect credential")
 
 
 @dataclass(frozen=True)
@@ -22,6 +30,32 @@ class SeatSessionRecord:
 
 def hash_credential(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
+
+
+def resolve_reconnect_seat(
+    sessions: Mapping[str, SeatSessionRecord], reconnect_token: str,
+) -> SeatSessionRecord:
+    if not isinstance(reconnect_token, str) or not reconnect_token.strip():
+        raise ReconnectInvalid()
+    try:
+        supplied_hash = hash_credential(reconnect_token)
+    except UnicodeError:
+        raise ReconnectInvalid() from None
+    matches = [record for record in sessions.values()
+               if compare_digest(supplied_hash, record.reconnect_token_hash)]
+    if len(matches) != 1:
+        raise ReconnectInvalid()
+    return matches[0]
+
+
+def replace_active_session(record: SeatSessionRecord) -> tuple[SeatSessionRecord, str]:
+    """Stage an immutable replacement; caller commits only after response creation."""
+    active_session = secrets.token_urlsafe(32)
+    replacement = replace(
+        record, active_session_hash=hash_credential(active_session),
+        superseded_session_hashes=record.superseded_session_hashes | {record.active_session_hash},
+    )
+    return replacement, active_session
 
 
 def role_for_seat(game: GameState, player_id: str) -> Literal["marshal", "player"]:

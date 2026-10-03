@@ -8,9 +8,12 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
+from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
-from backend.app.session_authority import issue_seat_credentials
+from backend.app.session_authority import (
+    ReconnectInvalid, issue_seat_credentials, resolve_reconnect_seat,
+    replace_active_session, role_for_seat,
+)
 from backend.app.debug_policy import enforce_debug_api_policy
 from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection, validate_marshal_view
 from backend.app.pending_interactions import (
@@ -130,6 +133,9 @@ async def _extract_game_context(request: Request) -> Tuple[str, int]:
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path.endswith("/api/gf/reconnect"):
+        # Pydantic error inputs can contain bearer secrets; never echo them.
+        return await reconnect_invalid_handler(request, ReconnectInvalid())
     game_id, revision = await _extract_game_context(request)
     payload = ActionResponse(
         game_id=game_id,
@@ -144,6 +150,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         ),
     )
     return JSONResponse(status_code=422, content=payload.model_dump())
+
+
+@app.exception_handler(ReconnectInvalid)
+async def reconnect_invalid_handler(request: Request, exc: ReconnectInvalid):
+    game_id, revision = await _extract_game_context(request)
+    payload = ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code="RECONNECT_INVALID", message="Invalid reconnect credential", details=None),
+    )
+    return JSONResponse(status_code=401, content=payload.model_dump())
 
 
 @app.exception_handler(HTTPException)
@@ -228,6 +244,25 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     )
     GAMES[game_id] = stored_game
     return response
+
+@app.post("/api/gf/reconnect", response_model=ActionResponse)
+def reconnect(req: ReconnectRequest) -> ActionResponse:
+    g = _get_game(req.game_id)
+    with g.lock:
+        record = resolve_reconnect_seat(g.sessions, req.reconnect_token)
+        role = role_for_seat(g.state, record.player_id)
+        projected_state = game_state_to_dict(g.state, view=role, viewer_id=record.player_id)
+        replacement, active_session = replace_active_session(record)
+        response = ActionResponse(
+            game_id=req.game_id, revision=g.state.meta.get("revision", 0),
+            state=projected_state, events=[],
+            result={"reconnected": True, "session": {
+                "player_id": record.player_id, "role": role, "active_session": active_session,
+            }}, error=None,
+        )
+        g.sessions[record.player_id] = replacement
+        return response
+
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
 def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "public", viewer_id: str | None = None) -> ActionResponse:

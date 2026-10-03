@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
 
@@ -28,6 +28,12 @@ class NewGameRequest(ViewRequest):
     meta: Dict[str, Any] = Field(default_factory=dict)
     seed: int | None = None
     creator_id: str = "marshal"
+
+
+class ReconnectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    game_id: str
+    reconnect_token: str = Field(default="", repr=False)
 
 
 class ActionRequest(ViewRequest):
