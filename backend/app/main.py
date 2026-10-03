@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
+from backend.app.session_authority import issue_seat_credentials
 from backend.app.debug_policy import enforce_debug_api_policy
 from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection, validate_marshal_view
 from backend.app.pending_interactions import (
@@ -213,16 +214,20 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     validate_game_state(game)
 
     game_id = str(uuid4())
-    GAMES[game_id] = StoredGame(state=game)
+    stored_game = StoredGame(state=game)
+    projected_state = game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id)
+    session = issue_seat_credentials(game, stored_game.sessions, game.meta["marshal_id"])
 
-    return ActionResponse(
+    response = ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
+        state=projected_state,
         events=[],
-        result={"created": True},
+        result={"created": True, "session": session},
         error=None,
     )
+    GAMES[game_id] = stored_game
+    return response
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
 def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "public", viewer_id: str | None = None) -> ActionResponse:
@@ -900,14 +905,22 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         game = enrich_meta_for_ui(game)
         game = ensure_scene_state(game)
     validate_game_state(game)
-    if mutated:
-        g.state = game
+    projected_state = game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id)
+    staged_sessions = None
+    if req.action == "gf.join_lobby":
+        staged_sessions = dict(g.sessions)
+        result["session"] = issue_seat_credentials(game, staged_sessions, req.params["player_id"])
 
-    return ActionResponse(
+    response = ActionResponse(
         game_id=req.game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
+        state=projected_state,
         events=events,
         result=result,
         error=None,
     )
+    if mutated:
+        if staged_sessions is not None:
+            g.sessions = staged_sessions
+        g.state = game
+    return response

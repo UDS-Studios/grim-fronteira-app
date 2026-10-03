@@ -5,6 +5,7 @@ from threading import Lock
 from typing import Dict
 
 from backend.engine.state.game_state import GameState
+from backend.app.session_authority import SeatSessionRecord
 
 
 @dataclass
@@ -12,6 +13,7 @@ class StoredGame:
     state: GameState
     # Serialize authorization through commit, including concurrent completion attempts.
     lock: object = field(default_factory=Lock, repr=False, compare=False)
+    sessions: Dict[str, SeatSessionRecord] = field(default_factory=dict, repr=False, compare=False)
 
 
 # In-memory store (swap with DB later)
