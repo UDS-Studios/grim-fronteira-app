@@ -20,8 +20,10 @@ test("authoritative pause gates table and hook mutations while preserving inform
   const server = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)),
     server: { middlewareMode: true, hmr: false, watch: null }, appType: "custom",
     plugins: [{ name: "pause-hooks", enforce: "pre", transform(code, id) {
-      if (/\/src\/(views\/(PlayerTableView|MarshalTableView|HookSelectionView)|utils\/useDarkHandActions)\.tsx?$/.test(id)) {
-        return code.replace('from "react";', 'from "/tests/fixtures/appHooks.ts";');
+      if (/\/src\/(views\/(PlayerTableView|MarshalTableView|HookSelectionView|PlayerLobbyView|MarshalLobbyView)|utils\/useDarkHandActions)\.tsx?$/.test(id)) {
+        return code.replace('import React, { useState } from "react";',
+          'import * as React from "/tests/fixtures/appHooks.ts"; import { useState } from "/tests/fixtures/appHooks.ts";')
+          .replace('from "react";', 'from "/tests/fixtures/appHooks.ts";');
       }
     } }] });
   const oldFetch = globalThis.fetch;
@@ -32,6 +34,7 @@ test("authoritative pause gates table and hook mutations while preserving inform
     const { default: Marshal } = await server.ssrLoadModule("/src/views/MarshalTableView.tsx");
     const { default: Hook } = await server.ssrLoadModule("/src/views/HookSelectionView.tsx");
     const { default: Victory } = await server.ssrLoadModule("/src/views/VictoryView.tsx");
+    const { default: MarshalLobby } = await server.ssrLoadModule("/src/views/MarshalLobbyView.tsx");
     const { default: Lobby } = await server.ssrLoadModule("/src/views/PlayerLobbyView.tsx");
     const response = structuredClone(chichimecaLiveResponse);
     response.state.meta!.pending_interaction = null;
@@ -97,6 +100,25 @@ test("authoritative pause gates table and hook mutations while preserving inform
     assert.match(hookHtml, /<button[^>]*disabled[^>]*>Bring the Frontier to life!!<\/button>/);
     assert.match(hookHtml, /Test hook/);
     hooks.resetHooks(); await visit(Hook(marshalProps));
+    // The transport blocker uses the same handler guards, without pause authority.
+    response.state.meta!.session_pause = { paused: false, reason: null };
+    response.state.meta!.pending_interaction = null;
+    const disconnectedPlayer = { ...common, connectionLost: true };
+    const disconnectedMarshal = { ...marshalProps, connectionLost: true };
+    const offlineHtml = render(Table, disconnectedPlayer);
+    assert.match(button(offlineHtml, "Connection lost"), /disabled/);
+    assert.match(button(offlineHtml, "Stay"), /disabled/);
+    assert.doesNotMatch(offlineHtml, /THE GAME IS PAUSED|aria-description="Game paused/);
+    assert.doesNotMatch(button(offlineHtml, "Return to Home"), /disabled/);
+    assert.doesNotMatch(button(offlineHtml, "Refresh Table"), /disabled/);
+    hooks.resetHooks(); await visit(Player(disconnectedPlayer));
+    hooks.resetHooks(); await visit(Marshal(disconnectedMarshal));
+    hooks.resetHooks(); await visit(Hook(disconnectedMarshal));
+    hooks.resetHooks();
+    const offlineDark = useDarkHandActions(response, "marshal", "marshal", common.run, true);
+    for (const action of ["gf.scene_roll_difficulty", "gf.scene_dark_draw", "gf.scene_dark_discard_last", "gf.scene_dark_reveal"]) await offlineDark.submit(action);
+    assert.match(render(Hook, disconnectedMarshal), /<button[^>]*disabled[^>]*>Bring the Frontier to life!!<\/button>/);
+    assert.doesNotMatch(button(render(Table, common), "Stay"), /disabled/);
     response.state.meta!.session_pause = { paused: false, reason: null };
     response.state.meta!.presence = { marshal: { online: false } };
     response.state.meta!.lobby!.players!["player-nnu30f"] = { stage: "waiting_for_figure" };
@@ -106,6 +128,24 @@ test("authoritative pause gates table and hook mutations while preserving inform
     assert.ok(lobbyHtml.includes("Marshal:"));
     assert.match(lobbyHtml, /<button[^>]*title="Claim JS"/);
     assert.doesNotMatch(button(lobbyHtml, "Claim JS"), /disabled/);
+    const offlineLobby = { ...common, connectionLost: true };
+    assert.match(button(render(Lobby, offlineLobby), "Claim JS"), /disabled/);
+    hooks.resetHooks(); await visit(Lobby(offlineLobby));
+    const offlineMarshalLobby = { ...marshalProps, connectionLost: true, selectedPlayerId: "player-nnu30f", setSelectedPlayerId: () => {} };
+    hooks.resetHooks(); await visit(MarshalLobby(offlineMarshalLobby));
+    // Dark transport rejections must reach App.run rather than become UI error projections.
+    let transportReachedRun = false;
+    hooks.resetHooks();
+    response.state.meta!.scene = { status: "setup", dark_mode: true, participants: ["player-nnu30f"] };
+    // Render again after installing an allowed Dark setup state.
+    hooks.resetHooks();
+    const enabledDark = useDarkHandActions(response, "marshal", "marshal", async (p: Promise<unknown>) => {
+      await assert.rejects(p, /paused mutation attempted network request/);
+      transportReachedRun = true;
+      return response;
+    });
+    await enabledDark.submit("gf.scene_roll_difficulty");
+    assert.equal(transportReachedRun, true);
     const victoryHtml = render(Victory, { winnerLabel: "Winner", onBackHome: () => {} });
     assert.ok(victoryHtml.includes("Winner"));
     assert.doesNotMatch(victoryHtml, /disabled/);

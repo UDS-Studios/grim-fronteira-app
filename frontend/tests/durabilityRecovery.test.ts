@@ -127,8 +127,74 @@ test("App restart recovery and durability errors preserve authoritative state", 
       assert.equal(find(h.render(), type => type === ErrorView), undefined);
       assert.equal(sessions.getActiveSession(h.gameId), "pre-restart-active");
       assert.equal(h.persistent.get(`gf_reconnect:${h.gameId}`), h.credential);
+      assert.equal(h.table().connectionLost, true);
+      assert.ok(find(h.render(), (_type, props) => props.children === "Connection lost"));
       h.setReplies(h.snapshot()); await h.poll(); assert.ok(h.table());
+      assert.equal(h.table().connectionLost, false);
+      assert.equal(find(h.render(), (_type, props) => props.children === "Connection lost"), undefined);
     });
+    for (const role of ["player", "marshal"] as const) {
+      await t.test(`${role} unconfirmed mutation is never replayed after outage and restart`, async () => {
+        const h = setup(role); await h.start();
+        const previous = h.table().resp;
+        const active = h.tab.get(`gf_session:${h.gameId}`);
+        h.setReplies(new Error("response lost after possible commit"));
+        await h.mutation();
+        const props = h.table();
+        assert.equal(props.resp, previous);
+        assert.equal(props.currentActorId, h.seatId);
+        assert.equal(props.connectionLost, true);
+        assert.equal(find(h.render(), type => type === ErrorView), undefined);
+        const warning = "The server did not confirm this action. Your last confirmed game state is still shown. Wait for the connection to return before trying again.";
+        assert.ok(find(h.render(), (_type, p) => p.children === warning));
+        assert.equal(h.tab.get(`gf_session:${h.gameId}`), active);
+        assert.equal(h.persistent.get(`gf_reconnect:${h.gameId}`), h.credential);
+        assert.equal(sessions.getLastGame(), h.gameId);
+        assert.equal(h.requests.filter(r => r.body?.action === "gf.scene_stand").length, 1);
+        const disconnected = renderToStaticMarkup(createElement(Table, props));
+        assert.match(disconnected, /<button[^>]*disabled[^>]*title="Connection lost"/);
+        assert.doesNotMatch(disconnected.match(/<button[^>]*title="Refresh Table"[^>]*>/)![0], /disabled/);
+        h.setReplies(new Error("still down")); await h.poll();
+        assert.ok(find(h.render(), (_type, p) => p.children === warning));
+        const committed = h.snapshot(role === "player"); committed.revision++;
+        h.setReplies(h.error("SESSION_INVALID"), h.resumed(role === "player"), committed);
+        await h.poll();
+        assert.equal(h.table().connectionLost, false);
+        assert.equal((h.table().resp as ActionResponse).revision, 43);
+        assert.equal(find(h.render(), (_type, p) => p.children === "Connection lost"), undefined);
+        assert.equal(h.requests.filter(r => r.body?.action === "gf.scene_stand").length, 1);
+        assert.ok(h.requests.slice(2).every(r => !r.body || r.path.endsWith("/api/gf/reconnect")));
+        assert.equal(h.requests.find(r => r.path.endsWith("/api/gf/reconnect"))!.body!.takeover, false);
+        const restored = renderToStaticMarkup(createElement(Table, h.table()));
+        if (role === "player") {
+          assert.match(restored, /THE GAME IS PAUSED/);
+          assert.match(restored.match(/<button[^>]*title="Stay"[^>]*>/)![0], /disabled/);
+          const onlineState = h.snapshot(); onlineState.revision = 44;
+          h.setReplies(onlineState); await h.poll();
+          assert.doesNotMatch(renderToStaticMarkup(createElement(Table, h.table())).match(/<button[^>]*title="Stay"[^>]*>/)![0], /disabled/);
+        } else assert.doesNotMatch(restored, /title="Connection lost"/);
+      });
+    }
+    for (const action of ["new", "join"] as const) {
+      await t.test(`Home ${action} outage stays inline without credentials or routing`, async () => {
+        const h = setup("player", true); h.tab.clear(); h.persistent.clear();
+        let home = find(h.render(), type => type === Home)!;
+        if (action === "join") {
+          (home.setJoinGameId as (id: string) => void)(h.gameId);
+          home = find(h.render(), type => type === Home)!;
+        }
+        h.setReplies(new Error("offline"));
+        await (home[action === "new" ? "onNewGame" : "onJoinGame"] as () => Promise<void>)();
+        const tree = h.render();
+        assert.equal(find(tree, type => type === Home)!.joinError, "Server unavailable. Please try again.");
+        assert.equal(find(tree, type => type === ErrorView), undefined);
+        assert.equal(find(tree, type => type === Table), undefined);
+        assert.equal(sessions.getLastGame(), "");
+        assert.equal(sessions.getActiveSession(h.gameId), undefined);
+        assert.equal(sessions.getReconnectToken(h.gameId), undefined);
+        assert.equal(h.requests.length, 1);
+      });
+    }
     await t.test("same-revision persistence rejection preserves game and clears notice on next poll", async () => {
       const h = setup(); await h.start(); const previous = h.table().resp;
       h.setReplies(h.error("PERSISTENCE_UNAVAILABLE"));

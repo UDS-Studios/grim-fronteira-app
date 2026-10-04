@@ -20,6 +20,7 @@ import type { MetaAny } from "./views/types";
 
 export default function App() {
   const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
+  const [connectionNotice, setConnectionNotice] = useState<{ kind: "poll" | "action"; message: string } | null>(null);
   const [pauseNotice, setPauseNotice] = useState<string | null>(null);
   const [inspectionView, setInspectionView] = useState<InspectionView>("public");
   const [gameId, setGameId] = useState(getLastGame);
@@ -52,6 +53,7 @@ export default function App() {
   function resetToHome() {
     responseEpoch.current++;
     setJoinError(null);
+    setConnectionNotice(null);
     setPersistenceNotice(null);
     setUnavailable(null);
     setRetryError(null);
@@ -124,6 +126,7 @@ export default function App() {
       setCurrentActorId(restored.player_id);
       setSelectedPlayerId(restored.player_id);
     }
+    setConnectionNotice(null);
     setPauseNotice(null);
     setPersistenceNotice(null);
     setUnavailable(null);
@@ -178,6 +181,7 @@ export default function App() {
         if (cancelled || epoch !== responseEpoch.current) return;
 
         if (!r.error) {
+          setConnectionNotice(null);
           setPauseNotice(null);
           setPersistenceNotice(null);
           setResp(current => acceptResponse(current, r));
@@ -202,7 +206,13 @@ export default function App() {
           resetToHome();
         }
       } catch {
-        // ignore transient polling failures for now
+        if (!cancelled && epoch === responseEpoch.current) {
+          // Keep an unconfirmed-action warning through further failed reads.
+          setConnectionNotice(current => current?.kind === "action" ? current : {
+            kind: "poll",
+            message: "The game server is temporarily unavailable. Your last confirmed game state is still shown. Wait for the connection to return before trying again.",
+          });
+        }
       }
     };
 
@@ -257,8 +267,18 @@ export default function App() {
         },
       };
       if (epoch !== responseEpoch.current) return errResp;
-      setResp(errResp);
-      setScreen("error");
+      if (screen === "game" && resp && resp.state.meta) {
+        setConnectionNotice({
+          kind: "action",
+          message: "The server did not confirm this action. Your last confirmed game state is still shown. Wait for the connection to return before trying again.",
+        });
+      } else if (screen === "home" || screen === "game") {
+        setJoinError("Server unavailable. Please try again.");
+        if (screen === "game") setScreen("home");
+      } else {
+        setResp(errResp);
+        setScreen("error");
+      }
       return errResp;
     }
   }
@@ -435,6 +455,10 @@ export default function App() {
           </div>
 
           {persistenceNotice && <p role="alert" style={{ margin: "8px 0", flexShrink: 0 }}>{persistenceNotice}</p>}
+          {connectionNotice && <div role="alert" style={{ margin: "8px 0", flexShrink: 0 }}>
+            <strong>Connection lost</strong>
+            <div>{connectionNotice.message}</div>
+          </div>}
           {pauseNotice && <div role="status">{pauseNotice}</div>}
           {view === "player" && !isTable && phase !== "lobby" && <SessionPauseBanner meta={meta} />}
 
@@ -480,6 +504,7 @@ export default function App() {
                 setSelectedPlayerId={setSelectedPlayerId}
                 claimCardId={claimCardId}
                 setClaimCardId={setClaimCardId}
+                connectionLost={connectionNotice !== null}
                 run={run}
                 setResp={setResp}
                 onBackHome={backHome}
@@ -491,6 +516,7 @@ export default function App() {
                 resp={resp}
                 view={view}
                 currentActorId={currentActorId}
+                connectionLost={connectionNotice !== null}
                 run={run}
               />
             )}
@@ -500,6 +526,7 @@ export default function App() {
                 resp={resp}
                 view={view}
                 currentActorId={currentActorId}
+                connectionLost={connectionNotice !== null}
                 run={run}
                 onBackHome={backHome}
               />
