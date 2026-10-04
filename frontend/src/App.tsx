@@ -5,7 +5,7 @@ import { newGame, getGame, gfAction, reconnectGame, takeoverGame } from "./api/g
 import type { ActionResponse } from "./api/types";
 import { getFreshPlayerId } from "./utils/identity";
 import { getSessionView, type InspectionView } from "./utils/sessionView";
-import { getGameEntryMode, getRecoveryReason, normalizeGameId, type RecoveryReason } from "./utils/reconnect";
+import { getGameEntryMode, getClosedGameEntryScreen, getRecoveryReason, normalizeGameId, type RecoveryReason } from "./utils/reconnect";
 import { loadSession, clearActiveSession, getReconnectToken, getActiveSession, getLastGame, setLastGame } from "./utils/session";
 import SessionRecoveryView from "./views/SessionRecoveryView";
 import GameUnavailableView from "./views/GameUnavailableView";
@@ -13,6 +13,7 @@ import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
 import HookSelectionView from "./views/HookSelectionView";
+import GameAlreadyStartedView from "./views/GameAlreadyStartedView";
 import RegistrationClosedView from "./views/RegistrationClosedView";
 import TableRouterView from "./views/TableRouterView";
 import VictoryView from "./views/VictoryView";
@@ -32,7 +33,7 @@ export default function App() {
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed" | "recovery" | "unavailable">(() => getLastGame() ? "game" : "home");
+  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed" | "already-started" | "recovery" | "unavailable">(() => getLastGame() ? "game" : "home");
   const [closedGameId, setClosedGameId] = useState("");
   const [recovery, setRecovery] = useState<{ reason: RecoveryReason; gameId: string } | null>(null);
   const [takeoverBusy, setTakeoverBusy] = useState(false);
@@ -225,7 +226,7 @@ export default function App() {
     };
   }, [screen, gameId, view, viewerId]);
 
-  async function run(p: Promise<ActionResponse>, targetGameId = gameId): Promise<ActionResponse> {
+  async function run(p: Promise<ActionResponse>, targetGameId = gameId, enterGameOnSuccess = true): Promise<ActionResponse> {
     const epoch = responseEpoch.current;
     try {
       const r = await p;
@@ -246,7 +247,7 @@ export default function App() {
       }
       setPauseNotice(null);
       if (!r.error && r.game_id) {
-        restoreGame(r);
+        if (enterGameOnSuccess) restoreGame(r);
       } else if (r.error) {
         setResp(current => acceptResponse(current, r));
         console.error("API action error:", r.error.code);
@@ -375,10 +376,14 @@ export default function App() {
                   setSelectedPlayerId(freshPlayerId);
                 }
                 return joined;
-              })(), targetGameId);
+              })(), targetGameId, false);
+              // Public discovery must not establish gameplay or last-game routing
+              // for a blocked outsider; authenticated entry still restores normally.
               if (!response.error && entryMode === "closed") {
                 setClosedGameId(response.game_id);
-                setScreen("registration-closed");
+                setScreen(getClosedGameEntryScreen(response.state.meta ?? {}));
+              } else if (!response.error && response.game_id) {
+                restoreGame(response);
               }
             }}
           />
@@ -393,6 +398,10 @@ export default function App() {
       {screen === "recovery" && recovery && (
         <SessionRecoveryView reason={recovery.reason} gameId={recovery.gameId}
           onTakeOver={takeOver} onBackHome={backHome} busy={takeoverBusy} errorMessage={recoveryError} />
+      )}
+
+      {screen === "already-started" && (
+        <GameAlreadyStartedView gameId={closedGameId} onBackHome={backHome} />
       )}
 
       {screen === "registration-closed" && (
@@ -545,7 +554,7 @@ export default function App() {
         </div>
       )}
 
-      {resp && screen !== "home" && screen !== "recovery" && screen !== "unavailable" && !isTable && (
+      {resp && (screen === "game" || screen === "error") && !isTable && (
         <pre
           style={{
             marginTop: 14,

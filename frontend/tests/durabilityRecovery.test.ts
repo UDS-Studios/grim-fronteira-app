@@ -29,6 +29,8 @@ test("App restart recovery and durability errors preserve authoritative state", 
   try {
     const hooks = await server.ssrLoadModule("/tests/fixtures/appHooks.ts");
     const { default: App } = await server.ssrLoadModule("/src/App.tsx");
+    const { default: AlreadyStarted } = await server.ssrLoadModule("/src/views/GameAlreadyStartedView.tsx");
+    const { default: Closed } = await server.ssrLoadModule("/src/views/RegistrationClosedView.tsx");
     const { default: Unavailable } = await server.ssrLoadModule("/src/views/GameUnavailableView.tsx");
     const { default: Home } = await server.ssrLoadModule("/src/views/HomeView.tsx");
     const { default: Recovery } = await server.ssrLoadModule("/src/views/SessionRecoveryView.tsx");
@@ -93,6 +95,73 @@ test("App restart recovery and durability errors preserve authoritative state", 
           }));
         },
       };
+    }
+    for (const phase of ["hook_selection", "started", "table", "victory", "lobby"] as const) {
+      await t.test(`outsider blocked entry distinguishes ${phase} and hides debug JSON`, async () => {
+        const h = setup("player", true);
+        h.tab.clear(); h.persistent.clear();
+        const unrelatedId = "22222222-2222-4222-8222-222222222222";
+        sessions.storeIssuedSession(unrelatedId, { player_id: "other-seat", role: "player", active_session: "other-active", reconnect_token: "other-reconnect" });
+        const credentials = [Array.from(h.tab), Array.from(h.persistent)];
+        let home = find(h.render(), type => type === Home)!;
+        (home.setJoinGameId as (id: string) => void)(h.gameId);
+        home = find(h.render(), type => type === Home)!;
+        const closed = h.snapshot();
+        closed.state.meta!.phase = phase;
+        closed.state.meta!.lobby = { registration_open: false, players: {} };
+        h.setReplies(closed);
+        await (home.onJoinGame as () => Promise<void>)();
+        const tree = h.render();
+        const view = phase === "lobby" ? Closed : AlreadyStarted;
+        const blocked = find(tree, type => type === view)!;
+        assert.ok(blocked);
+        assert.equal(blocked.gameId, h.gameId);
+        assert.equal(find(tree, type => type === (phase === "lobby" ? AlreadyStarted : Closed)), undefined);
+        assert.equal(find(tree, type => type === ErrorView), undefined);
+        assert.equal(find(tree, type => type === "pre"), undefined);
+        assert.deepEqual([Array.from(h.tab), Array.from(h.persistent)], credentials);
+        assert.equal(h.requests.length, 1);
+        assert.ok(h.requests[0].path.includes("?view=public"));
+        const html = renderToStaticMarkup(createElement(view, blocked));
+        assert.match(html, /Back Home/);
+        assert.ok(html.includes(h.gameId));
+        if (phase !== "lobby") {
+          assert.match(html, /<h1[^>]*>Game Already Started<\/h1>/);
+          assert.match(html, /new players cannot join/);
+          assert.match(html, /same player or Marshal session/);
+          assert.match(html, /create or join a different game/);
+          assert.match(html, /Game: /);
+          assert.doesNotMatch(html, /<pre|State JSON/);
+          const art = renderToStaticMarkup(createElement(AlreadyStarted, { ...blocked, illustrationSrc: "/assets/game-already-started.webp" }));
+          assert.match(art, /src="\/assets\/game-already-started.webp"/);
+        }
+        (blocked.onBackHome as () => void)();
+        assert.ok(find(h.render(), type => type === Home));
+        assert.equal(sessions.getLastGame(), "");
+        assert.equal(sessions.getActiveSession(unrelatedId), "other-active");
+        assert.equal(sessions.getReconnectToken(unrelatedId), "other-reconnect");
+      });
+    }
+    for (const role of ["player", "marshal"] as const) {
+      await t.test(`Home returning ${role} resumes closed started game instead of blocking`, async () => {
+        const h = setup(role, true);
+        sessions.clearActiveSession(h.gameId);
+        let home = find(h.render(), type => type === Home)!;
+        (home.setJoinGameId as (id: string) => void)(h.gameId);
+        home = find(h.render(), type => type === Home)!;
+        const discovery = h.snapshot();
+        discovery.state.meta!.lobby = { registration_open: false, players: {} };
+        h.setReplies(discovery, h.resumed(false));
+        await (home.onJoinGame as () => Promise<void>)();
+        assert.ok(h.table());
+        assert.equal(find(h.render(), type => type === AlreadyStarted), undefined);
+        assert.equal(find(h.render(), type => type === Closed), undefined);
+        assert.equal(h.table().currentActorId, h.seatId);
+        assert.equal(h.requests.length, 2);
+        assert.equal(h.requests[1].body!.takeover, false);
+        assert.equal(sessions.getActiveSession(h.gameId), "post-restart-active");
+        assert.equal(h.persistent.get(`gf_reconnect:${h.gameId}`), h.credential);
+      });
     }
     for (const role of ["player", "marshal"] as const) {
       await t.test(`${role} restart: SESSION_INVALID resumes same seat at equal revision`, async () => {

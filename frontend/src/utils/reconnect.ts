@@ -25,3 +25,11 @@ export function normalizeGameId(input: string): string | null {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
     ? value.toLowerCase() : null;
 }
+
+
+// Presentation only: closed lobbies are distinct from games already underway.
+// Stored sessions take the authenticated recovery path before this is consulted.
+export function getClosedGameEntryScreen(meta: GameMeta): "registration-closed" | "already-started" {
+  return ["hook_selection", "started", "table", "victory"].includes(meta.phase ?? "")
+    ? "already-started" : "registration-closed";
+}
