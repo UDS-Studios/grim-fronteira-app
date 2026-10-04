@@ -10,10 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
+from backend.app import presence
 from backend.app.presence import enrich_presence, refresh_presence
 from backend.app.pause import GamePausedError, enrich_pause, enforce_gameplay_pause
 from backend.app.session_authority import (
-    AuthorityError, ReconnectInvalid, issue_seat_credentials, resolve_reconnect_seat,
+    AuthorityError, ReconnectInvalid, TakeoverRequiredError, issue_seat_credentials, resolve_reconnect_seat,
     replace_active_session, role_for_seat,
 )
 from backend.app.debug_policy import enforce_debug_api_policy
@@ -173,6 +174,16 @@ async def game_paused_handler(request: Request, exc: GamePausedError):
     ).model_dump())
 
 
+@app.exception_handler(TakeoverRequiredError)
+async def takeover_required_handler(request: Request, exc: TakeoverRequiredError):
+    game_id, revision = await _extract_game_context(request)
+    return JSONResponse(status_code=409, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code="TAKEOVER_REQUIRED", message=str(exc),
+                           details={"reason": "active_session_online"}),
+    ).model_dump())
+
+
 @app.exception_handler(ReconnectInvalid)
 async def reconnect_invalid_handler(request: Request, exc: ReconnectInvalid):
     game_id, revision = await _extract_game_context(request)
@@ -269,9 +280,16 @@ def new_game(req: NewGameRequest) -> ActionResponse:
 
 @app.post("/api/gf/reconnect", response_model=ActionResponse)
 def reconnect(req: ReconnectRequest) -> ActionResponse:
+    """Resume offline seats; explicit takeover always reports takeover, even offline.
+
+    The stable recovery token authorizes rotation only of runtime session state.
+    Decision, staged presence/projection, and commit share the per-game lock.
+    """
     g = _get_game(req.game_id)
     with g.lock:
         record = resolve_reconnect_seat(g.sessions, req.reconnect_token)
+        if not req.takeover and presence.is_seat_online(record, presence.now()):
+            raise TakeoverRequiredError()
         role = role_for_seat(g.state, record.player_id)
         projected_state = game_state_to_dict(g.state, view=role, viewer_id=record.player_id)
         replacement, active_session = replace_active_session(record)
@@ -280,7 +298,7 @@ def reconnect(req: ReconnectRequest) -> ActionResponse:
         response = ActionResponse(
             game_id=req.game_id, revision=g.state.meta.get("revision", 0),
             state=projected_state, events=[],
-            result={"reconnected": True, "session": {
+            result={"reconnected": True, "mode": "takeover" if req.takeover else "resume", "session": {
                 "player_id": record.player_id, "role": role, "active_session": active_session,
             }}, error=None,
         )

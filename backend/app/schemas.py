@@ -34,6 +34,7 @@ class ReconnectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     game_id: str
     reconnect_token: str = Field(default="", repr=False)
+    takeover: bool = False
 
 
 class ActionRequest(ViewRequest):

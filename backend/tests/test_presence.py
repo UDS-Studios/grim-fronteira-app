@@ -147,5 +147,5 @@ def test_refresh_and_snapshot_hold_game_lock(seats, monkeypatch):
     status, _ = http_request("/api/gf/action", method="POST", headers={"X-GF-Session": seats[1]["host"]["active_session"]},
                             body={"game_id": seats[0], "action": "gf.set_registration_open", "params": {"actor_id": "host", "is_open": False}})
     assert status == 200
-    status, _ = http_request("/api/gf/reconnect", method="POST", body={"game_id": seats[0], "reconnect_token": seats[1]["p1"]["reconnect_token"]})
+    status, _ = http_request("/api/gf/reconnect", method="POST", body={"game_id": seats[0], "reconnect_token": seats[1]["p1"]["reconnect_token"], "takeover": True})
     assert status == 200

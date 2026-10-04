@@ -118,7 +118,7 @@ def test_reconnect_replacement_and_cross_game(seats):
     game_id, credentials = seats
     old = credentials["p1"]["active_session"]
     status, response = http_request("/api/gf/reconnect", method="POST", body={
-        "game_id": game_id, "reconnect_token": credentials["p1"]["reconnect_token"]})
+        "game_id": game_id, "reconnect_token": credentials["p1"]["reconnect_token"], "takeover": True})
     assert status == 200
     new = response["result"]["session"]["active_session"]
     stored = GAMES[game_id]
@@ -176,7 +176,7 @@ def test_read_and_action_authentication_hold_shared_lock(seats, monkeypatch):
         return original_reconnect(*args)
     monkeypatch.setattr(main, "resolve_reconnect_seat", checked_reconnect)
     status, _ = http_request("/api/gf/reconnect", method="POST", body={
-        "game_id": seats[0], "reconnect_token": seats[1]["host"]["reconnect_token"]})
+        "game_id": seats[0], "reconnect_token": seats[1]["host"]["reconnect_token"], "takeover": True})
     assert status == 200
 
 

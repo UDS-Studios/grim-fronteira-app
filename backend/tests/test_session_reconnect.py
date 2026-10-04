@@ -37,7 +37,7 @@ def seats():
 
 
 def reconnect(game_id, token):
-    return http_request("/api/gf/reconnect", method="POST", body={"game_id": game_id, "reconnect_token": token})
+    return http_request("/api/gf/reconnect", method="POST", body={"game_id": game_id, "reconnect_token": token, "takeover": True})
 
 
 @pytest.mark.parametrize("player,role", [("host1", "marshal"), ("p1", "player")])
@@ -183,7 +183,7 @@ def test_replacement_failure_preserves_all_records(seats, monkeypatch, failure):
     else:
         monkeypatch.setattr(main, "ActionResponse", fail)
     with pytest.raises(RuntimeError, match="staging failure"):
-        main.reconnect(ReconnectRequest(game_id=game_id, reconnect_token=credentials["p1"]["reconnect_token"]))
+        main.reconnect(ReconnectRequest(game_id=game_id, reconnect_token=credentials["p1"]["reconnect_token"], takeover=True))
     assert stored.state is original
     assert stored.sessions == records
 
@@ -198,7 +198,7 @@ def test_reconnect_rotation_runs_inside_game_lock(seats, monkeypatch):
         return real_replace(record)
 
     monkeypatch.setattr(main, "replace_active_session", checked_replace)
-    main.reconnect(ReconnectRequest(game_id=game_id, reconnect_token=credentials["p1"]["reconnect_token"]))
+    main.reconnect(ReconnectRequest(game_id=game_id, reconnect_token=credentials["p1"]["reconnect_token"], takeover=True))
 
 
 def test_normal_private_requests_still_need_no_session(seats):

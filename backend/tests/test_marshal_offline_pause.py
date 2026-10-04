@@ -46,8 +46,8 @@ def table(seats):
     return GAMES[seats[0]]
 
 
-def reconnect(seats, player):
-    return http_request("/api/gf/reconnect", method="POST", body={"game_id": seats[0], "reconnect_token": seats[1][player]["reconnect_token"]})
+def reconnect(seats, player, takeover=False):
+    return http_request("/api/gf/reconnect", method="POST", body={"game_id": seats[0], "reconnect_token": seats[1][player]["reconnect_token"], "takeover": takeover})
 
 
 @pytest.mark.parametrize("assignment", ["choice", "random"])
@@ -129,7 +129,7 @@ def test_returning_marshal_action_and_reconnect_unpause(seats):
 def test_session_errors_precede_pause_and_debug_policy_is_independent(seats, monkeypatch):
     table(seats)
     old = seats[1]["p1"]["active_session"]
-    reconnect(seats, "p1")
+    assert reconnect(seats, "p1", takeover=True)[0] == 200
     seats[2][0] += 20
     for token, code in [("invalid", "SESSION_INVALID"), (old, "SESSION_REPLACED")]:
         status, body = action(seats, "gf.scene_stand", {"player_id": "p1"}, token=token)

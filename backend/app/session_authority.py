@@ -21,6 +21,13 @@ class ReconnectInvalid(RuntimeError):
         super().__init__("Invalid reconnect credential")
 
 
+class TakeoverRequiredError(RuntimeError):
+    """Valid recovery credential conflicts with an online controller."""
+
+    def __init__(self):
+        super().__init__("Explicit takeover required for an online controller")
+
+
 class AuthorityError(RuntimeError):
     ERRORS = {
         "SESSION_REQUIRED": (401, "Active session credential required"),
