@@ -1,3 +1,4 @@
+import SessionPauseBanner from "./components/SessionPauseBanner";
 import { acceptResponse } from "./utils/responseOrdering";
 import { useEffect, useState } from "react";
 import { newGame, getGame, gfAction, reconnectGame } from "./api/gf";
@@ -16,6 +17,7 @@ import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
+  const [pauseNotice, setPauseNotice] = useState<string | null>(null);
   const [inspectionView, setInspectionView] = useState<InspectionView>("public");
   const [gameId, setGameId] = useState(getLastGame);
   const [resp, setResp] = useState<ActionResponse | null>(null);
@@ -52,6 +54,7 @@ export default function App() {
         if (cancelled) return;
 
         if (!r.error) {
+          setPauseNotice(null);
           setResp(current => acceptResponse(current, r));
           return;
         }
@@ -80,6 +83,11 @@ export default function App() {
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
     try {
       const r = await p;
+      if (r.error?.code === "GAME_PAUSED") {
+        setPauseNotice(r.error.message);
+        return r; // Empty rejection state must never replace the valid projection.
+      }
+      setPauseNotice(null);
       setResp(current => acceptResponse(current, r));
       if (!r.error && r.game_id) {
         const seat = loadSession(r.game_id);
@@ -276,6 +284,9 @@ export default function App() {
               <pre>{JSON.stringify(resp, null, 2)}</pre>
             </details>}
           </div>
+
+          {pauseNotice && <div role="status">{pauseNotice}</div>}
+          {view === "player" && !isTable && phase !== "lobby" && <SessionPauseBanner meta={meta} />}
 
           {resp?.error && (
             <div

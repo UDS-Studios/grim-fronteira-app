@@ -1,3 +1,4 @@
+import { isGameplayPaused } from "./sessionPause";
 import { useRef, useState } from "react";
 import { gfAction } from "../api/gf";
 import type { ActionResponse, View } from "../api/types";
@@ -18,7 +19,7 @@ export function useDarkHandActions(resp: ActionResponse, actorId: string, view: 
     "gf.scene_dark_reveal": canDarkReveal(resp.state, actorId),
   };
   async function submit(action: DarkHandAction) {
-    if (view !== "marshal" || !allowed[action] || inFlight.current) return;
+    if (isGameplayPaused(resp.state.meta) || view !== "marshal" || !allowed[action] || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     try {

@@ -17,7 +17,7 @@ test("both roles share viewport fitting and retain every functional region", asy
     for (const currentActorId of ["player-nnu30f", "marshal"]) {
       const html = renderToStaticMarkup(createElement(Table, {
         resp: { ...chichimecaLiveResponse, state: { ...chichimecaLiveResponse.state,
-          meta: { ...chichimecaLiveResponse.state.meta, presence: {
+          meta: { ...chichimecaLiveResponse.state.meta, session_pause: { paused: true, reason: "marshal_offline" }, presence: {
             marshal: { online: false }, "player-nnu30f": { online: false }, "player-o2o9sa": { online: true },
           } },
         } }, currentActorId, view: "player",

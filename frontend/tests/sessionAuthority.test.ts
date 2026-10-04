@@ -139,13 +139,21 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       assert.equal(result.error?.code, "SESSION_INVALID"); assert.equal(calls.length, 3);
       assert.deepEqual(calls[0].body, calls[2].body);
     });
-    for (const code of ["ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID"]) {
+    for (const code of ["ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID", "GAME_PAUSED"]) {
       await t.test(`${code} never triggers recovery`, async () => {
         reset(); storeIssuedSession("A", session); replies = [response(code)];
         assert.equal((await getGame("A", "player", "p1")).error?.code, code);
         assert.equal(calls.length, 1);
       });
     }
+    await t.test("GAME_PAUSED does not consume the replaced recovery allowance", async () => {
+      reset(); storeIssuedSession("A", session);
+      replies = [response("GAME_PAUSED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "GAME_PAUSED");
+      replies = [response("SESSION_REPLACED"), response(undefined, { ...session, active_session: "active-B" }), response()];
+      assert.equal((await getGame("A", "player", "p1")).error, null);
+      assert.equal(calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length, 1);
+    });
     await t.test("failed reconnect stops without retrying original request", async () => {
       reset(); storeIssuedSession("A", session); replies = [response("SESSION_REPLACED"), response("RECONNECT_INVALID")];
       assert.equal((await getGame("A", "player", "p1")).error?.code, "RECONNECT_INVALID");

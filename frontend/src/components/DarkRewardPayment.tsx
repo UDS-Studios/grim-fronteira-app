@@ -1,5 +1,5 @@
-export default function DarkRewardPayment({ active, busy, canConfirm, onToggle, onConfirm }: {
-  active: boolean; busy: boolean; canConfirm: boolean;
+export default function DarkRewardPayment({ active, busy, paused = false, canConfirm, onToggle, onConfirm }: {
+  active: boolean; busy: boolean; paused?: boolean; canConfirm: boolean;
   onToggle: () => void; onConfirm: () => void;
 }) {
   return <div className="dark-reward-payment" aria-busy={busy}>
@@ -8,7 +8,7 @@ export default function DarkRewardPayment({ active, busy, canConfirm, onToggle, 
       <button type="button" aria-pressed={active} disabled={busy} onClick={onToggle}>
         {active ? "Cancel selection" : "Choose Dark Reward"}
       </button>
-      <button type="button" disabled={busy || !canConfirm} onClick={onConfirm}>LOSE REWARD</button>
+      <button type="button" disabled={paused || busy || !canConfirm} onClick={onConfirm}>LOSE REWARD</button>
     </div>
   </div>;
 }

@@ -59,6 +59,7 @@ export type SeatPresence = {
 };
 
 export type GameMeta = {
+  session_pause?: SessionPause;
   presence?: Record<string, SeatPresence>;
   phase?: string;
   marshal_id?: string;
@@ -84,6 +85,11 @@ export type GameMeta = {
     winner_label?: string;
     reason?: string | null;
   };
+};
+
+export type SessionPause = {
+  paused: boolean;
+  reason: "marshal_offline" | null;
 };
 
 export type CardZoneProjection = string[] | { count?: number };

@@ -1,3 +1,4 @@
+import { isGameplayPaused, PAUSE_EXPLANATION } from "../utils/sessionPause";
 import { getViewRequest } from "../utils/sessionView";
 // frontend/src/views/HookSelectionView.tsx
 import { useState } from "react";
@@ -26,9 +27,11 @@ export default function HookSelectionView({
   const selectedFromBackend: string | null = hooks.selected_hook ?? null;
 
   const [selectedHook, setSelectedHook] = useState<string | null>(selectedFromBackend);
+  const gameplayPaused = isGameplayPaused(meta);
   const isMarshal = currentActorId === marshalId;
 
   async function beginTable() {
+    if (gameplayPaused) return;
     const params: Record<string, unknown> = {
       actor_id: currentActorId,
     };
@@ -173,6 +176,8 @@ export default function HookSelectionView({
           <button
             type="button"
             onClick={beginTable}
+            disabled={gameplayPaused}
+            title={gameplayPaused ? PAUSE_EXPLANATION : undefined}
             style={{
               fontFamily: "LavaArabic, serif",
               fontSize: "3rem",
