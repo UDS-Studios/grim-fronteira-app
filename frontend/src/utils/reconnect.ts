@@ -7,3 +7,14 @@ export function getGameEntryMode(meta: GameMeta, actorId: string): "join" | "rec
   const registered = Object.prototype.hasOwnProperty.call(meta.lobby?.players ?? {}, actorId);
   return actorId.trim() && (registered || actorId === meta.marshal_id) ? "reconnect" : "closed";
 }
+
+export type RecoveryReason = "takeover-required" | "session-replaced" | "reconnect-invalid";
+
+export function getRecoveryReason(code: string | undefined): RecoveryReason | null {
+  switch (code) {
+    case "TAKEOVER_REQUIRED": return "takeover-required";
+    case "SESSION_REPLACED": return "session-replaced";
+    case "RECONNECT_INVALID": return "reconnect-invalid";
+    default: return null;
+  }
+}

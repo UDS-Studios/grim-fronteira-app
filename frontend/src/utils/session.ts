@@ -5,7 +5,8 @@ export type BrowserSession = {
   reconnect_token?: string;
 };
 
-// Runtime-only allowance per game in this tab. Ordinary requests never reset it.
+// Runtime-only allowance per game in this tab. Ordinary requests and automatic
+// resume never reset it; successful explicit takeover or seat issuance resets it.
 const replacedRecoveryUsed = new Set<string>();
 
 export function consumeReplacedRecovery(gameId: string): boolean {
@@ -60,12 +61,14 @@ export function clearSession(gameId: string): void {
   globalThis.localStorage?.removeItem(reconnectKey(gameId));
 }
 
-// Non-secret tab routing: refresh returns to the same game.
+// Non-secret routing survives a browser restart; Back Home clears routing only.
 export function getLastGame(): string {
-  return globalThis.sessionStorage?.getItem("gf_last_game") ?? "";
+  return globalThis.sessionStorage?.getItem("gf_last_game") ?? globalThis.localStorage?.getItem("gf_last_game") ?? "";
 }
 
 export function setLastGame(gameId: string): void {
-  if (gameId) globalThis.sessionStorage?.setItem("gf_last_game", gameId);
-  else globalThis.sessionStorage?.removeItem("gf_last_game");
+  for (const storage of [globalThis.sessionStorage, globalThis.localStorage]) {
+    if (gameId) storage?.setItem("gf_last_game", gameId);
+    else storage?.removeItem("gf_last_game");
+  }
 }

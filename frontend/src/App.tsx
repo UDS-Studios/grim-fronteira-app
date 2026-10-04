@@ -1,12 +1,13 @@
 import SessionPauseBanner from "./components/SessionPauseBanner";
 import { acceptResponse } from "./utils/responseOrdering";
-import { useEffect, useState } from "react";
-import { newGame, getGame, gfAction, reconnectGame } from "./api/gf";
+import { useEffect, useRef, useState } from "react";
+import { newGame, getGame, gfAction, reconnectGame, takeoverGame } from "./api/gf";
 import type { ActionResponse } from "./api/types";
 import { getFreshPlayerId } from "./utils/identity";
 import { getSessionView, type InspectionView } from "./utils/sessionView";
-import { getGameEntryMode } from "./utils/reconnect";
+import { getGameEntryMode, getRecoveryReason, type RecoveryReason } from "./utils/reconnect";
 import { loadSession, getReconnectToken, getActiveSession, getLastGame, setLastGame } from "./utils/session";
+import SessionRecoveryView from "./views/SessionRecoveryView";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
@@ -27,8 +28,70 @@ export default function App() {
   const [selectedPlayerId, setSelectedPlayerId] = useState(currentActorId);
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
-  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">(() => getLastGame() ? "game" : "home");
+  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed" | "recovery">(() => getLastGame() ? "game" : "home");
   const [closedGameId, setClosedGameId] = useState("");
+  const [recovery, setRecovery] = useState<{ reason: RecoveryReason; gameId: string } | null>(null);
+  const [takeoverBusy, setTakeoverBusy] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const takeoverInFlight = useRef(false);
+  // Invalidate responses from the gameplay screen after recovery or navigation.
+  const responseEpoch = useRef(0);
+
+  function backHome() {
+    responseEpoch.current++;
+    setGameId("");
+    setLastGame("");
+    setJoinGameId("");
+    setResp(null);
+    setRecovery(null);
+    setClosedGameId("");
+    setRecoveryError(null);
+    setScreen("home");
+  }
+
+  function enterRecovery(reason: RecoveryReason, targetGame: string) {
+    responseEpoch.current++;
+    setRecovery({ reason, gameId: targetGame });
+    setRecoveryError(null);
+    setScreen("recovery");
+  }
+
+  function restoreGame(r: ActionResponse) {
+    const restored = loadSession(r.game_id);
+    if (restored) {
+      setCurrentActorId(restored.player_id);
+      setSelectedPlayerId(restored.player_id);
+    }
+    setPauseNotice(null);
+    setResp(current => acceptResponse(current, r));
+    setLastGame(r.game_id);
+    setGameId(r.game_id);
+    setRecovery(null);
+    setScreen("game");
+  }
+
+  async function takeOver() {
+    if (!recovery || takeoverInFlight.current) return;
+    takeoverInFlight.current = true;
+    setTakeoverBusy(true);
+    setRecoveryError(null);
+    const epoch = responseEpoch.current;
+    try {
+      const r = await takeoverGame(recovery.gameId);
+      if (epoch !== responseEpoch.current) return;
+      if (!r.error) restoreGame(r);
+      else {
+        const reason = getRecoveryReason(r.error.code);
+        if (reason) enterRecovery(reason, recovery.gameId);
+        setRecoveryError("Unable to take over this seat. Please try again or return home.");
+      }
+    } catch {
+      if (epoch === responseEpoch.current) setRecoveryError("Unable to connect. Please try again or return home.");
+    } finally {
+      takeoverInFlight.current = false;
+      setTakeoverBusy(false);
+    }
+  }
 
   const seat = loadSession(gameId);
   const { view, viewer_id: viewerId } = seat && seat.player_id === currentActorId
@@ -39,19 +102,14 @@ export default function App() {
     if (screen !== "game" || !gameId) return;
 
     let cancelled = false;
-
-    const resetToHome = () => {
-      setResp(null);
-      setGameId("");
-      setLastGame("");
-      setJoinGameId("");
-      setScreen("home");
-    };
+    const epoch = responseEpoch.current;
 
     const sync = async () => {
+      if (cancelled || epoch !== responseEpoch.current) return;
       try {
-        const r = await getGame(gameId, view, viewerId);
-        if (cancelled) return;
+        const r = await (getReconnectToken(gameId) && !getActiveSession(gameId)
+          ? reconnectGame(gameId) : getGame(gameId, view, viewerId));
+        if (cancelled || epoch !== responseEpoch.current) return;
 
         if (!r.error) {
           setPauseNotice(null);
@@ -59,12 +117,19 @@ export default function App() {
           return;
         }
 
-        if (["SESSION_REQUIRED", "SESSION_INVALID", "SESSION_REPLACED", "ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID"].includes(r.error.code)) {
+        const reason = getRecoveryReason(r.error.code);
+        if (reason) {
+          cancelled = true; // Stop even before React cleans up the interval.
+          enterRecovery(reason, gameId);
+          return;
+        }
+
+        if (["SESSION_REQUIRED", "SESSION_INVALID", "ACTOR_MISMATCH", "VIEWER_MISMATCH"].includes(r.error.code)) {
           setResp(r);
           setScreen("error");
         }
         if (r.error.code === "HTTP_404") {
-          resetToHome();
+          backHome();
         }
       } catch {
         // ignore transient polling failures for now
@@ -81,24 +146,24 @@ export default function App() {
   }, [screen, gameId, view, viewerId]);
 
   async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
+    const epoch = responseEpoch.current;
     try {
       const r = await p;
+      if (epoch !== responseEpoch.current) return r;
+      const reason = getRecoveryReason(r.error?.code);
+      if (reason) {
+        enterRecovery(reason, r.game_id || gameId);
+        return r;
+      }
       if (r.error?.code === "GAME_PAUSED") {
         setPauseNotice(r.error.message);
         return r; // Empty rejection state must never replace the valid projection.
       }
       setPauseNotice(null);
-      setResp(current => acceptResponse(current, r));
       if (!r.error && r.game_id) {
-        const seat = loadSession(r.game_id);
-        if (seat) {
-          setCurrentActorId(seat.player_id);
-          setSelectedPlayerId(seat.player_id);
-        }
-        setLastGame(r.game_id);
-        setGameId(r.game_id);
-        setScreen("game");
+        restoreGame(r);
       } else if (r.error) {
+        setResp(current => acceptResponse(current, r));
         console.error("API action error:", r.error.code);
         // stay on the current screen so we can inspect the real error
       }
@@ -116,6 +181,7 @@ export default function App() {
           details: null,
         },
       };
+      if (epoch !== responseEpoch.current) return errResp;
       setResp(errResp);
       setScreen("error");
       return errResp;
@@ -213,18 +279,16 @@ export default function App() {
         </div>
       )}
 
+      {screen === "recovery" && recovery && (
+        <SessionRecoveryView reason={recovery.reason} gameId={recovery.gameId}
+          onTakeOver={takeOver} onBackHome={backHome} busy={takeoverBusy} errorMessage={recoveryError} />
+      )}
+
       {screen === "registration-closed" && (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <RegistrationClosedView
             gameId={closedGameId}
-            onBackHome={() => {
-              setResp(null);
-              setGameId("");
-              setLastGame("");
-              setJoinGameId("");
-              setClosedGameId("");
-              setScreen("home");
-            }}
+            onBackHome={backHome}
           />
         </div>
       )}
@@ -233,13 +297,7 @@ export default function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <ErrorView
             error={resp}
-            onBackHome={() => {
-              setResp(null);
-              setGameId("");
-              setLastGame("");
-              setJoinGameId("");
-              setScreen("home");
-            }}
+            onBackHome={backHome}
           />
         </div>
       )}
@@ -267,7 +325,7 @@ export default function App() {
               </select>
             </label>
 
-            <button onClick={() => setScreen("home")}>Home</button>
+            <button onClick={backHome}>Home</button>
 
             <button disabled={!gameId} onClick={() => run(getGame(gameId, view, viewerId))}>
               Refresh
@@ -332,13 +390,7 @@ export default function App() {
                 setClaimCardId={setClaimCardId}
                 run={run}
                 setResp={setResp}
-                onBackHome={() => {
-                  setResp(null);
-                  setGameId("");
-                  setLastGame("");
-                  setJoinGameId("");
-                  setScreen("home");
-                }}
+                onBackHome={backHome}
               />
             )}
 
@@ -357,13 +409,7 @@ export default function App() {
                 view={view}
                 currentActorId={currentActorId}
                 run={run}
-                onBackHome={() => {
-                  setResp(null);
-                  setGameId("");
-                  setLastGame("");
-                  setJoinGameId("");
-                  setScreen("home");
-                }}
+                onBackHome={backHome}
               />
             )}
 
@@ -373,20 +419,14 @@ export default function App() {
                 winnerFigureCardId={victoryWinnerFigureCardId}
                 showMarshalPortrait={showMarshalVictoryPortrait}
                 reason={meta.victory?.reason ?? null}
-                onBackHome={() => {
-                  setResp(null);
-                  setGameId("");
-                  setLastGame("");
-                  setJoinGameId("");
-                  setScreen("home");
-                }}
+                onBackHome={backHome}
               />
             )}
           </div>
         </div>
       )}
 
-      {resp && screen !== "home" && !isTable && (
+      {resp && screen !== "home" && screen !== "recovery" && !isTable && (
         <pre
           style={{
             marginTop: 14,

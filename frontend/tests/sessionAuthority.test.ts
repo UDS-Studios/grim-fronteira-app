@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { newGame, gfAction, getGame, reconnectGame } from "../src/api/gf.ts";
+import { newGame, gfAction, getGame, reconnectGame, takeoverGame } from "../src/api/gf.ts";
 import { loadSession, storeIssuedSession, getActiveSession, getReconnectToken, clearSession } from "../src/utils/session.ts";
 import type { ActionResponse } from "../src/api/types.ts";
 
@@ -64,7 +64,7 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       replies = [response(undefined, { player_id: "p1", role: "player", active_session: "active-B" })];
       await reconnectGame("A");
       assert.equal(calls[0].path.endsWith("/api/gf/reconnect"), true);
-      assert.deepEqual(calls[0].body, { game_id: "A", reconnect_token: "reconnect-A" });
+      assert.deepEqual(calls[0].body, { game_id: "A", reconnect_token: "reconnect-A", takeover: false });
       assert.equal(calls[0].headers.get("X-GF-Session"), null);
       assert.equal(getActiveSession("A"), "active-B");
       assert.equal(getReconnectToken("A"), "reconnect-A");
@@ -110,7 +110,7 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       replies = [response("SESSION_REPLACED"), { ...response(undefined, session), game_id: "B" }, response()];
       assert.equal((await getGame("B", "player", "p1")).error, null);
     });
-    for (const lifecycle of ["join", "manual reconnect", "clear", "replace"]) {
+    for (const lifecycle of ["join", "explicit takeover", "clear", "replace"]) {
       await t.test(`${lifecycle} resets replacement recovery eligibility`, async () => {
         reset(); storeIssuedSession("A", session);
         replies = [response("SESSION_REPLACED"), response(undefined, session), response()];
@@ -120,9 +120,9 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
         if (lifecycle === "join") {
           replies = [response(undefined, session)];
           await gfAction({ game_id: "A", action: "gf.join_lobby", params: { player_id: "p1" }, view: "player" });
-        } else if (lifecycle === "manual reconnect") {
+        } else if (lifecycle === "explicit takeover") {
           replies = [response(undefined, session)];
-          await reconnectGame("A");
+          await takeoverGame("A");
         } else {
           if (lifecycle === "clear") clearSession("A");
           storeIssuedSession("A", session);
@@ -139,7 +139,7 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       assert.equal(result.error?.code, "SESSION_INVALID"); assert.equal(calls.length, 3);
       assert.deepEqual(calls[0].body, calls[2].body);
     });
-    for (const code of ["ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID", "GAME_PAUSED"]) {
+    for (const code of ["ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID", "TAKEOVER_REQUIRED", "GAME_PAUSED"]) {
       await t.test(`${code} never triggers recovery`, async () => {
         reset(); storeIssuedSession("A", session); replies = [response(code)];
         assert.equal((await getGame("A", "player", "p1")).error?.code, code);
@@ -187,6 +187,50 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       replies = [response("SESSION_REPLACED")];
       assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
       assert.equal(calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length, 1);
+    });
+    await t.test("displaced controller stops at conflict; only explicit takeover resets allowance", async () => {
+      reset(); storeIssuedSession("A", session);
+      replies = [response("SESSION_REPLACED"), response("TAKEOVER_REQUIRED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "TAKEOVER_REQUIRED");
+      assert.deepEqual(calls[1].body, { game_id: "A", reconnect_token: "reconnect-A", takeover: false });
+      for (let i = 0; i < 4; i++) {
+        replies = [response("SESSION_REPLACED")];
+        await getGame("A", "player", "p1");
+      }
+      assert.equal(calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length, 1);
+      assert.ok(calls.every(c => c.body?.takeover !== true));
+      assert.equal(getReconnectToken("A"), "reconnect-A");
+      replies = [response(undefined, { player_id: "p1", role: "player", active_session: "explicit-active" })];
+      await Promise.all([takeoverGame("A"), takeoverGame("A")]);
+      assert.equal(calls.filter(c => c.body?.takeover === true).length, 1);
+      assert.equal(getActiveSession("A"), "explicit-active");
+      assert.equal(getReconnectToken("A"), "reconnect-A");
+      replies = [response("SESSION_REPLACED"), response("TAKEOVER_REQUIRED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "TAKEOVER_REQUIRED");
+      assert.equal(calls.at(-1)!.body?.takeover, false);
+    });
+    await t.test("normal resume never resets consumed replacement recovery", async () => {
+      reset(); storeIssuedSession("A", session);
+      replies = [response("SESSION_REPLACED"), response("TAKEOVER_REQUIRED")];
+      await getGame("A", "player", "p1");
+      replies = [response(undefined, { ...session, active_session: "resumed-active" })];
+      await reconnectGame("A");
+      replies = [response("SESSION_REPLACED")];
+      assert.equal((await getGame("A", "player", "p1")).error?.code, "SESSION_REPLACED");
+      assert.equal(replies.length, 0);
+      assert.equal(calls.filter(c => c.path.endsWith("/api/gf/reconnect")).length, 2);
+    });
+    await t.test("explicit intent waits for normal flight and never shares its conflict", async () => {
+      reset(); storeIssuedSession("A", session);
+      replies = [response("TAKEOVER_REQUIRED"), response(undefined, { ...session, active_session: "taken-over" })];
+      const resume = reconnectGame("A");
+      const explicit = takeoverGame("A");
+      const duplicate = takeoverGame("A");
+      assert.equal((await resume).error?.code, "TAKEOVER_REQUIRED");
+      assert.equal((await explicit).error, null);
+      assert.equal((await duplicate).error, null);
+      assert.deepEqual(calls.map(c => c.body?.takeover), [false, true]);
+      assert.equal(getActiveSession("A"), "taken-over");
     });
   } finally {
     globalThis.fetch = oldFetch;

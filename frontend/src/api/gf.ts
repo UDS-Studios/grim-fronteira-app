@@ -3,7 +3,7 @@ import type { ActionRequest, ActionResponse, NewGameRequest, View } from "./type
 import { consumeReplacedRecovery, getActiveSession, getReconnectToken, storeIssuedSession, type BrowserSession } from "../utils/session.ts";
 
 const recoverable = new Set(["SESSION_REQUIRED", "SESSION_INVALID", "SESSION_REPLACED"]);
-const reconnecting = new Map<string, Promise<ActionResponse>>();
+const reconnecting = new Map<string, { takeover: boolean; promise: Promise<ActionResponse> }>();
 
 function storeResponse(response: ActionResponse, resetRecovery = true): ActionResponse {
   const result = response.result as { session?: BrowserSession } | null;
@@ -22,18 +22,27 @@ export async function newGame(req: NewGameRequest) {
 }
 
 export function reconnectGame(gameId: string): Promise<ActionResponse> {
-  return reconnect(gameId, true);
+  return reconnect(gameId, false, false);
 }
 
-function reconnect(gameId: string, resetRecovery: boolean): Promise<ActionResponse> {
+// Only this explicit user action may request replacement of an online controller.
+export function takeoverGame(gameId: string): Promise<ActionResponse> {
+  return reconnect(gameId, true, true);
+}
+
+function reconnect(gameId: string, resetRecovery: boolean, takeover: boolean): Promise<ActionResponse> {
   const existing = reconnecting.get(gameId);
-  if (existing) return existing;
+  if (existing) {
+    if (!takeover || existing.takeover) return existing.promise;
+    // Explicit intent must not be swallowed by a pending normal resume.
+    return existing.promise.catch(() => undefined).then(() => reconnect(gameId, resetRecovery, takeover));
+  }
   const token = getReconnectToken(gameId);
   if (!token) return Promise.resolve({ game_id: gameId, revision: 0, state: {}, events: [], result: {},
     error: { code: "SESSION_REQUIRED", message: "No reconnect credential stored for this game", details: null } });
-  const pending = api("/api/gf/reconnect", "POST", { game_id: gameId, reconnect_token: token })
+  const pending = api("/api/gf/reconnect", "POST", { game_id: gameId, reconnect_token: token, takeover })
     .then(response => storeResponse(response, resetRecovery)).finally(() => { reconnecting.delete(gameId); });
-  reconnecting.set(gameId, pending);
+  reconnecting.set(gameId, { takeover, promise: pending });
   return pending;
 }
 
@@ -48,7 +57,7 @@ async function withSession(gameId: string, authenticated: boolean, send: (token?
     // while later replacement failures cannot reclaim the seat again.
     if (response.error.code === "SESSION_REPLACED" &&
         !consumeReplacedRecovery(gameId) && !reconnecting.has(gameId)) return response;
-    const recovered = await reconnect(gameId, false);
+    const recovered = await reconnect(gameId, false, false);
     if (recovered.error) return recovered;
   }
   return send(getActiveSession(gameId)); // Exactly one retry, with no recursive recovery.

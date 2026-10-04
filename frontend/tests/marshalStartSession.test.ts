@@ -64,7 +64,7 @@ test("Marshal create, equal-revision presence polls, ready lobby and real Start 
           } else if (String(input).endsWith("/api/gf/reconnect")) {
             reconnects++;
             assert.equal(header, null);
-            assert.deepEqual(body, { game_id: gameId, reconnect_token: "issued-reconnect" });
+            assert.deepEqual(body, { game_id: gameId, reconnect_token: "issued-reconnect", takeover: false });
             active = "replacement-active";
             response.result = { session: { player_id: marshal, role: "marshal", active_session: active } };
           } else if (body?.action === "gf.start_game") {
