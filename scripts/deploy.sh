@@ -98,7 +98,6 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-command -v npm >/dev/null || { echo "[ERROR] npm not found"; exit 1; }
 command -v python3 >/dev/null || { echo "[ERROR] python3 not found"; exit 1; }
 command -v sudo >/dev/null || { echo "[ERROR] sudo not found"; exit 1; }
 
