@@ -2,23 +2,42 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--force-host] [-h|--help]"
+  echo "Usage: $0 [--force-host] [--web-server apache|nginx] [-h|--help]"
   echo "  --force-host  Override only the hostname safety check (deployment requires root)."
+  echo "  --web-server apache|nginx  Select the web server to reload (default: apache)."
   echo "  -h, --help    Show this help and exit."
 }
 
 FORCE_HOST=false
 SHOW_HELP=false
-for arg in "$@"; do
-  case "$arg" in
+WEB_SERVER="apache"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --force-host) FORCE_HOST=true ;;
     -h|--help) SHOW_HELP=true ;;
+    --web-server)
+      if [[ $# -lt 2 || "$2" == -* ]]; then
+        echo "[ERROR] --web-server requires a value: apache or nginx" >&2
+        usage >&2
+        exit 1
+      fi
+      case "$2" in
+        apache|nginx) WEB_SERVER="$2" ;;
+        *)
+          echo "[ERROR] Invalid web server: $2 (expected apache or nginx)" >&2
+          usage >&2
+          exit 1
+          ;;
+      esac
+      shift
+      ;;
     *)
-      echo "[ERROR] Unknown argument: $arg" >&2
+      echo "[ERROR] Unknown argument: $1" >&2
       usage >&2
       exit 1
       ;;
   esac
+  shift
 done
 
 if [[ "$SHOW_HELP" == true ]]; then
@@ -98,6 +117,7 @@ fi
 
 echo "== Grim Fronteira deploy =="
 echo "Host: $CURRENT_HOST"
+echo "Web server: $WEB_SERVER"
 echo "Project: $APP_ROOT"
 echo "Deploy user: root"
 echo "Build user: $APP_OWNER"
@@ -146,8 +166,11 @@ chmod -R a+rX "$FRONTEND_DIST"
 echo "-- Restart backend"
 sudo systemctl restart "$SERVICE_NAME"
 
-echo "-- Reload apache"
-sudo systemctl reload apache2
+echo "-- Reload $WEB_SERVER"
+case "$WEB_SERVER" in
+  apache) sudo systemctl reload apache2 ;;
+  nginx) sudo systemctl reload nginx ;;
+esac
 
 # --------------------------------------------------
 # DONE
