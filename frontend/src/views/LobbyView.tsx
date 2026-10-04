@@ -16,6 +16,7 @@ export default function LobbyView(props: LobbyViewProps) {
       resp={props.resp}
       view={props.view}
       currentActorId={props.currentActorId}
+      connectionLost={props.connectionLost}
       run={props.run}
     />
   );

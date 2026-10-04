@@ -1,15 +1,27 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from uuid import uuid4
-from typing import Any, Dict, List, Literal, Tuple
+from typing import Annotated, Any, Dict, List, Literal, Tuple
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.schemas import NewGameRequest, ActionRequest, ActionResponse, ErrorPayload
-from backend.app.store import GAMES, StoredGame
+from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
+from backend.app import store
+from backend.app.store import GAMES, StoredGame, commit_stored_game_candidate, publish_stored_game
+from backend.app.persistence import FileRepository, PersistenceUnavailable, GameUnavailable, SessionTopologyInvalid
+from backend.app import presence
+from backend.app.presence import enrich_presence, refresh_presence
+from backend.app.pause import GamePausedError, enrich_pause, enforce_gameplay_pause
+from backend.app.session_authority import (
+    AuthorityError, ReconnectInvalid, TakeoverRequiredError, issue_seat_credentials, resolve_reconnect_seat,
+    replace_active_session, role_for_seat,
+)
+from backend.app.debug_policy import enforce_debug_api_policy
+from backend.app.request_authority import authorize_request
 from backend.app.serializers import game_state_to_dict, can_view_yankee_inspection, validate_marshal_view
 from backend.app.pending_interactions import (
     DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM, PENDING_STATE_ACTIONS,
@@ -79,7 +91,24 @@ from backend.engine.rules.grim_fronteira.lobby import (
     begin_table,
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    previous_repository = store.repository
+    repository = FileRepository().open()
+    try:
+        report = repository.load_all()
+        GAMES.clear()
+        GAMES.update(report.games)
+        store.repository = repository
+        yield
+    finally:
+        GAMES.clear()
+        store.repository = previous_repository
+        repository.close()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Grim Fronteira API",
     version="0.1.0",
     root_path="/grim-fronteira",
@@ -128,6 +157,9 @@ async def _extract_game_context(request: Request) -> Tuple[str, int]:
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path.endswith("/api/gf/reconnect"):
+        # Pydantic error inputs can contain bearer secrets; never echo them.
+        return await reconnect_invalid_handler(request, ReconnectInvalid())
     game_id, revision = await _extract_game_context(request)
     payload = ActionResponse(
         game_id=game_id,
@@ -142,6 +174,60 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         ),
     )
     return JSONResponse(status_code=422, content=payload.model_dump())
+
+
+@app.exception_handler(AuthorityError)
+async def authority_error_handler(request: Request, exc: AuthorityError):
+    game_id, revision = await _extract_game_context(request)
+    return JSONResponse(status_code=exc.status, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code=exc.code, message=str(exc), details=None),
+    ).model_dump())
+
+
+@app.exception_handler(GamePausedError)
+async def game_paused_handler(request: Request, exc: GamePausedError):
+    game_id, revision = await _extract_game_context(request)
+    return JSONResponse(status_code=409, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code="GAME_PAUSED", message=str(exc), details={"reason": "marshal_offline"}),
+    ).model_dump())
+
+
+@app.exception_handler(TakeoverRequiredError)
+async def takeover_required_handler(request: Request, exc: TakeoverRequiredError):
+    game_id, revision = await _extract_game_context(request)
+    return JSONResponse(status_code=409, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code="TAKEOVER_REQUIRED", message=str(exc),
+                           details={"reason": "active_session_online"}),
+    ).model_dump())
+
+
+@app.exception_handler(ReconnectInvalid)
+async def reconnect_invalid_handler(request: Request, exc: ReconnectInvalid):
+    game_id, revision = await _extract_game_context(request)
+    payload = ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code="RECONNECT_INVALID", message="Invalid reconnect credential", details=None),
+    )
+    return JSONResponse(status_code=401, content=payload.model_dump())
+
+
+@app.exception_handler(PersistenceUnavailable)
+@app.exception_handler(GameUnavailable)
+@app.exception_handler(SessionTopologyInvalid)
+async def persistence_error_handler(request: Request, exc: RuntimeError):
+    game_id, revision = await _extract_game_context(request)
+    if isinstance(exc, SessionTopologyInvalid):
+        status, code = 409, "SESSION_TOPOLOGY_INVALID"
+    else:
+        status = 503
+        code = "GAME_UNAVAILABLE" if isinstance(exc, GameUnavailable) else "PERSISTENCE_UNAVAILABLE"
+    return JSONResponse(status_code=status, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code=code, message=str(exc), details=None),
+    ).model_dump())
 
 
 @app.exception_handler(HTTPException)
@@ -182,6 +268,7 @@ async def value_error_handler(request: Request, exc: ValueError):
 # --- Helpers ---
 
 def _get_game(game_id: str) -> StoredGame:
+    store.repository.ensure_available(game_id)
     g = GAMES.get(game_id)
     if g is None:
         raise HTTPException(status_code=404, detail=f"Unknown game_id '{game_id}'")
@@ -198,6 +285,7 @@ def _bump_revision(game: GameState) -> GameState:
 
 @app.post("/api/gf/new", response_model=ActionResponse)
 def new_game(req: NewGameRequest) -> ActionResponse:
+    enforce_debug_api_policy(view=req.view)
     deck = load_deck(req.template_path)
 
     if req.seed is not None:
@@ -211,23 +299,69 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     validate_game_state(game)
 
     game_id = str(uuid4())
-    GAMES[game_id] = StoredGame(state=game)
+    stored_game = StoredGame(state=game)
+    projected_state = game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id)
+    session = issue_seat_credentials(game, stored_game.sessions, game.meta["marshal_id"])
 
-    return ActionResponse(
+    projected_state = enrich_pause(enrich_presence(projected_state, stored_game.sessions), game, stored_game.sessions)
+    response = ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
+        state=projected_state,
         events=[],
-        result={"created": True},
+        result={"created": True, "session": session},
         error=None,
     )
+    publish_stored_game(game_id, stored_game)
+    return response
+
+@app.post("/api/gf/reconnect", response_model=ActionResponse)
+def reconnect(req: ReconnectRequest) -> ActionResponse:
+    """Resume offline seats; explicit takeover always reports takeover, even offline.
+
+    The stable recovery token authorizes rotation only of runtime session state.
+    Decision, staged presence/projection, and commit share the per-game lock.
+    """
+    g = _get_game(req.game_id)
+    with g.lock:
+        store.repository.ensure_available(req.game_id)
+        record = resolve_reconnect_seat(g.sessions, req.reconnect_token)
+        if not req.takeover and presence.is_seat_online(record, presence.now()):
+            raise TakeoverRequiredError()
+        role = role_for_seat(g.state, record.player_id)
+        projected_state = game_state_to_dict(g.state, view=role, viewer_id=record.player_id)
+        replacement, active_session = replace_active_session(record)
+        staged_sessions = {**g.sessions, record.player_id: replacement}
+        projected_state = enrich_pause(enrich_presence(projected_state, staged_sessions), g.state, staged_sessions)
+        response = ActionResponse(
+            game_id=req.game_id, revision=g.state.meta.get("revision", 0),
+            state=projected_state, events=[],
+            result={"reconnected": True, "mode": "takeover" if req.takeover else "resume", "session": {
+                "player_id": record.player_id, "role": role, "active_session": active_session,
+            }}, error=None,
+        )
+        g.sessions[record.player_id] = replacement
+        return response
+
 
 @app.get("/api/game/{game_id}", response_model=ActionResponse)
-def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "debug", viewer_id: str | None = None) -> ActionResponse:
-    if view == "player" and (not isinstance(viewer_id, str) or not viewer_id.strip()):
-        raise HTTPException(status_code=422, detail="viewer_id is required for player view")
+def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"] = "public", viewer_id: str | None = None,
+              x_gf_session: Annotated[str | None, Header(alias="X-GF-Session")] = None) -> ActionResponse:
+    enforce_debug_api_policy(view=view)
+    if view in {"player", "marshal"} and (not isinstance(viewer_id, str) or not viewer_id.strip()):
+        raise HTTPException(status_code=422, detail=f"viewer_id is required for {view} view")
     g = _get_game(game_id)
-    game = g.state
+    with g.lock:
+        store.repository.ensure_available(game_id)
+        seat = authorize_request(g.state, g.sessions, x_gf_session, view=view, viewer_id=viewer_id)
+        if seat is not None:
+            refresh_presence(g.sessions, seat)
+        response = _get_state_response(game_id, g.state, view, viewer_id)
+        response.state = enrich_pause(enrich_presence(response.state, g.sessions), g.state, g.sessions)
+        return response
+
+
+def _get_state_response(game_id: str, game: GameState, view: str, viewer_id: str | None) -> ActionResponse:
     validate_marshal_view(game, view=view, viewer_id=viewer_id)
     validate_game_state(game)
     game = enrich_meta_for_ui(game)
@@ -244,9 +378,15 @@ def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"
 
 
 @app.post("/api/gf/action", response_model=ActionResponse)
-def action(req: ActionRequest) -> ActionResponse:
+def action(req: ActionRequest, x_gf_session: Annotated[str | None, Header(alias="X-GF-Session")] = None) -> ActionResponse:
+    enforce_debug_api_policy(view=req.view, action=req.action)
     g = _get_game(req.game_id)
     with g.lock:
+        store.repository.ensure_available(req.game_id)
+        seat = authorize_request(g.state, g.sessions, x_gf_session, view=req.view, viewer_id=req.viewer_id,
+                          action=req.action, params=req.params)
+        if seat is not None:
+            refresh_presence(g.sessions, seat)
         validate_marshal_view(g.state, view=req.view, viewer_id=req.viewer_id)
         try:
             return _action_transition(req, g)
@@ -263,6 +403,7 @@ def action(req: ActionRequest) -> ActionResponse:
 def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
     game = g.state
 
+    enforce_gameplay_pause(game, g.sessions, req.action, req.view)
     enforce_pending_action_gate(game, req.action, req.params)
 
     events: List[Dict[str, Any]] = []  # keep, even if empty (future Unreal-friendly)
@@ -274,8 +415,6 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         result = {"ok": True, "action": req.action}
 
     elif req.action == DEBUG_BEGIN:
-        if req.view != "debug":
-            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
         actor_id = effective_actor(req.params)
         if actor_id is None:
             raise HTTPException(status_code=400, detail="A non-empty actor_id or player_id is required")
@@ -293,8 +432,6 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         result = {"ok": True, "action": req.action}
 
     elif req.action in {DEBUG_RESOLVE, RECLAIM}:
-        if req.action == DEBUG_RESOLVE and req.view != "debug":
-            raise HTTPException(status_code=403, detail=f"{req.action} is debug-only")
         pending = get_pending_interaction(game)
         if pending is None:
             raise HTTPException(status_code=400, detail="No pending interaction to resolve")
@@ -337,8 +474,6 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         params = req.params
         card_id = params.get("card_id")
 
-        if req.view != "debug":
-            raise HTTPException(status_code=403, detail="gf.debug_stack_top_card is debug-only")
         if not isinstance(card_id, str):
             raise HTTPException(status_code=400, detail="params.card_id must be a string")
 
@@ -902,14 +1037,22 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         game = enrich_meta_for_ui(game)
         game = ensure_scene_state(game)
     validate_game_state(game)
-    if mutated:
-        g.state = game
+    projected_state = game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id)
+    staged_sessions = None
+    if req.action == "gf.join_lobby":
+        staged_sessions = dict(g.sessions)
+        result["session"] = issue_seat_credentials(game, staged_sessions, req.params["player_id"])
 
-    return ActionResponse(
+    response_sessions = staged_sessions if staged_sessions is not None else g.sessions
+    projected_state = enrich_pause(enrich_presence(projected_state, response_sessions), game, response_sessions)
+    response = ActionResponse(
         game_id=req.game_id,
         revision=game.meta.get("revision", 0),
-        state=game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id),
+        state=projected_state,
         events=events,
         result=result,
         error=None,
     )
+    if mutated:
+        commit_stored_game_candidate(req.game_id, g, game, staged_sessions)
+    return response

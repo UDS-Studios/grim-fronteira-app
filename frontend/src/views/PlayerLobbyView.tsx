@@ -1,3 +1,6 @@
+import type { ActionRequest } from "../api/types";
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus } from "../utils/presence";
 import { getViewRequest } from "../utils/sessionView";
 import React, { useState } from "react";
 import { gfAction } from "../api/gf";
@@ -113,6 +116,7 @@ type PlayerLobbyViewProps = {
   resp: ActionResponse;
   view: View;
   currentActorId: string;
+  connectionLost?: boolean;
   run: RunAction;
 };
 
@@ -140,10 +144,16 @@ export default function PlayerLobbyView({
   view,
   currentActorId,
   run,
+  connectionLost = false,
 }: PlayerLobbyViewProps) {
   const [customName, setCustomName] = useState("");
   const [customFeature, setCustomFeature] = useState("");
   const isWaitingMessageVisible = useBlink(700);
+
+  async function submitAction(request: ActionRequest) {
+    if (connectionLost) return;
+    return run(gfAction(request));
+  }
 
   const state = resp.state ?? {};
   const meta: MetaAny = state.meta ?? {};
@@ -175,6 +185,7 @@ export default function PlayerLobbyView({
     registrationOpen && stage === "waiting_for_figure";
 
   async function submitName(name: string) {
+    if (connectionLost) return;
     const trimmed = name.trim();
     if (!trimmed) return;
 
@@ -183,36 +194,33 @@ export default function PlayerLobbyView({
     );
 
     setCustomName("");
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.submit_character_name",
-        params: {
-          player_id: currentPlayerId,
-          name: trimmed,
-          seed,
-        },
-        ...getViewRequest(view, currentActorId),
-      })
-    );
+    await submitAction({
+      game_id: resp.game_id,
+      action: "gf.submit_character_name",
+      params: {
+        player_id: currentPlayerId,
+        name: trimmed,
+        seed,
+      },
+      ...getViewRequest(view, currentActorId),
+    });
   }
 
   async function submitFeature(feature: string) {
+    if (connectionLost) return;
     const trimmed = feature.trim();
     if (!trimmed) return;
 
     setCustomFeature("");
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.submit_character_feature",
-        params: {
-          player_id: currentPlayerId,
-          feature: trimmed,
-        },
-        ...getViewRequest(view, currentActorId),
-      })
-    );
+    await submitAction({
+      game_id: resp.game_id,
+      action: "gf.submit_character_feature",
+      params: {
+        player_id: currentPlayerId,
+        feature: trimmed,
+      },
+      ...getViewRequest(view, currentActorId),
+    });
   }
 
   function renderCharacterRules() {
@@ -296,7 +304,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 10 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
 
           <div style={{ marginTop: 12, opacity: 0.8 }}>
@@ -312,7 +320,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
 
           {renderAnimatedSentence()}
@@ -322,6 +330,7 @@ export default function PlayerLobbyView({
           <div style={{ display: "grid", gap: 8 }}>
             {nameSuggestions.map((name) => (
               <button
+                disabled={connectionLost}
                 key={name}
                 type="button"
                 onClick={() => submitName(name)}
@@ -352,7 +361,7 @@ export default function PlayerLobbyView({
             <button
               type="button"
               onClick={() => submitName(customName)}
-              disabled={!customName.trim()}
+              disabled={connectionLost || !customName.trim()}
             >
               Submit
             </button>
@@ -365,7 +374,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
           {renderAnimatedSentence()}
 
@@ -374,6 +383,7 @@ export default function PlayerLobbyView({
           <div style={{ display: "grid", gap: 8 }}>
             {featureSuggestions.map((feature) => (
               <button
+                disabled={connectionLost}
                 key={feature}
                 type="button"
                 onClick={() => submitFeature(feature)}
@@ -404,7 +414,7 @@ export default function PlayerLobbyView({
             <button
               type="button"
               onClick={() => submitFeature(customFeature)}
-              disabled={!customFeature.trim()}
+              disabled={connectionLost || !customFeature.trim()}
             >
               Submit
             </button>
@@ -417,7 +427,7 @@ export default function PlayerLobbyView({
       return (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal ID:</b> {marshalId || "-"}
+            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
           </div>
 
           {renderAnimatedSentence()}
@@ -495,16 +505,14 @@ export default function PlayerLobbyView({
               <button
                 key={`hidden-${idx}`}
                 type="button"
-                disabled={!canPickFigure}
+                disabled={connectionLost || !canPickFigure}
                 onClick={() => {
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.draw_character",
-                      params: { player_id: currentPlayerId, seed: 321 + idx },
-                      ...getViewRequest(view, currentActorId),
-                    })
-                  );
+                  submitAction({
+                    game_id: resp.game_id,
+                    action: "gf.draw_character",
+                    params: { player_id: currentPlayerId, seed: 321 + idx },
+                    ...getViewRequest(view, currentActorId),
+                  });
                 }}
                 style={{
                   border: "1px solid transparent",
@@ -528,16 +536,14 @@ export default function PlayerLobbyView({
               <button
                 key={c}
                 type="button"
-                disabled={!canPickFigure}
+                disabled={connectionLost || !canPickFigure}
                 onClick={() => {
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.claim_character",
-                      params: { player_id: currentPlayerId, card_id: c },
-                      ...getViewRequest(view, currentActorId),
-                    })
-                  );
+                  submitAction({
+                    game_id: resp.game_id,
+                    action: "gf.claim_character",
+                    params: { player_id: currentPlayerId, card_id: c },
+                    ...getViewRequest(view, currentActorId),
+                  });
                 }}
                 style={{
                   border: "1px solid transparent",

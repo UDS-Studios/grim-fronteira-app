@@ -16,9 +16,15 @@ test("both roles share viewport fitting and retain every functional region", asy
     const { default: Table } = await server.ssrLoadModule("/src/views/TableRouterView.tsx");
     for (const currentActorId of ["player-nnu30f", "marshal"]) {
       const html = renderToStaticMarkup(createElement(Table, {
-        resp: chichimecaLiveResponse, currentActorId, view: "player",
+        resp: { ...chichimecaLiveResponse, state: { ...chichimecaLiveResponse.state,
+          meta: { ...chichimecaLiveResponse.state.meta, session_pause: { paused: true, reason: "marshal_offline" }, presence: {
+            marshal: { online: false }, "player-nnu30f": { online: false }, "player-o2o9sa": { online: true },
+          } },
+        } }, currentActorId, view: "player",
         run: () => { throw Error("Layout must not submit actions"); }, onBackHome: () => {},
       }));
+      assert.match(html, /presence-indicator--online/);
+      assert.match(html, /presence-indicator--offline/);
       assert.match(html, /class="table-viewport"/);
       assert.match(html, /class="saloon-composition"/);
       assert.match(html, /font-size:var\(--difficulty-base-size\)/);
@@ -29,9 +35,11 @@ test("both roles share viewport fitting and retain every functional region", asy
         assert.ok(html.includes(region), `${currentActorId}: ${region}`);
       }
       if (currentActorId === "marshal") {
+        assert.ok(!html.includes("marshal-offline-banner"));
         assert.ok(html.includes("Next Scene"));
         assert.ok(html.includes("Reclaim interaction"));
       } else {
+        assert.match(html, /class="marshal-offline-banner" role="status"/);
         for (const region of ["Scene Participation", "Other Players", "REWARDS", "Confirm target", "DESCRIPTION", "FACTION POWER", "SCUM", "VENGEANCE"]) {
           assert.ok(html.includes(region), region);
         }
@@ -42,6 +50,8 @@ test("both roles share viewport fitting and retain every functional region", asy
     }
     const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
     assert.match(css, /--difficulty-base-size: 3rem/);
+    assert.match(css, /\.presence-indicator\s*\{[^}]*display: inline-flex/);
+    assert.match(css, /\.presence-indicator\s*\{[^}]*white-space: nowrap/);
     assert.match(css, /\.table-deck-stack\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
     const { default: DiscardPile } = await server.ssrLoadModule("/src/components/DiscardPile.tsx");
     const cards = Array.from({ length: 54 }, (_, index) => `${index % 9 + 2}H`);

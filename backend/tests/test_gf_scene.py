@@ -1847,7 +1847,7 @@ def test_scene_setup_actions_lock_after_start():
             raise AssertionError("setup action should fail after scene_start")
 
 
-def test_pending_interaction_blocks_scene_action_at_dispatch():
+def test_pending_interaction_blocks_scene_action_at_dispatch(authenticated_application_requests):
     from copy import deepcopy
 
     import pytest

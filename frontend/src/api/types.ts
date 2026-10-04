@@ -54,7 +54,13 @@ export type SceneState = {
   faction_power_usage?: SceneFactionPowerUsage;
 };
 
+export type SeatPresence = {
+  online: boolean;
+};
+
 export type GameMeta = {
+  session_pause?: SessionPause;
+  presence?: Record<string, SeatPresence>;
   phase?: string;
   marshal_id?: string;
   players_order?: string[];
@@ -79,6 +85,11 @@ export type GameMeta = {
     winner_label?: string;
     reason?: string | null;
   };
+};
+
+export type SessionPause = {
+  paused: boolean;
+  reason: "marshal_offline" | null;
 };
 
 export type CardZoneProjection = string[] | { count?: number };

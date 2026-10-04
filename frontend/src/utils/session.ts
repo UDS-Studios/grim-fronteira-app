@@ -1,0 +1,80 @@
+export type BrowserSession = {
+  player_id: string;
+  role: "marshal" | "player";
+  active_session?: string;
+  reconnect_token?: string;
+};
+
+// Runtime-only allowance per game in this tab. Ordinary requests and automatic
+// resume never reset it; successful explicit takeover or seat issuance resets it.
+const replacedRecoveryUsed = new Set<string>();
+
+export function consumeReplacedRecovery(gameId: string): boolean {
+  if (replacedRecoveryUsed.has(gameId)) return false;
+  replacedRecoveryUsed.add(gameId);
+  return true;
+}
+
+const sessionKey = (gameId: string) => `gf_session:${gameId}`;
+const reconnectKey = (gameId: string) => `gf_reconnect:${gameId}`;
+
+function read(storage: Storage | undefined, key: string): BrowserSession | null {
+  try {
+    const value: unknown = JSON.parse(storage?.getItem(key) ?? "null");
+    if (!value || typeof value !== "object") return null;
+    const s = value as BrowserSession;
+    return typeof s.player_id === "string" && (s.role === "player" || s.role === "marshal") ? s : null;
+  } catch { return null; }
+}
+
+export function loadSession(gameId: string): BrowserSession | null {
+  const persistent = read(globalThis.localStorage, reconnectKey(gameId));
+  const active = read(globalThis.sessionStorage, sessionKey(gameId));
+  return active ? { ...persistent, ...active } : persistent;
+}
+
+export function getActiveSession(gameId: string): string | undefined {
+  const value = read(globalThis.sessionStorage, sessionKey(gameId))?.active_session;
+  return typeof value === "string" && value ? value : undefined;
+}
+
+export function getReconnectToken(gameId: string): string | undefined {
+  const value = read(globalThis.localStorage, reconnectKey(gameId))?.reconnect_token;
+  return typeof value === "string" && value ? value : undefined;
+}
+
+export function storeIssuedSession(gameId: string, session: BrowserSession, resetRecovery = true): void {
+  const { player_id, role, active_session, reconnect_token } = session;
+  if (!gameId || typeof player_id !== "string" || !player_id ||
+      (role !== "player" && role !== "marshal") || typeof active_session !== "string" || !active_session) {
+    throw new Error("Invalid session response");
+  }
+  const token = reconnect_token ?? getReconnectToken(gameId);
+  if (token) globalThis.localStorage?.setItem(reconnectKey(gameId), JSON.stringify({ player_id, role, reconnect_token: token }));
+  globalThis.sessionStorage?.setItem(sessionKey(gameId), JSON.stringify({ player_id, role, active_session }));
+  if (resetRecovery) replacedRecoveryUsed.delete(gameId);
+}
+
+// Declining control forgets this tab's controller, never the seat recovery token
+// or its consumed automatic replacement-recovery allowance.
+export function clearActiveSession(gameId: string): void {
+  globalThis.sessionStorage?.removeItem(sessionKey(gameId));
+}
+
+export function clearSession(gameId: string): void {
+  replacedRecoveryUsed.delete(gameId);
+  globalThis.sessionStorage?.removeItem(sessionKey(gameId));
+  globalThis.localStorage?.removeItem(reconnectKey(gameId));
+}
+
+// Non-secret routing survives a browser restart; Back Home clears routing only.
+export function getLastGame(): string {
+  return globalThis.sessionStorage?.getItem("gf_last_game") ?? globalThis.localStorage?.getItem("gf_last_game") ?? "";
+}
+
+export function setLastGame(gameId: string): void {
+  for (const storage of [globalThis.sessionStorage, globalThis.localStorage]) {
+    if (gameId) storage?.setItem("gf_last_game", gameId);
+    else storage?.removeItem("gf_last_game");
+  }
+}

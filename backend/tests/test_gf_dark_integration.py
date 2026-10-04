@@ -13,6 +13,9 @@ from backend.tests.test_gf_dark import (
 )
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 def test_legacy_difficulty_cannot_bypass_dark(game_id):
     dispatch(game_id)
     reject(game_id, "roll_difficulty", player_ids=["p1"], match="Dark")
@@ -230,7 +233,9 @@ def test_marshal_frontend_visibility_contract(game_id):
         before = GAMES[game_id].state.meta.get("revision", 0)
         status, response = http_request("/api/gf/action", method="POST", body={
             "game_id": game_id, "action": f"gf.{name}",
-            "params": {"actor_id": "host1", **params}, "view": "marshal", "viewer_id": "host1",
+            "params": {"actor_id": "host1", **params},
+            "view": "player" if name == "scene_stand" else "marshal",
+            "viewer_id": params["player_id"] if name == "scene_stand" else "host1",
         })
         assert status == 200, response
         assert response["revision"] == before + 1

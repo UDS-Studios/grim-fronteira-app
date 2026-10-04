@@ -7,6 +7,7 @@ type TableRouterViewProps = {
   resp: ActionResponse;
   view: View;
   currentActorId: string;
+  connectionLost?: boolean;
   run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
   onBackHome: () => void;
 };
@@ -16,6 +17,7 @@ export default function TableRouterView({
   view,
   currentActorId,
   run,
+  connectionLost = false,
   onBackHome,
 }: TableRouterViewProps) {
   const state = resp.state ?? {};
@@ -31,6 +33,7 @@ export default function TableRouterView({
         resp={resp}
         view={view}
         currentActorId={currentActorId}
+        connectionLost={connectionLost}
         run={run}
         onBackHome={onBackHome}
       />

@@ -1,3 +1,5 @@
+import PresenceIndicator from "./PresenceIndicator";
+import type { PresenceStatus } from "../utils/presence";
 import CardImg from "../components/CardImg";
 
 type LobbyPlayerState = {
@@ -9,6 +11,7 @@ type LobbyPlayerState = {
 
 type PlayerSummaryCardProps = {
   playerId: string;
+  presenceStatus?: PresenceStatus;
   pstate: LobbyPlayerState;
   figureCardId?: string | null;
   figureDead?: boolean;
@@ -25,6 +28,7 @@ type PlayerSummaryCardProps = {
 
 export default function PlayerSummaryCard({
   playerId,
+  presenceStatus = "unknown",
   pstate,
   figureCardId,
   figureDead = false,
@@ -85,7 +89,7 @@ export default function PlayerSummaryCard({
               overflowWrap: "anywhere",
             }}
           >
-            {displayName}
+            {displayName} <PresenceIndicator status={presenceStatus} />
           </div>
           <div style={{ fontSize: 14 * scale, opacity: 0.9, minWidth: 0, overflowWrap: "anywhere" }}>
             {label}

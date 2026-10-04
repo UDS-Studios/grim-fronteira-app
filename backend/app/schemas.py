@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
 
@@ -13,7 +13,7 @@ class ErrorPayload(BaseModel):
 
 
 class ViewRequest(BaseModel):
-    view: Literal["public", "player", "marshal", "debug"] = "debug"
+    view: Literal["public", "player", "marshal", "debug"] = "public"
     viewer_id: str | None = None
 
     @model_validator(mode="after")
@@ -28,6 +28,13 @@ class NewGameRequest(ViewRequest):
     meta: Dict[str, Any] = Field(default_factory=dict)
     seed: int | None = None
     creator_id: str = "marshal"
+
+
+class ReconnectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    game_id: str
+    reconnect_token: str = Field(default="", repr=False)
+    takeover: bool = False
 
 
 class ActionRequest(ViewRequest):

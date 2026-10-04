@@ -1,3 +1,4 @@
+import { isGameplayPaused } from "../utils/sessionPause";
 import { useId, useRef, useState } from "react";
 import type { ActionResponse, GameState, View } from "../api/types";
 import { gfAction } from "../api/gf";
@@ -13,7 +14,7 @@ export default function DarkDeclareControl({ state, gameId, actorId, view, run }
   const tooltipId = useId();
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
-  const available = canDeclareDark(state, actorId);
+  const available = !isGameplayPaused(state.meta) && canDeclareDark(state, actorId);
   async function declare() {
     if (!available || inFlight.current) return;
     inFlight.current = true;

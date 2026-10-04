@@ -1,3 +1,5 @@
+import pytest
+
 from fastapi import HTTPException
 
 from backend.app.main import action, new_game
@@ -7,12 +9,15 @@ from backend.engine.grimdeck.models import DeckState
 from backend.engine.state.game_state import GameState
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 def setup_function() -> None:
     GAMES.clear()
 
 
 def _new_game() -> tuple[str, dict]:
-    payload = new_game(NewGameRequest()).model_dump()
+    payload = new_game(NewGameRequest(view="debug")).model_dump()
     return payload["game_id"], payload["state"]
 
 

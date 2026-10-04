@@ -13,6 +13,9 @@ from backend.app.store import GAMES
 from backend.engine.state.pending_interaction import begin_pending_interaction
 
 
+pytestmark = pytest.mark.usefixtures("enabled_debug_api")
+
+
 @pytest.fixture
 def game_id():
     GAMES.clear()
@@ -65,6 +68,7 @@ def test_no_pending_retains_existing_dispatch(game_id):
 
 @pytest.mark.parametrize("view", ["public", "player", "debug"])
 def test_read_only_routes_remain_available_without_mutation(game_id, view):
+    dispatch(game_id, "gf.join_lobby", {"player_id": "p1"})
     begin(game_id)
     original = GAMES[game_id].state
     snapshot = deepcopy(original)

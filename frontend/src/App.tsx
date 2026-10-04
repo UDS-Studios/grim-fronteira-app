@@ -1,66 +1,219 @@
+import SessionPauseBanner from "./components/SessionPauseBanner";
 import { acceptResponse } from "./utils/responseOrdering";
-import { useEffect, useState } from "react";
-import { newGame, getGame, gfAction } from "./api/gf";
+import { useEffect, useRef, useState } from "react";
+import { newGame, getGame, gfAction, reconnectGame, takeoverGame } from "./api/gf";
 import type { ActionResponse } from "./api/types";
-import { getFreshPlayerId, getOrCreatePlayerId, persistPlayerId } from "./utils/identity";
+import { getFreshPlayerId } from "./utils/identity";
 import { getSessionView, type InspectionView } from "./utils/sessionView";
-import { getGameEntryMode } from "./utils/reconnect";
+import { getGameEntryMode, getClosedGameEntryScreen, getRecoveryReason, normalizeGameId, type RecoveryReason } from "./utils/reconnect";
+import { loadSession, clearActiveSession, getReconnectToken, getActiveSession, getLastGame, setLastGame } from "./utils/session";
+import SessionRecoveryView from "./views/SessionRecoveryView";
+import GameUnavailableView from "./views/GameUnavailableView";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
 import HookSelectionView from "./views/HookSelectionView";
+import GameAlreadyStartedView from "./views/GameAlreadyStartedView";
 import RegistrationClosedView from "./views/RegistrationClosedView";
 import TableRouterView from "./views/TableRouterView";
 import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
+  const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
+  const [connectionNotice, setConnectionNotice] = useState<{ kind: "poll" | "action"; message: string } | null>(null);
+  const [pauseNotice, setPauseNotice] = useState<string | null>(null);
   const [inspectionView, setInspectionView] = useState<InspectionView>("public");
-  const [gameId, setGameId] = useState("");
+  const [gameId, setGameId] = useState(getLastGame);
   const [resp, setResp] = useState<ActionResponse | null>(null);
 
-  const [currentActorId, setCurrentActorId] = useState(getOrCreatePlayerId);
+  const [currentActorId, setCurrentActorId] = useState(() => loadSession(getLastGame())?.player_id ?? getFreshPlayerId());
   const [joinPlayerId, setJoinPlayerId] = useState("");
   const [selectedPlayerId, setSelectedPlayerId] = useState(currentActorId);
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
-  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed">("home");
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed" | "already-started" | "recovery" | "unavailable">(() => getLastGame() ? "game" : "home");
   const [closedGameId, setClosedGameId] = useState("");
+  const [recovery, setRecovery] = useState<{ reason: RecoveryReason; gameId: string } | null>(null);
+  const [takeoverBusy, setTakeoverBusy] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState<{ gameId: string; reason: "game-unavailable" | "topology-invalid" } | null>(null);
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retryInFlight = useRef(false);
+  const takeoverInFlight = useRef(false);
+  // Invalidate responses from the gameplay screen after recovery or navigation.
+  const responseEpoch = useRef(0);
 
-  const { view, viewer_id: viewerId } = getSessionView(resp?.state.meta ?? {}, currentActorId, inspectionView);
+  function backHome() {
+    clearActiveSession(unavailable?.gameId || recovery?.gameId || gameId);
+    resetToHome();
+  }
 
-  useEffect(() => {
-    // Also retain an already-joined in-memory actor when a development tab hot-reloads.
-    persistPlayerId(currentActorId);
-  }, [currentActorId]);
+  function resetToHome() {
+    responseEpoch.current++;
+    setJoinError(null);
+    setConnectionNotice(null);
+    setPersistenceNotice(null);
+    setUnavailable(null);
+    setRetryError(null);
+    setGameId("");
+    setLastGame("");
+    setJoinGameId("");
+    setResp(null);
+    setRecovery(null);
+    setClosedGameId("");
+    setRecoveryError(null);
+    setScreen("home");
+  }
+
+  function enterRecovery(reason: RecoveryReason, targetGame: string) {
+    responseEpoch.current++;
+    setRecovery({ reason, gameId: targetGame });
+    setRecoveryError(null);
+    setScreen("recovery");
+  }
+
+  function handleDurabilityError(r: ActionResponse, targetGameId: string): boolean {
+    if (r.error?.code === "PERSISTENCE_UNAVAILABLE") {
+      setPersistenceNotice("The game could not be saved safely. Please try again.");
+      return true;
+    }
+    if (r.error?.code === "GAME_UNAVAILABLE" || r.error?.code === "SESSION_TOPOLOGY_INVALID") {
+      responseEpoch.current++;
+      setUnavailable({ gameId: r.game_id || targetGameId,
+        reason: r.error.code === "GAME_UNAVAILABLE" ? "game-unavailable" : "topology-invalid" });
+      setRetryError(null);
+      setScreen("unavailable");
+      return true;
+    }
+    return false;
+  }
+
+  async function retryUnavailable() {
+    if (!unavailable || retryInFlight.current) return;
+    retryInFlight.current = true;
+    setRetryBusy(true);
+    setRetryError(null);
+    const target = unavailable.gameId;
+    const epoch = responseEpoch.current;
+    try {
+      // Discover availability first. Retry never acquires a new seat or takes over.
+      let r = await getGame(target, "public");
+      if (epoch !== responseEpoch.current) return;
+      const stored = loadSession(target);
+      if (!r.error && stored) r = await getGame(target, stored.role, stored.player_id);
+      if (epoch !== responseEpoch.current) return;
+      if (!r.error) restoreGame(r);
+      else {
+        const handled = handleDurabilityError(r, target);
+        const reason = getRecoveryReason(r.error.code);
+        if (!handled && reason) enterRecovery(reason, target);
+        else if (!handled || r.error.code === "PERSISTENCE_UNAVAILABLE")
+          setRetryError("Unable to load this game. Please try again or return home.");
+      }
+    } catch {
+      if (epoch === responseEpoch.current) setRetryError("Unable to connect. Please try again or return home.");
+    } finally {
+      retryInFlight.current = false;
+      setRetryBusy(false);
+    }
+  }
+
+  function restoreGame(r: ActionResponse) {
+    const restored = loadSession(r.game_id);
+    if (restored) {
+      setCurrentActorId(restored.player_id);
+      setSelectedPlayerId(restored.player_id);
+    }
+    setConnectionNotice(null);
+    setPauseNotice(null);
+    setPersistenceNotice(null);
+    setUnavailable(null);
+    setResp(current => acceptResponse(current, r));
+    setLastGame(r.game_id);
+    setGameId(r.game_id);
+    setRecovery(null);
+    setScreen("game");
+  }
+
+  async function takeOver() {
+    if (!recovery || takeoverInFlight.current) return;
+    takeoverInFlight.current = true;
+    setTakeoverBusy(true);
+    setRecoveryError(null);
+    const epoch = responseEpoch.current;
+    try {
+      const r = await takeoverGame(recovery.gameId);
+      if (epoch !== responseEpoch.current) return;
+      if (!r.error) restoreGame(r);
+      else {
+        if (handleDurabilityError(r, recovery.gameId)) return;
+
+        const reason = getRecoveryReason(r.error.code);
+        if (reason) enterRecovery(reason, recovery.gameId);
+        setRecoveryError("Unable to take over this seat. Please try again or return home.");
+      }
+    } catch {
+      if (epoch === responseEpoch.current) setRecoveryError("Unable to connect. Please try again or return home.");
+    } finally {
+      takeoverInFlight.current = false;
+      setTakeoverBusy(false);
+    }
+  }
+
+  const seat = loadSession(gameId);
+  const { view, viewer_id: viewerId } = seat && seat.player_id === currentActorId
+    ? { view: seat.role, viewer_id: seat.player_id }
+    : getSessionView({}, "", inspectionView);
 
   useEffect(() => {
     if (screen !== "game" || !gameId) return;
 
     let cancelled = false;
-
-    const resetToHome = () => {
-      setResp(null);
-      setGameId("");
-      setJoinGameId("");
-      setScreen("home");
-    };
+    const epoch = responseEpoch.current;
 
     const sync = async () => {
+      if (cancelled || epoch !== responseEpoch.current) return;
       try {
-        const r = await getGame(gameId, view, viewerId);
-        if (cancelled) return;
+        const r = await (getReconnectToken(gameId) && !getActiveSession(gameId)
+          ? reconnectGame(gameId) : getGame(gameId, view, viewerId));
+        if (cancelled || epoch !== responseEpoch.current) return;
 
         if (!r.error) {
+          setConnectionNotice(null);
+          setPauseNotice(null);
+          setPersistenceNotice(null);
           setResp(current => acceptResponse(current, r));
           return;
         }
 
+        if (handleDurabilityError(r, gameId)) return;
+
+        const reason = getRecoveryReason(r.error.code);
+        if (reason) {
+          cancelled = true; // Stop even before React cleans up the interval.
+          enterRecovery(reason, gameId);
+          return;
+        }
+
+        if (["SESSION_REQUIRED", "SESSION_INVALID", "ACTOR_MISMATCH", "VIEWER_MISMATCH"].includes(r.error.code)) {
+          setResp(r);
+          setScreen("error");
+        }
         if (r.error.code === "HTTP_404") {
+          clearActiveSession(gameId);
           resetToHome();
         }
       } catch {
-        // ignore transient polling failures for now
+        if (!cancelled && epoch === responseEpoch.current) {
+          // Keep an unconfirmed-action warning through further failed reads.
+          setConnectionNotice(current => current?.kind === "action" ? current : {
+            kind: "poll",
+            message: "The game server is temporarily unavailable. Your last confirmed game state is still shown. Wait for the connection to return before trying again.",
+          });
+        }
       }
     };
 
@@ -73,15 +226,31 @@ export default function App() {
     };
   }, [screen, gameId, view, viewerId]);
 
-  async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
+  async function run(p: Promise<ActionResponse>, targetGameId = gameId, enterGameOnSuccess = true): Promise<ActionResponse> {
+    const epoch = responseEpoch.current;
     try {
       const r = await p;
-      setResp(current => acceptResponse(current, r));
+      if (epoch !== responseEpoch.current) return r;
+      if (handleDurabilityError(r, targetGameId)) return r;
+      const reason = getRecoveryReason(r.error?.code);
+      if (reason) {
+        enterRecovery(reason, r.game_id || targetGameId);
+        return r;
+      }
+      if (r.error?.code === "HTTP_404" && screen === "home") {
+        setJoinError("Game not found.");
+        return r;
+      }
+      if (r.error?.code === "GAME_PAUSED") {
+        setPauseNotice(r.error.message);
+        return r; // Empty rejection state must never replace the valid projection.
+      }
+      setPauseNotice(null);
       if (!r.error && r.game_id) {
-        setGameId(r.game_id);
-        setScreen("game");
+        if (enterGameOnSuccess) restoreGame(r);
       } else if (r.error) {
-        console.error("API action error:", r);
+        setResp(current => acceptResponse(current, r));
+        console.error("API action error:", r.error.code);
         // stay on the current screen so we can inspect the real error
       }
       return r;
@@ -98,8 +267,19 @@ export default function App() {
           details: null,
         },
       };
-      setResp(errResp);
-      setScreen("error");
+      if (epoch !== responseEpoch.current) return errResp;
+      if (screen === "game" && resp && resp.state.meta) {
+        setConnectionNotice({
+          kind: "action",
+          message: "The server did not confirm this action. Your last confirmed game state is still shown. Wait for the connection to return before trying again.",
+        });
+      } else if (screen === "home" || screen === "game") {
+        setJoinError("Server unavailable. Please try again.");
+        if (screen === "game") setScreen("home");
+      } else {
+        setResp(errResp);
+        setScreen("error");
+      }
       return errResp;
     }
   }
@@ -133,6 +313,8 @@ export default function App() {
         flexDirection: "column",
       }}
     >
+      {persistenceNotice && screen !== "game" && <p role="alert">{persistenceNotice}</p>}
+
       {screen === "home" && (
         <div
           style={{
@@ -144,28 +326,40 @@ export default function App() {
         >
           <HomeView
             joinGameId={joinGameId}
-            setJoinGameId={setJoinGameId}
-            onNewGame={() =>
-              run(
+            joinError={joinError}
+            setJoinGameId={value => { setJoinGameId(value); setJoinError(null); setPersistenceNotice(null); }}
+            onNewGame={() => {
+              setJoinError(null);
+              setPersistenceNotice(null);
+              return run(
                 newGame({
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
                   // No authoritative role exists yet; the response establishes the Marshal session.
                   view: inspectionView,
                 })
-              )
-            }
+              );
+            }}
             onJoinGame={async () => {
+              const targetGameId = normalizeGameId(joinGameId);
+              if (!targetGameId) {
+                setJoinError("Invalid game ID. Please enter the complete game ID.");
+                return;
+              }
+              setJoinError(null);
               let entryMode: ReturnType<typeof getGameEntryMode> | undefined;
               const response = await run((async () => {
                 // Discover identity/routing without entering gameplay on this public response.
-                const loaded = await getGame(joinGameId, "public");
+                const loaded = await getGame(targetGameId, "public");
                 if (loaded.error) return loaded;
                 const loadedMeta = loaded.state.meta ?? {};
-                entryMode = getGameEntryMode(loadedMeta, currentActorId);
+                const stored = loadSession(loaded.game_id);
+                const hasCredential = getActiveSession(loaded.game_id) || getReconnectToken(loaded.game_id);
+                entryMode = hasCredential && stored ? "reconnect" : getGameEntryMode(loadedMeta, "");
                 if (entryMode === "closed") return loaded;
                 if (entryMode === "reconnect") {
-                  const session = getSessionView(loadedMeta, currentActorId, inspectionView);
+                  if (!getActiveSession(loaded.game_id)) return reconnectGame(loaded.game_id);
+                  const session = { view: stored!.role, viewer_id: stored!.player_id };
                   return getGame(loaded.game_id, session.view, session.viewer_id);
                 }
 
@@ -178,31 +372,43 @@ export default function App() {
                   viewer_id: freshPlayerId,
                 });
                 if (!joined.error) {
-                  setCurrentActorId(persistPlayerId(freshPlayerId));
+                  setCurrentActorId(freshPlayerId);
                   setSelectedPlayerId(freshPlayerId);
                 }
                 return joined;
-              })());
+              })(), targetGameId, false);
+              // Public discovery must not establish gameplay or last-game routing
+              // for a blocked outsider; authenticated entry still restores normally.
               if (!response.error && entryMode === "closed") {
                 setClosedGameId(response.game_id);
-                setScreen("registration-closed");
+                setScreen(getClosedGameEntryScreen(response.state.meta ?? {}));
+              } else if (!response.error && response.game_id) {
+                restoreGame(response);
               }
             }}
           />
         </div>
       )}
 
+      {screen === "unavailable" && unavailable && (
+        <GameUnavailableView gameId={unavailable.gameId} reason={unavailable.reason}
+          busy={retryBusy} errorMessage={retryError} onRetry={retryUnavailable} onBackHome={backHome} />
+      )}
+
+      {screen === "recovery" && recovery && (
+        <SessionRecoveryView reason={recovery.reason} gameId={recovery.gameId}
+          onTakeOver={takeOver} onBackHome={backHome} busy={takeoverBusy} errorMessage={recoveryError} />
+      )}
+
+      {screen === "already-started" && (
+        <GameAlreadyStartedView gameId={closedGameId} onBackHome={backHome} />
+      )}
+
       {screen === "registration-closed" && (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <RegistrationClosedView
             gameId={closedGameId}
-            onBackHome={() => {
-              setResp(null);
-              setGameId("");
-              setJoinGameId("");
-              setClosedGameId("");
-              setScreen("home");
-            }}
+            onBackHome={backHome}
           />
         </div>
       )}
@@ -211,12 +417,7 @@ export default function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <ErrorView
             error={resp}
-            onBackHome={() => {
-              setResp(null);
-              setGameId("");
-              setJoinGameId("");
-              setScreen("home");
-            }}
+            onBackHome={backHome}
           />
         </div>
       )}
@@ -244,7 +445,7 @@ export default function App() {
               </select>
             </label>
 
-            <button onClick={() => setScreen("home")}>Home</button>
+            <button onClick={backHome}>Home</button>
 
             <button disabled={!gameId} onClick={() => run(getGame(gameId, view, viewerId))}>
               Refresh
@@ -261,6 +462,14 @@ export default function App() {
               <pre>{JSON.stringify(resp, null, 2)}</pre>
             </details>}
           </div>
+
+          {persistenceNotice && <p role="alert" style={{ margin: "8px 0", flexShrink: 0 }}>{persistenceNotice}</p>}
+          {connectionNotice && <div role="alert" style={{ margin: "8px 0", flexShrink: 0 }}>
+            <strong>Connection lost</strong>
+            <div>{connectionNotice.message}</div>
+          </div>}
+          {pauseNotice && <div role="status">{pauseNotice}</div>}
+          {view === "player" && !isTable && phase !== "lobby" && <SessionPauseBanner meta={meta} />}
 
           {resp?.error && (
             <div
@@ -304,14 +513,10 @@ export default function App() {
                 setSelectedPlayerId={setSelectedPlayerId}
                 claimCardId={claimCardId}
                 setClaimCardId={setClaimCardId}
+                connectionLost={connectionNotice !== null}
                 run={run}
                 setResp={setResp}
-                onBackHome={() => {
-                  setResp(null);
-                  setGameId("");
-                  setJoinGameId("");
-                  setScreen("home");
-                }}
+                onBackHome={backHome}
               />
             )}
 
@@ -320,6 +525,7 @@ export default function App() {
                 resp={resp}
                 view={view}
                 currentActorId={currentActorId}
+                connectionLost={connectionNotice !== null}
                 run={run}
               />
             )}
@@ -329,13 +535,9 @@ export default function App() {
                 resp={resp}
                 view={view}
                 currentActorId={currentActorId}
+                connectionLost={connectionNotice !== null}
                 run={run}
-                onBackHome={() => {
-                  setResp(null);
-                  setGameId("");
-                  setJoinGameId("");
-                  setScreen("home");
-                }}
+                onBackHome={backHome}
               />
             )}
 
@@ -345,19 +547,14 @@ export default function App() {
                 winnerFigureCardId={victoryWinnerFigureCardId}
                 showMarshalPortrait={showMarshalVictoryPortrait}
                 reason={meta.victory?.reason ?? null}
-                onBackHome={() => {
-                  setResp(null);
-                  setGameId("");
-                  setJoinGameId("");
-                  setScreen("home");
-                }}
+                onBackHome={backHome}
               />
             )}
           </div>
         </div>
       )}
 
-      {resp && screen !== "home" && !isTable && (
+      {resp && (screen === "game" || screen === "error") && !isTable && (
         <pre
           style={{
             marginTop: 14,

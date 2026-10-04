@@ -23,6 +23,7 @@ export default function RegistrationClosedView({
       <div
         style={{
           background: "#faf8f2",
+          color: "#213547",
           border: "1px solid #333",
           borderRadius: 16,
           padding: 24,

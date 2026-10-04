@@ -14,7 +14,13 @@ PENDING_STATE_ACTIONS = {DEBUG_BEGIN, DEBUG_RESOLVE, RECLAIM}
 
 
 def effective_actor(params: Mapping[str, Any]) -> str | None:
-    """actor_id is the caller when present; never fall back to a target on invalid input."""
+    """Compatibility extraction for pending/synthetic interactions.
+
+    Keep generic actor_id precedence, including synthetic debug mutations.
+    action_authority.get_claimed_actor is the per-action source for future
+    ownership checks; substituting it here would change existing pending rules.
+    Reclaim's authority spec explicitly records this same fallback behavior.
+    """
     actor = params.get("actor_id") if "actor_id" in params else params.get("player_id")
     return actor if isinstance(actor, str) and actor.strip() else None
 

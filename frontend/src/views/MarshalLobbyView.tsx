@@ -1,3 +1,6 @@
+import type { ActionRequest } from "../api/types";
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus } from "../utils/presence";
 import { getViewRequest } from "../utils/sessionView";
 import { getGame, gfAction } from "../api/gf";
 import CardImg from "../components/CardImg";
@@ -26,8 +29,14 @@ export default function MarshalLobbyView({
   selectedPlayerId,
   setSelectedPlayerId,
   run,
+  connectionLost = false,
   onBackHome,
 }: LobbyViewProps) {
+  async function submitAction(request: ActionRequest) {
+    if (connectionLost) return;
+    return run(gfAction(request));
+  }
+
   const state = resp.state ?? {};
   const meta: MetaAny = state.meta ?? {};
   const zones: Zones = state.zones ?? {};
@@ -239,16 +248,14 @@ export default function MarshalLobbyView({
                 <button
                   type="button"
                   onClick={() =>
-                    run(
-                      gfAction({
-                        game_id: resp.game_id,
-                        action: "gf.set_character_assignment_mode",
-                        params: { actor_id: effectiveActorId, mode: "choice" },
-                        ...getViewRequest(view, currentActorId),
-                      })
-                    )
+                    submitAction({
+                      game_id: resp.game_id,
+                      action: "gf.set_character_assignment_mode",
+                      params: { actor_id: effectiveActorId, mode: "choice" },
+                      ...getViewRequest(view, currentActorId),
+                    })
                   }
-                  disabled={!isMarshal || assignmentLocked}
+                  disabled={connectionLost || !isMarshal || assignmentLocked}
                   style={{
                     fontFamily: "LavaArabic, serif",
                     letterSpacing: "0.05em",
@@ -279,16 +286,14 @@ export default function MarshalLobbyView({
                 <button
                   type="button"
                   onClick={() =>
-                    run(
-                      gfAction({
-                        game_id: resp.game_id,
-                        action: "gf.set_character_assignment_mode",
-                        params: { actor_id: effectiveActorId, mode: "random" },
-                        ...getViewRequest(view, currentActorId),
-                      })
-                    )
+                    submitAction({
+                      game_id: resp.game_id,
+                      action: "gf.set_character_assignment_mode",
+                      params: { actor_id: effectiveActorId, mode: "random" },
+                      ...getViewRequest(view, currentActorId),
+                    })
                   }
-                  disabled={!isMarshal || assignmentLocked}
+                  disabled={connectionLost || !isMarshal || assignmentLocked}
                   style={{
                     fontFamily: "LavaArabic, serif",
                     letterSpacing: "0.05em",
@@ -343,16 +348,14 @@ export default function MarshalLobbyView({
               <button
                 type="button"
                 onClick={() =>
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.set_registration_open",
-                      params: { actor_id: effectiveActorId, is_open: !registrationOpen },
-                      ...getViewRequest(view, currentActorId),
-                    })
-                  )
+                  submitAction({
+                    game_id: resp.game_id,
+                    action: "gf.set_registration_open",
+                    params: { actor_id: effectiveActorId, is_open: !registrationOpen },
+                    ...getViewRequest(view, currentActorId),
+                  })
                 }
-                disabled={!isMarshal}
+                disabled={connectionLost || !isMarshal}
                 style={{
                   fontFamily: "LavaArabic, serif",
                   letterSpacing: "0.05em",
@@ -371,16 +374,14 @@ export default function MarshalLobbyView({
               <button
                 type="button"
                 onClick={() =>
-                  run(
-                    gfAction({
-                      game_id: resp.game_id,
-                      action: "gf.start_game",
-                      params: { actor_id: effectiveActorId },
-                      ...getViewRequest(view, currentActorId),
-                    })
-                  )
+                  submitAction({
+                    game_id: resp.game_id,
+                    action: "gf.start_game",
+                    params: { actor_id: effectiveActorId },
+                    ...getViewRequest(view, currentActorId),
+                  })
                 }
-                disabled={!isMarshal || !allPlayersReady}
+                disabled={connectionLost || !isMarshal || !allPlayersReady}
                 style={{
                   fontFamily: "LavaArabic, serif",
                   fontSize: "1.9em",
@@ -453,6 +454,7 @@ export default function MarshalLobbyView({
         >
           <Section title="Informations">
             <div style={{ display: "grid", gap: 8 }}>
+              <div><b>Marshal:</b> {marshalId} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>
               <div><b>players joined:</b> {joinedPlayers.length}</div>
               <div><b>registration:</b> {registrationOpen ? "open" : "closed"}</div>
               <div><b>assignment:</b> {assignmentMode}</div>
@@ -516,7 +518,7 @@ export default function MarshalLobbyView({
 
                         <div style={{ fontSize: 14, opacity: 0.9, color: "var(--text-primary)" }}>
                           {prefix}
-                          <b>{summary}</b>
+                          <b>{summary}</b> <PresenceIndicator status={getPresenceStatus(meta, pid)} />
                         </div>
                       </div>
                     </button>

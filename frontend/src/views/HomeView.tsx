@@ -2,6 +2,7 @@ import { publicAsset } from "../app/assets";
 
 type HomeViewProps = {
   joinGameId: string;
+  joinError?: string | null;
   setJoinGameId: (v: string) => void;
   onNewGame: () => void;
   onJoinGame: () => Promise<void>;
@@ -9,6 +10,7 @@ type HomeViewProps = {
 
 export default function HomeView({
   joinGameId,
+  joinError,
   setJoinGameId,
   onNewGame,
   onJoinGame,
@@ -109,6 +111,8 @@ export default function HomeView({
                 padding: "8px 10px",
               }}
             />
+
+            {joinError && <p role="alert" style={{ margin: 0 }}>{joinError}</p>}
 
             <button
               onClick={onJoinGame}

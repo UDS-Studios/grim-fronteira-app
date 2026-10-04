@@ -1,3 +1,5 @@
+import PresenceIndicator from "../../components/PresenceIndicator";
+import type { PresenceStatus } from "../../utils/presence";
 import CardImg from "../../components/CardImg";
 import ResponsiveScaleBox from "../../components/ResponsiveScaleBox";
 import TableZone from "../../components/TableZone";
@@ -6,6 +8,7 @@ import { getTwentyOneColor } from "./sceneResolution";
 export type PTVOtherPlayersEntry = {
   playerId: string;
   displayName: string;
+  presenceStatus?: PresenceStatus;
   figureCardId?: string | null;
   busted?: boolean;
   wounded?: boolean;
@@ -164,7 +167,7 @@ function OtherPlayerMini({
           fontSize: 16 * scale,
         }}
       >
-        {player.displayName}
+        {player.displayName} <PresenceIndicator status={player.presenceStatus ?? "unknown"} />
       </div>
 
       <div

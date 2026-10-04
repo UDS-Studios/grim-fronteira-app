@@ -15,6 +15,7 @@ export type LobbyViewProps = {
   setSelectedPlayerId: (v: string) => void;
   claimCardId: string;
   setClaimCardId: (v: string) => void;
+  connectionLost?: boolean;
   run: RunAction;
   setResp: Dispatch<SetStateAction<ActionResponse | null>>;
   onBackHome: () => void;
