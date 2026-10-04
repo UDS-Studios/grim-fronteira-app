@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app.store import GAMES, StoredGame
 from backend.app.presence import enrich_presence, refresh_presence
+from backend.app.pause import GamePausedError, enrich_pause, enforce_gameplay_pause
 from backend.app.session_authority import (
     AuthorityError, ReconnectInvalid, issue_seat_credentials, resolve_reconnect_seat,
     replace_active_session, role_for_seat,
@@ -163,6 +164,15 @@ async def authority_error_handler(request: Request, exc: AuthorityError):
     ).model_dump())
 
 
+@app.exception_handler(GamePausedError)
+async def game_paused_handler(request: Request, exc: GamePausedError):
+    game_id, revision = await _extract_game_context(request)
+    return JSONResponse(status_code=409, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code="GAME_PAUSED", message=str(exc), details={"reason": "marshal_offline"}),
+    ).model_dump())
+
+
 @app.exception_handler(ReconnectInvalid)
 async def reconnect_invalid_handler(request: Request, exc: ReconnectInvalid):
     game_id, revision = await _extract_game_context(request)
@@ -245,7 +255,7 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     projected_state = game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id)
     session = issue_seat_credentials(game, stored_game.sessions, game.meta["marshal_id"])
 
-    projected_state = enrich_presence(projected_state, stored_game.sessions)
+    projected_state = enrich_pause(enrich_presence(projected_state, stored_game.sessions), game, stored_game.sessions)
     response = ActionResponse(
         game_id=game_id,
         revision=game.meta.get("revision", 0),
@@ -266,7 +276,7 @@ def reconnect(req: ReconnectRequest) -> ActionResponse:
         projected_state = game_state_to_dict(g.state, view=role, viewer_id=record.player_id)
         replacement, active_session = replace_active_session(record)
         staged_sessions = {**g.sessions, record.player_id: replacement}
-        projected_state = enrich_presence(projected_state, staged_sessions)
+        projected_state = enrich_pause(enrich_presence(projected_state, staged_sessions), g.state, staged_sessions)
         response = ActionResponse(
             game_id=req.game_id, revision=g.state.meta.get("revision", 0),
             state=projected_state, events=[],
@@ -290,7 +300,7 @@ def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"
         if seat is not None:
             refresh_presence(g.sessions, seat)
         response = _get_state_response(game_id, g.state, view, viewer_id)
-        response.state = enrich_presence(response.state, g.sessions)
+        response.state = enrich_pause(enrich_presence(response.state, g.sessions), g.state, g.sessions)
         return response
 
 
@@ -335,6 +345,7 @@ def action(req: ActionRequest, x_gf_session: Annotated[str | None, Header(alias=
 def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
     game = g.state
 
+    enforce_gameplay_pause(game, g.sessions, req.action, req.view)
     enforce_pending_action_gate(game, req.action, req.params)
 
     events: List[Dict[str, Any]] = []  # keep, even if empty (future Unreal-friendly)
@@ -974,7 +985,8 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         staged_sessions = dict(g.sessions)
         result["session"] = issue_seat_credentials(game, staged_sessions, req.params["player_id"])
 
-    projected_state = enrich_presence(projected_state, staged_sessions if staged_sessions is not None else g.sessions)
+    response_sessions = staged_sessions if staged_sessions is not None else g.sessions
+    projected_state = enrich_pause(enrich_presence(projected_state, response_sessions), game, response_sessions)
     response = ActionResponse(
         game_id=req.game_id,
         revision=game.meta.get("revision", 0),

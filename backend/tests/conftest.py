@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from backend.app import main
+from backend.app import main, presence
 from backend.app.action_authority import get_action_authority, get_claimed_actor
 from backend.app.session_authority import SeatSessionRecord, hash_credential
 from backend.app.store import GAMES
@@ -33,6 +33,15 @@ def authenticated_application_requests(monkeypatch):
         if not player or game_id not in GAMES:
             return None
         stored = GAMES[game_id]
+        # Synthetic engine fixtures omit session issuance. Model an online
+        # Marshal for their pre-existing gameplay scenarios; focused authority,
+        # presence and pause tests do not opt into this compatibility fixture.
+        marshal = stored.state.meta.get("marshal_id")
+        if marshal and marshal not in stored.sessions:
+            stored.sessions[marshal] = SeatSessionRecord(
+                marshal, hash_credential(secrets.token_urlsafe(32)),
+                hash_credential(secrets.token_urlsafe(32)), last_seen=presence.now(),
+            )
         key = (game_id, player)
         token = tokens.get(key)
         record = stored.sessions.get(player)

@@ -1,7 +1,8 @@
 """Observation-only runtime presence; callers hold StoredGame.lock.
 
 Private GET polling (currently every 1.5 seconds) is the heartbeat substrate.
-No presence data is written to gameplay state or used to gate gameplay.
+No presence data is written to gameplay state. Application pause policy lives
+in backend.app.pause.
 """
 from collections.abc import Mapping, MutableMapping
 from dataclasses import replace

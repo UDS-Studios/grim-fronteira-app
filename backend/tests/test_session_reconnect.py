@@ -55,6 +55,7 @@ def test_private_reconnect_rotates_only_active_session(seats, player, role):
     assert (payload["player_id"], payload["role"]) == (player, role)
     assert response["result"]["reconnected"] is True
     projected = game_state_to_dict(original, view=role, viewer_id=player)
+    projected["meta"]["session_pause"] = {"paused": False, "reason": None}
     projected["meta"]["presence"] = {seat: {"online": True} for seat in stored.sessions}
     assert response["state"] == projected
     assert response["revision"] == original.meta["revision"]
