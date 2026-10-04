@@ -4,14 +4,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from backend.engine.grimdeck.deck_io import load_deck
 from backend.engine.grimdeck.models import DeckState
 from .game_state import GameState
 
 
-def load_game_state(path: str | Path) -> GameState:
-    p = Path(path)
-    data: Dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))
+def game_state_from_data(data: Dict[str, Any]) -> GameState:
+    """Reconstruct engine state without executing gameplay or continuations."""
 
     deck_data = data.get("deck")
     if deck_data is None:
@@ -39,10 +37,9 @@ def load_game_state(path: str | Path) -> GameState:
     )
 
 
-def save_game_state(state: GameState, path: str | Path) -> None:
-    p = Path(path)
-
-    data = {
+def game_state_to_data(state: GameState) -> Dict[str, Any]:
+    """Full authoritative representation, never a private/public projection."""
+    return {
         "version": state.version,
         "schema": state.schema,
         "deck": {
@@ -60,4 +57,13 @@ def save_game_state(state: GameState, path: str | Path) -> None:
         "meta": state.meta,
     }
 
-    p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+def load_game_state(path: str | Path) -> GameState:
+    return game_state_from_data(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def save_game_state(state: GameState, path: str | Path) -> None:
+    Path(path).write_text(
+        json.dumps(game_state_to_data(state), indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )

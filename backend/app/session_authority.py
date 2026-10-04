@@ -78,7 +78,7 @@ def replace_active_session(record: SeatSessionRecord) -> tuple[SeatSessionRecord
     active_session = secrets.token_urlsafe(32)
     replacement = replace(
         record, active_session_hash=hash_credential(active_session), last_seen=presence.now(),
-        superseded_session_hashes=record.superseded_session_hashes | {record.active_session_hash},
+        superseded_session_hashes=record.superseded_session_hashes | ({record.active_session_hash} if record.active_session_hash else set()),
     )
     return replacement, active_session
 

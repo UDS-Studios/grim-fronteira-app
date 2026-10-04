@@ -6,10 +6,17 @@ import sys
 
 import pytest
 
-from backend.app import main, presence
+from backend.app import main, presence, store
+from backend.app.persistence import MemoryRepository
 from backend.app.action_authority import get_action_authority, get_claimed_actor
 from backend.app.session_authority import SeatSessionRecord, hash_credential
 from backend.app.store import GAMES
+
+
+@pytest.fixture(autouse=True)
+def isolated_persistence_repository(monkeypatch):
+    """Legacy/synthetic tests never touch production persistence or ownership."""
+    monkeypatch.setattr(store, "repository", MemoryRepository())
 
 
 @pytest.fixture
@@ -101,3 +108,15 @@ def authenticated_application_requests(monkeypatch):
             for original, replacement in [(original_action, action), (original_get, get_state), (original_http, http_request)]:
                 if value is original:
                     monkeypatch.setattr(module, name, replacement)
+
+
+@pytest.fixture
+def file_repository(tmp_path, monkeypatch):
+    """Opt-in real disk durability, isolated from the default memory repository."""
+    from backend.app.persistence import FileRepository
+    repository = FileRepository(tmp_path / "games").open()
+    monkeypatch.setattr(store, "repository", repository)
+    GAMES.clear()
+    yield repository
+    GAMES.clear()
+    repository.close()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from uuid import uuid4
 from typing import Annotated, Any, Dict, List, Literal, Tuple
 
@@ -9,7 +10,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
-from backend.app.store import GAMES, StoredGame
+from backend.app import store
+from backend.app.store import GAMES, StoredGame, commit_stored_game_candidate, publish_stored_game
+from backend.app.persistence import FileRepository, PersistenceUnavailable, GameUnavailable, SessionTopologyInvalid
 from backend.app import presence
 from backend.app.presence import enrich_presence, refresh_presence
 from backend.app.pause import GamePausedError, enrich_pause, enforce_gameplay_pause
@@ -88,7 +91,24 @@ from backend.engine.rules.grim_fronteira.lobby import (
     begin_table,
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    previous_repository = store.repository
+    repository = FileRepository().open()
+    try:
+        report = repository.load_all()
+        GAMES.clear()
+        GAMES.update(report.games)
+        store.repository = repository
+        yield
+    finally:
+        GAMES.clear()
+        store.repository = previous_repository
+        repository.close()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Grim Fronteira API",
     version="0.1.0",
     root_path="/grim-fronteira",
@@ -194,6 +214,22 @@ async def reconnect_invalid_handler(request: Request, exc: ReconnectInvalid):
     return JSONResponse(status_code=401, content=payload.model_dump())
 
 
+@app.exception_handler(PersistenceUnavailable)
+@app.exception_handler(GameUnavailable)
+@app.exception_handler(SessionTopologyInvalid)
+async def persistence_error_handler(request: Request, exc: RuntimeError):
+    game_id, revision = await _extract_game_context(request)
+    if isinstance(exc, SessionTopologyInvalid):
+        status, code = 409, "SESSION_TOPOLOGY_INVALID"
+    else:
+        status = 503
+        code = "GAME_UNAVAILABLE" if isinstance(exc, GameUnavailable) else "PERSISTENCE_UNAVAILABLE"
+    return JSONResponse(status_code=status, content=ActionResponse(
+        game_id=game_id, revision=revision, state={}, events=[], result={},
+        error=ErrorPayload(code=code, message=str(exc), details=None),
+    ).model_dump())
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     game_id, revision = await _extract_game_context(request)
@@ -232,6 +268,7 @@ async def value_error_handler(request: Request, exc: ValueError):
 # --- Helpers ---
 
 def _get_game(game_id: str) -> StoredGame:
+    store.repository.ensure_available(game_id)
     g = GAMES.get(game_id)
     if g is None:
         raise HTTPException(status_code=404, detail=f"Unknown game_id '{game_id}'")
@@ -275,7 +312,7 @@ def new_game(req: NewGameRequest) -> ActionResponse:
         result={"created": True, "session": session},
         error=None,
     )
-    GAMES[game_id] = stored_game
+    publish_stored_game(game_id, stored_game)
     return response
 
 @app.post("/api/gf/reconnect", response_model=ActionResponse)
@@ -287,6 +324,7 @@ def reconnect(req: ReconnectRequest) -> ActionResponse:
     """
     g = _get_game(req.game_id)
     with g.lock:
+        store.repository.ensure_available(req.game_id)
         record = resolve_reconnect_seat(g.sessions, req.reconnect_token)
         if not req.takeover and presence.is_seat_online(record, presence.now()):
             raise TakeoverRequiredError()
@@ -314,6 +352,7 @@ def get_state(game_id: str, view: Literal["public", "player", "marshal", "debug"
         raise HTTPException(status_code=422, detail=f"viewer_id is required for {view} view")
     g = _get_game(game_id)
     with g.lock:
+        store.repository.ensure_available(game_id)
         seat = authorize_request(g.state, g.sessions, x_gf_session, view=view, viewer_id=viewer_id)
         if seat is not None:
             refresh_presence(g.sessions, seat)
@@ -343,6 +382,7 @@ def action(req: ActionRequest, x_gf_session: Annotated[str | None, Header(alias=
     enforce_debug_api_policy(view=req.view, action=req.action)
     g = _get_game(req.game_id)
     with g.lock:
+        store.repository.ensure_available(req.game_id)
         seat = authorize_request(g.state, g.sessions, x_gf_session, view=req.view, viewer_id=req.viewer_id,
                           action=req.action, params=req.params)
         if seat is not None:
@@ -1014,7 +1054,5 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
         error=None,
     )
     if mutated:
-        if staged_sessions is not None:
-            g.sessions = staged_sessions
-        g.state = game
+        commit_stored_game_candidate(req.game_id, g, game, staged_sessions)
     return response
