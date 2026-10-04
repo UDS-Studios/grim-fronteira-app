@@ -1,0 +1,98 @@
+.already-started {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: clamp(0px, 2vw, 24px);
+  color: #f5e8c9;
+}
+
+.already-started__panel {
+  width: min(960px, 100%);
+  overflow: hidden;
+  background: #251c17;
+  border: 2px solid #a88c57;
+  border-radius: 16px;
+  box-shadow: 0 16px 40px #20170f40;
+}
+
+.already-started__art {
+  aspect-ratio: 16 / 9;
+  max-height: 320px;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #57412b, #181411);
+  border-bottom: 1px solid #a88c57;
+  display: grid;
+  place-items: center;
+}
+
+.already-started__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.already-started__gate {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  font-family: Georgia, serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #e2c791;
+}
+
+.already-started__bars {
+  width: clamp(100px, 24vw, 240px);
+  height: clamp(40px, 8vw, 90px);
+  border: 3px solid #a88c57;
+  border-radius: 50% 50% 0 0;
+  background: repeating-linear-gradient(90deg, transparent 0 18%, #a88c57 18% 20%);
+}
+
+.already-started__content {
+  padding: clamp(20px, 4vw, 40px);
+  max-width: 720px;
+  margin: auto;
+}
+
+.already-started h1 {
+  margin: 0 0 20px;
+  color: #ffe8b4;
+  font-family: Georgia, serif;
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  line-height: 1.15;
+}
+
+.already-started p {
+  line-height: 1.65;
+  margin: 0 0 16px;
+}
+
+.already-started__game {
+  font-size: 0.875rem;
+  color: #e2c791;
+  overflow-wrap: anywhere;
+}
+
+.already-started button {
+  margin-top: 8px;
+  background: #f2d39a;
+  color: #251c17;
+  border: 2px solid #f2d39a;
+  padding: 12px 24px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.already-started button:hover {
+  background: #ffe8b4;
+  border-color: #ffe8b4;
+}
+
+.already-started button:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 4px;
+}

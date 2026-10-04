@@ -1,11 +1,30 @@
-import { useEffect, useState } from "react";
+import SessionPauseBanner from "../components/SessionPauseBanner";
+import { isGameplayPaused, PAUSE_EXPLANATION } from "../utils/sessionPause";
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus } from "../utils/presence";
+import DarkRewardPayment from "../components/DarkRewardPayment";
+import PlayerDarkHand from "../components/PlayerDarkHand";
+import { getDarkPlayerStatus, isDarkScene, hasDarkAtmosphere } from "../utils/dark";
+import { getViewRequest } from "../utils/sessionView";
+import { getFactionMedallion } from "./player_table/factionMedallion";
+import YankeeDeck from "./player_table/PTV-YankeeDeck";
+import { getYankeeInspectedCardId, getYankeeChoiceRequest, type YankeeChoice } from "./player_table/yankee";
+import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
+import SceneStatus from "../components/SceneStatus";
+import DiscardPile from "../components/DiscardPile";
+import { getWoundDisplay } from "../utils/wounds";
+import { CHICHIMECA_CHOOSE_TARGET_ACTION, getChichimecaEligibleTargetIds, isChichimecaPendingForActor, reconcileChichimecaSelection, toggleChichimecaSelection } from "./player_table/chichimeca";
+import { isPaisaAvailable, isPaisaSelectionValid, reconcilePaisaSelection, togglePaisaSelection } from "./player_table/paisa";
+import { useEffect, useRef, useState } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import TableZone from "../components/TableZone";
 import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
+import { getPendingInteraction, getPendingInteractionIdentity, isPendingInteractionActor, isPendingInteractionActionAllowed } from "../utils/pendingInteractions";
 import type { ActionResponse, View } from "../api/types";
+import { isCriolloAvailable, isCriolloSelectionOwned, type CriolloSelection } from "./player_table/criollo";
 import PTVPlayerBoard from "./player_table/PTV-PlayerBoard";
 import PTVOtherPlayers from "./player_table/PTV-OtherPlayers";
 import {
@@ -19,6 +38,7 @@ type PlayerTableViewProps = {
   resp: ActionResponse;
   view: View;
   currentActorId: string;
+  connectionLost?: boolean;
   run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
   onBackHome: () => void;
 };
@@ -47,7 +67,10 @@ type ScenePlayerState = {
   resolved?: boolean;
   acknowledged?: boolean;
   wounds_gained?: number;
+  wounds_applied?: number;
   reward_gained?: boolean;
+  dark_reward_loss_pending?: boolean;
+  reward_cards_gained?: number;
   result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
   recovery_action?: "healed" | "skipped" | null;
   reward_discard_started?: boolean;
@@ -82,25 +105,6 @@ type SceneState = {
   };
 };
 
-function getPowerFromCardId(cardId?: string | null): string {
-  if (!cardId) return "Unknown";
-
-  const suit = cardId.slice(-1).toUpperCase();
-
-  switch (suit) {
-    case "H":
-      return "Order and Profit";
-    case "D":
-      return "Law of Lead";
-    case "C":
-      return "Heart of Shadow";
-    case "S":
-      return "Children of the Earth";
-    default:
-      return "Unknown";
-  }
-}
-
 function formatModifierTotal(modifierTotal: number): string {
   if (modifierTotal > 0) return `+${modifierTotal}`;
   if (modifierTotal < 0) return `${modifierTotal}`;
@@ -132,6 +136,8 @@ function CurrentPlayerSceneRow({
   outcome,
   laneState,
   canStay,
+  actionsBlocked,
+  blockedReason,
   canAcknowledge,
   onStay,
   onAcknowledge,
@@ -152,6 +158,8 @@ function CurrentPlayerSceneRow({
   outcome?: SceneOutcome | null;
   laneState: "waiting" | "active" | "done";
   canStay: boolean;
+  actionsBlocked: boolean;
+  blockedReason: string;
   canAcknowledge: boolean;
   onStay: () => void;
   onAcknowledge: () => void;
@@ -286,6 +294,8 @@ function CurrentPlayerSceneRow({
                   <button
                     type="button"
                     onClick={onStay}
+                    disabled={actionsBlocked}
+                    aria-description={actionsBlocked ? blockedReason : undefined}
                     style={{
                       border: "1px solid var(--border-muted)",
                       borderRadius: 10,
@@ -305,6 +315,8 @@ function CurrentPlayerSceneRow({
                   <button
                     type="button"
                     onClick={onAcknowledge}
+                    disabled={actionsBlocked}
+                    aria-description={actionsBlocked ? blockedReason : undefined}
                     style={{
                       border: "1px solid var(--border-muted)",
                       borderRadius: 10,
@@ -510,30 +522,106 @@ export default function PlayerTableView({
   view,
   currentActorId,
   run,
+  connectionLost = false,
   onBackHome,
 }: PlayerTableViewProps) {
+  const [paisaSelecting, setPaisaSelecting] = useState(false);
+  const [paisaSelection, setPaisaSelection] = useState<string[]>([]);
+  const [criolloSelecting, setCriolloSelecting] = useState(false);
+  const [criolloSelection, setCriolloSelection] = useState<CriolloSelection | null>(null);
   const deckScale = 1.6;
   const ds = (value: number) => value * deckScale;
   const [scumTargetingActive, setScumTargetingActive] = useState(false);
   const [selectedScumTargetId, setSelectedScumTargetId] = useState<string | null>(null);
-  const [rewardSelectionMode, setRewardSelectionMode] = useState<"heal" | "discard" | null>(null);
+  const [rewardSelectionMode, setRewardSelectionMode] = useState<"heal" | "discard" | "dark-discard" | null>(null);
   const [selectedRewardCardKeys, setSelectedRewardCardKeys] = useState<string[]>([]);
   const [sceneActionPending, setSceneActionPending] = useState(false);
-  const state = (resp.state as any) ?? {};
+  const rewardActionInFlight = useRef(false);
+  const interactionBlocked = isGameplayPaused(resp.state.meta) || connectionLost;
+  const blockedExplanation = isGameplayPaused(resp.state.meta) ? PAUSE_EXPLANATION : "Connection lost";
+  const state = resp.state ?? {};
+  const pendingInteraction = getPendingInteraction(state);
+  const hasPendingInteraction = pendingInteraction !== null;
+  const isPendingActor = isPendingInteractionActor(state, currentActorId);
+  const pendingIdentity = getPendingInteractionIdentity(state);
+
+  const yankeeCardId = view === "player" ? getYankeeInspectedCardId(state, currentActorId) : null;
+
+  async function handleYankeeChoice(choice: YankeeChoice) {
+    if (interactionBlocked) return;
+    if (view !== "player" || sceneActionPending) return;
+    const request = getYankeeChoiceRequest(state, resp.game_id, currentActorId, choice);
+    if (!request) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction(request));
+    } finally {
+      setSceneActionPending(false);
+    }
+  }
+
+  const chichimecaActive = isChichimecaPendingForActor(state, currentActorId);
+  const chichimecaTargets = getChichimecaEligibleTargetIds(state, currentActorId);
+  const chichimecaContext = JSON.stringify([resp.game_id, view, currentActorId, pendingIdentity]);
+  const [chichimecaSelection, setChichimecaSelection] = useState<{ context: string; target: string | null }>({ context: chichimecaContext, target: null });
+  const selectedChichimecaTarget = chichimecaSelection.context === chichimecaContext
+    ? reconcileChichimecaSelection(chichimecaSelection.target, chichimecaTargets) : null;
+  const chichimecaActionAllowed = chichimecaActive && isPendingInteractionActionAllowed(state, CHICHIMECA_CHOOSE_TARGET_ACTION);
+  // Compare routing values and eligibility, never polling response identity.
+  useEffect(() => {
+    setChichimecaSelection(previous => previous.context === chichimecaContext && previous.target === selectedChichimecaTarget
+      ? previous : { context: chichimecaContext, target: selectedChichimecaTarget });
+  }, [chichimecaContext, selectedChichimecaTarget]);
+
+  function handleSelectChichimecaTarget(target: string) {
+    if (!chichimecaActionAllowed || sceneActionPending) return;
+    setChichimecaSelection({ context: chichimecaContext, target: toggleChichimecaSelection(selectedChichimecaTarget, target, chichimecaTargets) });
+  }
+
+  async function handleConfirmChichimeca() {
+    if (interactionBlocked) return;
+    if (!chichimecaActionAllowed || !selectedChichimecaTarget || sceneActionPending) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: CHICHIMECA_CHOOSE_TARGET_ACTION,
+        params: { player_id: currentActorId, target_player_id: selectedChichimecaTarget },
+        ...getViewRequest(view, currentActorId),
+      }));
+    } finally {
+      // Clear only local selection on success or rejection; run owns server state/errors.
+      setChichimecaSelection(previous => previous.context === chichimecaContext
+        ? { context: chichimecaContext, target: null } : previous);
+      setSceneActionPending(false);
+    }
+  }
+
+  useEffect(() => {
+    if (pendingIdentity === null) return;
+    setCriolloSelecting(false);
+    setCriolloSelection(null);
+    setPaisaSelecting(false);
+    setPaisaSelection([]);
+    setScumTargetingActive(false);
+    setSelectedScumTargetId(null);
+    setRewardSelectionMode(null);
+    setSelectedRewardCardKeys([]);
+  }, [pendingIdentity]);
   const meta = state.meta ?? {};
   const deck = state.deck ?? {};
-  const zones: Record<string, string[]> = state.zones ?? {};
+  const zones = state.zones ?? {};
 
-  const scene: SceneState = meta.scene ?? {};
+  const scene = (meta.scene ?? {}) as SceneState;
   const isDuelScene = scene.mode === "duel";
   const scenePlayers: Record<string, ScenePlayerState> = scene.players ?? {};
   const metaPlayers: Record<string, MetaPlayerState> = meta.players ?? {};
   const lobby = meta.lobby ?? {};
-  const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
+  const lobbyPlayers = (lobby.players ?? {}) as Record<string, LobbyPlayerState>;
   const marshalId: string = meta.marshal_id ?? "";
 
   const deckCount =
-    typeof deck?.draw_pile?.count === "number"
+    deck.draw_pile != null && "count" in deck.draw_pile && typeof deck.draw_pile.count === "number"
       ? deck.draw_pile.count
       : Array.isArray(deck?.draw_pile)
         ? deck.draw_pile.length
@@ -631,15 +719,22 @@ export default function PlayerTableView({
     scene.status === "closed" &&
     (currentPlayerRewardPoints > 21 ||
       (!!currentPlayerState.reward_discard_started && currentPlayerRewardPoints > 20));
-  const healSelectionActive = rewardSelectionMode === "heal";
-  const discardSelectionActive = rewardSelectionMode === "discard";
+  const currentPlayerNeedsDarkRewardLoss = scene.status === "closed" && currentPlayerInScene &&
+    currentPlayerState.dark_reward_loss_pending === true;
+  const darkDiscardSelectionActive = !hasPendingInteraction && rewardSelectionMode === "dark-discard";
+  const selectedRewardsOwned = selectedRewardCardKeys.every(key =>
+    currentPlayerRewardCards.some((card, index) => key === `${card}:${index}`));
+  const canConfirmDarkDiscard = currentPlayerNeedsDarkRewardLoss && darkDiscardSelectionActive &&
+    selectedRewardCardKeys.length === 1 && selectedRewardsOwned;
+  const healSelectionActive = !hasPendingInteraction && rewardSelectionMode === "heal";
+  const discardSelectionActive = !hasPendingInteraction && rewardSelectionMode === "discard";
   const selectedRewardPoints = selectedRewardCardKeys.reduce((sum, key) => {
     const [cardId] = key.split(":");
     return sum + getRewardCardPoints(cardId);
   }, 0);
-  const canConfirmHeal = currentPlayerNeedsHealOrSkip && healSelectionActive && selectedRewardPoints >= 11;
+  const canConfirmHeal = currentPlayerNeedsHealOrSkip && healSelectionActive && selectedRewardsOwned && selectedRewardPoints >= 11;
   const canConfirmDiscard =
-    currentPlayerNeedsDiscardRewards && discardSelectionActive && selectedRewardCardKeys.length === 1;
+    currentPlayerNeedsDiscardRewards && discardSelectionActive && selectedRewardsOwned && selectedRewardCardKeys.length === 1;
 
   function getParticipantTotal(pid: string): number | null {
     if (!participantIds.includes(pid)) return null;
@@ -662,23 +757,20 @@ export default function PlayerTableView({
     return scenePlayers?.[pid]?.modifier_total ?? 0;
   }
 
-  function getPersistentWounds(pid: string): number {
-    return metaPlayers?.[pid]?.wounds ?? 0;
+  function getPlayerWoundDisplay(pid: string) {
+    return getWoundDisplay(metaPlayers?.[pid]?.wounds, scenePlayers?.[pid]);
   }
 
   function getDisplayedWounds(pid: string): number {
-    const persistentWounds = getPersistentWounds(pid);
-    const pendingWounds =
-      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : !!scenePlayers?.[pid]?.busted ? 1 : 0;
-    return persistentWounds + pendingWounds;
+    return getPlayerWoundDisplay(pid).wounds;
   }
 
   function getIsDead(pid: string): boolean {
-    return getDisplayedWounds(pid) >= 2;
+    return getPlayerWoundDisplay(pid).dead;
   }
 
   function getFigureRotated(pid: string): boolean {
-    return getDisplayedWounds(pid) > 0;
+    return getPlayerWoundDisplay(pid).wounded;
   }
 
   function getParticipantLaneState(pid: string): "waiting" | "active" | "done" {
@@ -734,7 +826,7 @@ export default function PlayerTableView({
       }
       return { key: "wound", label: "Wound!!", color: "#d11f1f" };
     }
-    return getSceneOutcome(total, effectiveDifficultyValue);
+    return isDarkScene(meta.scene) ? null : getSceneOutcome(total, effectiveDifficultyValue);
   }
 
   const participantOrderLookup = new Map(participantIds.map((pid, idx) => [pid, idx]));
@@ -743,6 +835,7 @@ export default function PlayerTableView({
     .map((pid) => ({
       playerId: pid,
       displayName: lobbyPlayers?.[pid]?.chosen_name ?? pid,
+      presenceStatus: getPresenceStatus(meta, pid),
       figureCardId: getPlayerFigureCardId(pid),
       busted: !!scenePlayers?.[pid]?.busted,
       wounded: getFigureRotated(pid),
@@ -769,14 +862,6 @@ export default function PlayerTableView({
     })
     .filter((player) => player.figureCardId != null);
 
-  const difficultyValueLabel =
-    scene.difficulty?.value == null
-      ? "-"
-      : scene.azzardo?.revealed && scene.azzardo?.value != null
-        ? `${scene.difficulty.value} + ${scene.azzardo.value}`
-        : azzardoStatus !== "unavailable"
-          ? `${scene.difficulty.value} + ?`
-          : `${scene.difficulty.value}`;
   const totalBoxLabel =
     scene.difficulty?.value == null
       ? "-"
@@ -795,6 +880,9 @@ export default function PlayerTableView({
     difficultyCardId.trim().toUpperCase().charAt(0) === "A";
 
   function getSceneInstruction(): string {
+    if (meta.scene && isDarkScene(meta.scene) && scene.status !== "closed") {
+      return getDarkPlayerStatus(meta.scene, currentActorId, isCurrentViewerActive, hasPendingInteraction);
+    }
     if (scene.status === "idle") {
       return "Waiting for the Marshal to prepare the scene.";
     }
@@ -827,7 +915,7 @@ export default function PlayerTableView({
 
     if (scene.status === "active") {
       if (isCurrentViewerActive) {
-        return "Your turn. Draw until you stay or bust.";
+        return "Your turn.\nDraw until you stay or bust.";
       }
       if (activeParticipantId) {
         const activeName = lobbyPlayers?.[activeParticipantId]?.chosen_name ?? activeParticipantId;
@@ -857,14 +945,23 @@ export default function PlayerTableView({
     }
 
     if (scene.status === "closed") {
-      if (scene.resolution?.message) {
-        return scene.resolution.message;
+      if (currentPlayerNeedsDarkRewardLoss) {
+        return "THE DARK DEMANDS PAYMENT\nChoose 1 Reward to lose before the next scene can begin.";
+      }
+      if (currentPlayerNeedsHealOrSkip) {
+        return "You must heal or skip before the Marshal can open the next scene.";
       }
       if (currentPlayerNeedsDiscardRewards) {
         return "You must discard rewards until you reach 20 points or less before the Marshal can open the next scene.";
       }
-      if (currentPlayerNeedsHealOrSkip) {
-        return "You must heal or skip before the Marshal can open the next scene.";
+      if (meta.scene && isDarkScene(meta.scene) && currentPlayerState.result === "success" && currentPlayerState.reward_cards_gained === 2) {
+        return `${getDarkPlayerStatus(meta.scene, currentActorId, false)}\nWaiting for the Marshal to start a new scene.`;
+      }
+      if (isDarkScene(meta.scene) && (currentPlayerState.wounds_applied ?? 0) > 0) {
+        return "The Dark claimed a wound. Scene closed. Waiting for the Marshal to start a new scene.";
+      }
+      if (scene.resolution?.message) {
+        return scene.resolution.message;
       }
       return "Scene closed. Waiting for the Marshal to start a new scene.";
     }
@@ -873,6 +970,8 @@ export default function PlayerTableView({
   }
 
   async function handleSceneDraw() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (!isCurrentViewerActive || sceneActionPending) return;
 
     setSceneActionPending(true);
@@ -884,7 +983,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -893,6 +992,8 @@ export default function PlayerTableView({
   }
 
   async function handleSceneStay() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (!isCurrentViewerActive || sceneActionPending) return;
 
     setSceneActionPending(true);
@@ -904,7 +1005,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -913,6 +1014,8 @@ export default function PlayerTableView({
   }
 
   async function handleAcknowledgeResolution() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (sceneActionPending) return;
 
     setSceneActionPending(true);
@@ -924,7 +1027,7 @@ export default function PlayerTableView({
           params: {
             player_id: currentActorId,
           },
-          view,
+          ...getViewRequest(view, currentActorId),
         })
       );
     } finally {
@@ -932,87 +1035,184 @@ export default function PlayerTableView({
     }
   }
 
-  async function handleSkipHeal() {
-    if (!currentPlayerNeedsHealOrSkip) return;
+  // One synchronous lock also protects rapid clicks before React re-renders.
+  async function submitRewardAction(action: string, params: Record<string, unknown>) {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction || sceneActionPending || rewardActionInFlight.current) return;
+    rewardActionInFlight.current = true;
+    setSceneActionPending(true);
+    try {
+      const response = await run(gfAction({ game_id: resp.game_id, action,
+        params: { player_id: currentActorId, ...params }, ...getViewRequest(view, currentActorId) }));
+      if (!response.error) {
+        setRewardSelectionMode(null);
+        setSelectedRewardCardKeys([]);
+      }
+    } finally {
+      rewardActionInFlight.current = false;
+      setSceneActionPending(false);
+    }
+  }
 
-    setRewardSelectionMode(null);
-    setSelectedRewardCardKeys([]);
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_skip_heal",
-        params: {
-          player_id: currentActorId,
-        },
-        view,
-      })
-    );
+  async function handleSkipHeal() {
+    if (interactionBlocked) return;
+    if (!currentPlayerNeedsHealOrSkip) return;
+    await submitRewardAction("gf.scene_skip_heal", {});
   }
 
   async function handleConfirmHeal() {
+    if (interactionBlocked) return;
     if (!canConfirmHeal) return;
+    await submitRewardAction("gf.scene_heal_wound", {
+      reward_card_ids: selectedRewardCardKeys.map(key => key.split(":")[0]),
+    });
+  }
 
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_heal_wound",
-        params: {
-          player_id: currentActorId,
-          reward_card_ids: selectedRewardCardKeys.map((key) => key.split(":")[0]),
-        },
-        view,
-      })
-    );
-
-    setRewardSelectionMode(null);
+  function toggleRewardMode(mode: "heal" | "discard" | "dark-discard", needed: boolean) {
+    if (!needed || hasPendingInteraction || sceneActionPending || rewardActionInFlight.current) return;
+    setRewardSelectionMode(prev => prev === mode ? null : mode);
     setSelectedRewardCardKeys([]);
   }
 
-  function handleToggleHealSelection() {
-    if (!currentPlayerNeedsHealOrSkip) return;
-    setRewardSelectionMode((prev) => (prev === "heal" ? null : "heal"));
-    setSelectedRewardCardKeys([]);
-  }
+  function handleToggleHealSelection() { toggleRewardMode("heal", currentPlayerNeedsHealOrSkip); }
+  function handleToggleDiscardSelection() { toggleRewardMode("discard", currentPlayerNeedsDiscardRewards); }
 
   async function handleConfirmDiscardReward() {
+    if (interactionBlocked) return;
     if (!canConfirmDiscard) return;
-
-    await run(
-      gfAction({
-        game_id: resp.game_id,
-        action: "gf.scene_discard_reward",
-        params: {
-          player_id: currentActorId,
-          reward_card_id: selectedRewardCardKeys[0].split(":")[0],
-        },
-        view,
-      })
-    );
-
-    setRewardSelectionMode(null);
-    setSelectedRewardCardKeys([]);
+    await submitRewardAction("gf.scene_discard_reward", { reward_card_id: selectedRewardCardKeys[0].split(":")[0] });
   }
 
-  function handleToggleDiscardSelection() {
-    if (!currentPlayerNeedsDiscardRewards) return;
-    setRewardSelectionMode((prev) => (prev === "discard" ? null : "discard"));
-    setSelectedRewardCardKeys([]);
+  async function handleConfirmDarkReward() {
+    if (interactionBlocked) return;
+    if (!canConfirmDarkDiscard) return;
+    await submitRewardAction("gf.scene_discard_dark_reward", { reward_card_id: selectedRewardCardKeys[0].split(":")[0] });
   }
 
   function handleToggleRewardCard(cardId: string, index: number) {
-    if (rewardSelectionMode === null) return;
+    if (hasPendingInteraction || sceneActionPending || rewardActionInFlight.current) return;
+    if (rewardSelectionMode === null || currentPlayerRewardCards[index] !== cardId) return;
     const key = `${cardId}:${index}`;
-    if (rewardSelectionMode === "discard") {
-      setSelectedRewardCardKeys((prev) => (prev[0] === key ? [] : [key]));
+    if ((rewardSelectionMode === "discard" && currentPlayerNeedsDiscardRewards) ||
+        (rewardSelectionMode === "dark-discard" && currentPlayerNeedsDarkRewardLoss)) {
+      setSelectedRewardCardKeys(prev => prev[0] === key ? [] : [key]);
       return;
     }
-    if (!currentPlayerNeedsHealOrSkip) return;
-    setSelectedRewardCardKeys((prev) =>
-      prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key]
-    );
+    if (rewardSelectionMode !== "heal" || !currentPlayerNeedsHealOrSkip) return;
+    setSelectedRewardCardKeys(prev => prev.includes(key) ? prev.filter(entry => entry !== key) : [...prev, key]);
+  }
+
+  const paisaAvailable = isPaisaAvailable(state, currentActorId) && !getIsDead(currentActorId);
+  const paisaActive = !hasPendingInteraction && paisaSelecting && paisaAvailable;
+  const validPaisaSelection = reconcilePaisaSelection(paisaSelection, currentPlayerVengeanceCards);
+  const canConfirmPaisa = isPaisaSelectionValid(state, currentActorId, paisaSelection);
+
+  useEffect(() => {
+    setPaisaSelecting(false);
+    setPaisaSelection([]);
+  }, [currentActorId, view, resp.game_id]);
+
+  useEffect(() => {
+    if (!paisaAvailable) {
+      setPaisaSelecting(false);
+      setPaisaSelection([]);
+    }
+  }, [paisaAvailable]);
+
+  // New polling objects do not reset the mode or still-owned card IDs.
+  useEffect(() => {
+    setPaisaSelection(previous => {
+      const next = reconcilePaisaSelection(previous, currentPlayerVengeanceCards);
+      return next.length === previous.length && next.every((id, i) => id === previous[i])
+        ? previous : next;
+    });
+  }, [currentPlayerVengeanceCards]);
+
+  function cancelPaisaSelection() {
+    setPaisaSelecting(false);
+    setPaisaSelection([]);
+  }
+
+  function handleSelectPaisaCard(cardId: string) {
+    if (hasPendingInteraction) return;
+    if (!paisaActive || sceneActionPending) return;
+    setPaisaSelection(previous => togglePaisaSelection(previous, cardId, currentPlayerVengeanceCards));
+  }
+
+  async function handleConfirmPaisa() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
+    if (!paisaActive || !canConfirmPaisa || sceneActionPending) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: "gf.faction_paisa_claim_reward",
+        params: { player_id: currentActorId, vengeance_card_ids: validPaisaSelection },
+        ...getViewRequest(view, currentActorId),
+      }));
+    } finally {
+      cancelPaisaSelection();
+      setSceneActionPending(false);
+    }
+  }
+
+  const criolloAvailable = isCriolloAvailable(state, currentActorId) && !getIsDead(currentActorId);
+  const factionMedallion = getFactionMedallion(state, currentActorId, {
+    criolloAvailable, paisaAvailable, actionPending: sceneActionPending,
+  });
+  const criolloActive = !hasPendingInteraction && criolloSelecting && criolloAvailable;
+  const validCriolloSelection = isCriolloSelectionOwned(state, currentActorId, criolloSelection)
+    ? criolloSelection : null;
+
+  // Polling preserves valid interactions; changing the viewer always resets them.
+  useEffect(() => {
+    setCriolloSelecting(false);
+    setCriolloSelection(null);
+  }, [currentActorId, view]);
+
+  useEffect(() => {
+    if (!criolloAvailable) {
+      setCriolloSelecting(false);
+      setCriolloSelection(null);
+    }
+  }, [criolloAvailable]);
+
+  useEffect(() => {
+    if (criolloSelection !== null && validCriolloSelection === null) {
+      setCriolloSelection(null);
+    }
+  }, [criolloSelection, validCriolloSelection]);
+
+  function cancelCriolloSelection() {
+    setCriolloSelecting(false);
+    setCriolloSelection(null);
+  }
+
+  async function handleConfirmCriollo() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
+    if (!criolloActive || !validCriolloSelection || sceneActionPending) return;
+    setSceneActionPending(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: "gf.faction_criollo_convert_resource",
+        params: {
+          player_id: currentActorId,
+          card_id: validCriolloSelection.cardId,
+          from_resource: validCriolloSelection.resource,
+        },
+        ...getViewRequest(view, currentActorId),
+      }));
+    } finally {
+      cancelCriolloSelection();
+      setSceneActionPending(false);
+    }
   }
 
   const canPlayScum =
+    !hasPendingInteraction &&
     ((scene.status === "active" &&
       !sceneResolved &&
       (currentPlayerInScene
@@ -1025,6 +1225,7 @@ export default function PlayerTableView({
     currentPlayerScumCards.length > 0;
 
   const canPlayVengeance =
+    !hasPendingInteraction &&
     currentPlayerInScene &&
     ((scene.status === "active" &&
       isCurrentViewerActive &&
@@ -1037,6 +1238,8 @@ export default function PlayerTableView({
     currentPlayerVengeanceCards.length > 0;
 
   const canDrawFromDeck =
+    !interactionBlocked &&
+    !hasPendingInteraction &&
     scene.status === "active" &&
     isCurrentViewerActive &&
     !currentPlayerState.standing &&
@@ -1045,6 +1248,7 @@ export default function PlayerTableView({
     !sceneResolved;
 
   const canStay =
+    !hasPendingInteraction &&
     currentPlayerInScene &&
     scene.status === "active" &&
     isCurrentViewerActive &&
@@ -1054,6 +1258,7 @@ export default function PlayerTableView({
     !sceneResolved;
 
   const canAcknowledge =
+    !hasPendingInteraction &&
     currentPlayerInScene &&
     scene.status === "awaiting_ack" &&
     !!currentPlayerState.resolved &&
@@ -1061,7 +1266,7 @@ export default function PlayerTableView({
     !sceneActionPending;
 
   const deckTooltip =
-    scene.status !== "active"
+    interactionBlocked ? blockedExplanation : scene.status !== "active"
       ? "Scene not active"
       : canDrawFromDeck
         ? "Draw a card"
@@ -1075,6 +1280,10 @@ export default function PlayerTableView({
   }, [canPlayScum, scumTargetingActive]);
 
   useEffect(() => {
+    if ((!currentPlayerNeedsDarkRewardLoss && rewardSelectionMode === "dark-discard") || !selectedRewardsOwned) {
+      setRewardSelectionMode(null);
+      setSelectedRewardCardKeys([]);
+    }
     if (!currentPlayerNeedsHealOrSkip && rewardSelectionMode === "heal") {
       setRewardSelectionMode(null);
       setSelectedRewardCardKeys([]);
@@ -1083,16 +1292,20 @@ export default function PlayerTableView({
       setRewardSelectionMode(null);
       setSelectedRewardCardKeys([]);
     }
-  }, [currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode]);
+  }, [currentPlayerNeedsDarkRewardLoss, currentPlayerNeedsDiscardRewards, currentPlayerNeedsHealOrSkip, rewardSelectionMode, selectedRewardsOwned]);
 
   async function handleToggleScumTargeting() {
-    if (!canPlayScum) return;
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
+    if (!canPlayScum || criolloActive || paisaActive || sceneActionPending) return;
     setScumTargetingActive((prev) => !prev);
     setSelectedScumTargetId(null);
   }
 
   async function handlePlayVengeance() {
-    if (!canPlayVengeance) return;
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
+    if (!canPlayVengeance || criolloActive || paisaActive || sceneActionPending) return;
     setScumTargetingActive(false);
     setSelectedScumTargetId(null);
 
@@ -1103,13 +1316,15 @@ export default function PlayerTableView({
         params: {
           player_id: currentActorId,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleSelectScumTarget(targetPlayerId: string) {
-    if (!canPlayScum || !scumTargetingActive) return;
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
+    if (!canPlayScum || !scumTargetingActive || criolloActive || paisaActive || sceneActionPending) return;
     setSelectedScumTargetId(targetPlayerId);
 
     await run(
@@ -1120,7 +1335,7 @@ export default function PlayerTableView({
           player_id: currentActorId,
           target_player_id: targetPlayerId,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
 
@@ -1130,12 +1345,13 @@ export default function PlayerTableView({
 
   return (
     <div
+      className={hasDarkAtmosphere(meta.scene) ? "saloon-table dark-mode-active" : "saloon-table"}
       style={{
-        height: "100%",
+        height: "auto",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
-        marginTop: 12,
+        overflow: "visible",
+        marginTop: 0,
         gap: 12,
       }}
     >
@@ -1176,9 +1392,35 @@ export default function PlayerTableView({
             src={publicAsset("ui/refresh.png")}
             alt="Refresh"
             title="Refresh Table"
-            onClick={() => run(getGame(resp.game_id, view))}
+            onClick={() => run(getGame(resp.game_id, view, getViewRequest(view, currentActorId).viewer_id))}
           />
         </div>
+
+        {view === "player" && <SessionPauseBanner meta={meta} />}
+
+        {hasPendingInteraction && (
+          <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
+            {yankeeCardId !== null ? (
+              <div className="table-target-prompt">
+                <strong>Order and Profit · Inspect the top card</strong>
+                <div>Keep it on top or bury it at the bottom of the deck.</div>
+              </div>
+            ) : chichimecaActive ? (
+              <div className="table-target-prompt">
+                <strong>Children of the Earth · Choose an enemy</strong>
+                <div>Choose an enemy to steal 1 Scum from.</div>
+                <div>{chichimecaTargets.length === 0
+                  ? "No eligible targets are currently available."
+                  : "Select an eligible player in Other Players. Other gameplay actions are paused."}</div>
+                <button type="button" disabled={interactionBlocked || !chichimecaActionAllowed || !selectedChichimecaTarget || sceneActionPending} title={interactionBlocked ? blockedExplanation : undefined} onClick={handleConfirmChichimeca}>
+                  {sceneActionPending ? "Confirming…" : "Confirm target"}
+                </button>
+              </div>
+            ) : isPendingActor
+              ? "An interaction is waiting for you. Other gameplay actions are paused."
+              : `Waiting for ${lobbyPlayers[pendingInteraction.actor_id]?.chosen_name ?? "another player"} to resolve an interaction. Gameplay actions are paused.`}
+          </div>
+        )}
 
         <div
           style={{
@@ -1190,7 +1432,8 @@ export default function PlayerTableView({
           <div><b>phase:</b> {meta.phase ?? "-"}</div>
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
-          <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>
+          <div><b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>
+          {!isDarkScene(meta.scene) && <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>}
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
         </div>
@@ -1203,86 +1446,229 @@ export default function PlayerTableView({
           display: "grid",
           gridTemplateColumns: "auto minmax(0, 1fr)",
           gap: 14,
-          overflow: "hidden",
+          overflow: "visible",
         }}
       >
         <div
           style={{
-            width: "clamp(176px, 18vw, 352px)",
+            width: 440,
             display: "grid",
-            gap: 14,
-            overflowY: "auto",
+            gap: 8,
+            overflowY: "visible",
             minHeight: 0,
             alignContent: "start",
             alignSelf: "start",
             gridAutoRows: "max-content",
           }}
         >
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
-            <TableZone title="Deck">
-              <button
-                type="button"
-                onClick={handleSceneDraw}
-                disabled={!canDrawFromDeck}
+          <div style={{ width: "100%" }}>
+            <TableZone title="Difficulty / Scene">
+              {isDarkScene(meta.scene) ? (
+                <div className="player-dark-scene">
+                  <PlayerDarkHand state={state} />
+                  <SceneStatus message={getSceneInstruction()}
+                    ownTurn={scene.status === "active" && isCurrentViewerActive && !hasPendingInteraction} />
+                </div>
+              ) : (
+              <div
                 style={{
-                  border: "1px solid var(--border-muted)",
-                  borderRadius: ds(12),
-                  padding: ds(10),
-                  background: "var(--surface-strong)",
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: 14,
                   alignItems: "center",
-                  gap: ds(10),
-                  width: "100%",
-                  boxSizing: "border-box",
-                  cursor: canDrawFromDeck ? "pointer" : "not-allowed",
-                  opacity: canDrawFromDeck ? 1 : 0.65,
+                  justifyContent: "start",
                 }}
-                title={deckTooltip}
               >
-                {deckCount > 0 ? (
-                  <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
-                ) : (
+                <div
+                  style={{
+                    border: "1px solid var(--border-muted)",
+                    borderRadius: 14,
+                    padding: "12px 6px",
+                    background: "var(--surface-muted)",
+                    display: "grid",
+                    gap: 12,
+                    alignContent: "center",
+                    justifyItems: "center",
+                    justifySelf: "start",
+                    minHeight: 130,
+                  }}
+                >
                   <div
                     style={{
-                      width: ds(86),
-                      height: ds(124),
-                      border: "2px dashed var(--border-muted)",
-                      borderRadius: ds(10),
                       display: "flex",
                       alignItems: "center",
+                      gap: 6,
+                      flexWrap: "wrap",
                       justifyContent: "center",
-                      color: "var(--text-muted)",
-                      fontSize: ds(12),
-                      background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
-                      flexShrink: 0,
                     }}
                   >
-                    empty
-                  </div>
-                )}
-                <div style={{ fontSize: ds(16), textAlign: "left" }}>
-                  <div>
-                    <b>{deckCount}</b> cards
-                  </div>
-                  <div style={{ fontSize: ds(12), opacity: 0.75 }}>{deckTooltip}</div>
-                </div>
-              </button>
-            </TableZone>
-          </ResponsiveScaleBox>
+                    <div
+                      style={{
+                        fontFamily: "LavaArabic, serif",
+                        fontSize: "var(--difficulty-base-size)",
+                        lineHeight: 1,
+                        whiteSpace: "nowrap",
+                        color: isJokerDifficulty ? "#7a1f1f" : "inherit",
+                      }}
+                    >
+                      {isJokerDifficulty ? "20" : "10 +"}
+                    </div>
 
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
-            <TableZone title="Discard">
-              {discardPile.length === 0 ? (
-                <div style={{ opacity: 0.6, fontSize: ds(13) }}>— empty —</div>
-              ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: ds(8) }}>
-                  {discardPile.map((cardId, idx) => (
-                    <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={ds(70)} />
-                  ))}
+                    {difficultyCardId ? (
+                        <CardImg
+                          cardId={difficultyCardId}
+                          width={DIFFICULTY_CARD_WIDTH}
+                          title="Difficulty card"
+                        />
+                    ) : (
+                      <div style={{ opacity: 0.6 }}>— no card —</div>
+                    )}
+
+                    {azzardoStatus !== "unavailable" ? (
+                      azzardoCardId ? (
+                        <CardImg
+                          cardId={azzardoCardId}
+                          width={86}
+                          title="Azzardo"
+                        />
+                      ) : (
+                        <CardImg
+                          cardId="BACK"
+                          faceDown
+                          width={86}
+                          title="Azzardo"
+                        />
+                      )
+                    ) : (
+                      <div style={{ opacity: 0.35, fontSize: 13 }}>
+                        no azzardo
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                <div
+                  style={{
+                    border: "1px solid var(--border-muted)",
+                    borderRadius: 14,
+                    padding: "12px 10px",
+                    background: "var(--surface-muted)",
+                    display: "grid",
+                    gridTemplateRows: "auto 1fr",
+                    justifyItems: "center",
+                    alignItems: "center",
+                    minWidth: 50,
+                    justifySelf: "start",
+                    minHeight: 130,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "LavaArabic, serif",
+                      fontSize: 14,
+                      lineHeight: 1,
+                      letterSpacing: "0.06em",
+                      textAlign: "center",
+                    }}
+                  >
+                    TOTAL
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "LavaArabic, serif",
+                      fontSize: "3rem",
+                      lineHeight: 1,
+                      whiteSpace: "nowrap",
+                      opacity: 0.58,
+                      color: difficultyTotalColor ?? "inherit",
+                    }}
+                  >
+                    {totalBoxLabel}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    gridColumn: "1 / -1",
+                    alignContent: "start",
+                    minWidth: 0,
+                  }}
+                >
+                  <SceneStatus
+                    message={getSceneInstruction()}
+                    ownTurn={scene.status === "active" && isCurrentViewerActive}
+                  />
+                </div>
+              </div>
               )}
             </TableZone>
-          </ResponsiveScaleBox>
+          </div>
+
+          <div className="table-deck-stack">
+            <ResponsiveScaleBox baseWidth={440} minScale={0.5} maxScale={1}>
+              <TableZone title="Deck">
+                {yankeeCardId !== null ? (
+                  <YankeeDeck cardId={yankeeCardId} deckCount={deckCount} busy={interactionBlocked || sceneActionPending} onChoose={handleYankeeChoice} />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSceneDraw}
+                    disabled={interactionBlocked || !canDrawFromDeck}
+                    style={{
+                      border: "1px solid var(--border-muted)",
+                      borderRadius: ds(12),
+                      padding: 8,
+                      background: "var(--surface-strong)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: ds(10),
+                      width: "100%",
+                      boxSizing: "border-box",
+                      cursor: canDrawFromDeck ? "pointer" : "not-allowed",
+                      opacity: canDrawFromDeck ? 1 : 0.65,
+                    }}
+                    title={deckTooltip}
+                  >
+                    {typeof deckCount === "number" && deckCount > 0 ? (
+                      <CardImg cardId="BACK" faceDown width={DECK_CARD_WIDTH} title="Deck" />
+                    ) : (
+                      <div
+                        style={{
+                          width: DECK_CARD_WIDTH,
+                          height: DECK_CARD_WIDTH * 1.45,
+                          border: "2px dashed var(--border-muted)",
+                          borderRadius: ds(10),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "var(--text-muted)",
+                          fontSize: ds(12),
+                          background: "color-mix(in srgb, var(--surface-bg) 82%, transparent)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        empty
+                      </div>
+                  )}
+                  <div style={{ fontSize: 28, textAlign: "left" }}>
+                    <div>
+                      <b>{deckCount}</b> cards
+                    </div>
+                    <div style={{ fontSize: ds(12), opacity: 0.75 }}>{deckTooltip}</div>
+                  </div>
+                </button>
+                )}
+              </TableZone>
+            </ResponsiveScaleBox>
+
+            <ResponsiveScaleBox baseWidth={440} minScale={0.5} maxScale={1}>
+              <TableZone title={`Discard · ${discardPile.length}`}>
+                <DiscardPile cards={discardPile} />
+              </TableZone>
+            </ResponsiveScaleBox>
+          </div>
         </div>
 
         <div
@@ -1290,14 +1676,14 @@ export default function PlayerTableView({
             display: "grid",
             gap: 14,
             minHeight: 0,
-            overflow: "hidden",
+            overflow: "visible",
           }}
         >
           <div
             style={{
               minHeight: 0,
-              overflowX: "auto",
-              overflowY: "hidden",
+              overflowX: "visible",
+              overflowY: "visible",
               display: "grid",
               gap: 14,
             }}
@@ -1308,7 +1694,7 @@ export default function PlayerTableView({
                 gridTemplateColumns: "minmax(0, 1fr) auto",
                 gap: 18,
                 alignItems: "start",
-                minWidth: "max-content",
+                minWidth: 0,
                 minHeight: 0,
                 width: "100%",
               }}
@@ -1320,146 +1706,6 @@ export default function PlayerTableView({
                   minHeight: 0,
                 }}
               >
-                <div style={{ width: "100%" }}>
-                  <TableZone title="Difficulty / Scene">
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "max-content max-content minmax(320px, 1fr)",
-                        gap: 14,
-                        alignItems: "center",
-                        justifyContent: "start",
-                      }}
-                    >
-                      <div
-                        style={{
-                          border: "1px solid var(--border-muted)",
-                          borderRadius: 14,
-                          padding: "14px 16px",
-                          background: "var(--surface-muted)",
-                          display: "grid",
-                          gap: 12,
-                          alignContent: "center",
-                          justifyItems: "center",
-                          justifySelf: "start",
-                          minHeight: 212,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 12,
-                            flexWrap: "wrap",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontFamily: "LavaArabic, serif",
-                              fontSize: isJokerDifficulty ? "4.2rem" : "3rem",
-                              lineHeight: 1,
-                              whiteSpace: "nowrap",
-                              color: isJokerDifficulty ? "#7a1f1f" : "inherit",
-                            }}
-                          >
-                            {isJokerDifficulty ? "20" : "10 +"}
-                          </div>
-
-                          {difficultyCardId ? (
-                              <CardImg
-                                cardId={difficultyCardId}
-                                width={ds(86)}
-                                title="Difficulty card"
-                              />
-                          ) : (
-                            <div style={{ opacity: 0.6 }}>— no card —</div>
-                          )}
-
-                          {azzardoStatus !== "unavailable" ? (
-                            azzardoCardId ? (
-                              <CardImg
-                                cardId={azzardoCardId}
-                                width={ds(86)}
-                                title="Azzardo"
-                              />
-                            ) : (
-                              <CardImg
-                                cardId="BACK"
-                                faceDown
-                                width={ds(86)}
-                                title="Azzardo"
-                              />
-                            )
-                          ) : (
-                            <div style={{ opacity: 0.35, fontSize: 13 }}>
-                              no azzardo
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: "1px solid var(--border-muted)",
-                          borderRadius: 14,
-                          padding: "16px 20px",
-                          background: "var(--surface-muted)",
-                          display: "grid",
-                          gridTemplateRows: "auto 1fr",
-                          justifyItems: "center",
-                          alignItems: "center",
-                          minWidth: 116,
-                          justifySelf: "start",
-                          minHeight: 212,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontFamily: "LavaArabic, serif",
-                            fontSize: 14,
-                            lineHeight: 1,
-                            letterSpacing: "0.06em",
-                            textAlign: "center",
-                          }}
-                        >
-                          TOTAL
-                        </div>
-                        <div
-                          style={{
-                            fontFamily: "LavaArabic, serif",
-                            fontSize: "3rem",
-                            lineHeight: 1,
-                            whiteSpace: "nowrap",
-                            opacity: 0.58,
-                            color: difficultyTotalColor ?? "inherit",
-                          }}
-                        >
-                          {totalBoxLabel}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gap: 10,
-                          alignContent: "start",
-                          minWidth: 0,
-                        }}
-                      >
-                        <div><b>difficulty value:</b> {difficultyValueLabel}</div>
-                        <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
-                        <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                        <div><b>azzardo status:</b> {azzardoStatus}</div>
-                        <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
-                        <div><b>participants selected:</b> {participantIds.length}</div>
-                        <div><b>scene status:</b> {scene.status ?? "-"}</div>
-                        <div style={{ opacity: 0.72 }}>{getSceneInstruction()}</div>
-                      </div>
-                    </div>
-                  </TableZone>
-                </div>
-
                 <div style={{ width: "100%" }}>
                   <CurrentPlayerSceneRow
                     inScene={currentPlayerInScene}
@@ -1478,6 +1724,8 @@ export default function PlayerTableView({
                     outcome={getParticipantOutcome(currentActorId)}
                     laneState={getParticipantLaneState(currentActorId)}
                     canStay={canStay}
+                    actionsBlocked={interactionBlocked}
+                    blockedReason={blockedExplanation}
                     canAcknowledge={canAcknowledge}
                     onStay={handleSceneStay}
                     onAcknowledge={handleAcknowledgeResolution}
@@ -1499,21 +1747,21 @@ export default function PlayerTableView({
                     figureDead={getIsDead(currentActorId)}
                     scumCardIds={currentPlayerScumCards}
                     revealedScumCardId={
-                      scumTargetingActive && currentPlayerScumCards.length > 0
+                      !hasPendingInteraction && scumTargetingActive && currentPlayerScumCards.length > 0
                         ? currentPlayerScumCards[currentPlayerScumCards.length - 1]
                         : null
                     }
                     vengeanceCardIds={currentPlayerVengeanceCards}
                     rewardCardIds={currentPlayerRewardCards}
                     rewardPoints={currentPlayerRewardPoints}
-                    selectedRewardCardIds={selectedRewardCardKeys}
-                    rewardSelectionEnabled={rewardSelectionMode !== null}
-                    rewardSelectionLocked={
+                    selectedRewardCardIds={hasPendingInteraction ? [] : selectedRewardCardKeys}
+                    rewardSelectionEnabled={!hasPendingInteraction && rewardSelectionMode !== null}
+                    rewardSelectionLocked={sceneActionPending || (
                       rewardSelectionMode === "heal"
                         ? !currentPlayerNeedsHealOrSkip
                         : rewardSelectionMode === "discard"
                           ? !currentPlayerNeedsDiscardRewards
-                          : true
+                          : rewardSelectionMode === "dark-discard" ? !currentPlayerNeedsDarkRewardLoss : true)
                     }
                     rewardSelectionTotal={selectedRewardPoints}
                     rewardSelectionHint={
@@ -1523,23 +1771,87 @@ export default function PlayerTableView({
                           : "Select reward cards worth at least 11"
                         : rewardSelectionMode === "discard"
                           ? "Select one reward card to discard"
-                        : null
+                        : rewardSelectionMode === "dark-discard" ? "Choose exactly one Reward to lose to the Dark" : null
                     }
                     mustHealOrSkip={currentPlayerNeedsHealOrSkip}
                     mustDiscardRewards={currentPlayerNeedsDiscardRewards}
-                    powerLabel={getPowerFromCardId(currentPlayerFigureCardId)}
+                    medallion={factionMedallion}
                     inScene={currentPlayerInScene}
-                    onClickScum={canPlayScum ? handleToggleScumTargeting : undefined}
-                    onClickVengeance={canPlayVengeance ? handlePlayVengeance : undefined}
-                    onClickRewardCard={rewardSelectionMode ? handleToggleRewardCard : undefined}
+                    onClickScum={!criolloActive && !paisaActive && !sceneActionPending && !interactionBlocked && canPlayScum ? handleToggleScumTargeting : undefined}
+                    onClickVengeance={!criolloActive && !paisaActive && !sceneActionPending && !interactionBlocked && canPlayVengeance ? handlePlayVengeance : undefined}
+                    onClickRewardCard={!hasPendingInteraction && !sceneActionPending && rewardSelectionMode ? handleToggleRewardCard : undefined}
+                    criolloSelecting={criolloActive}
+                    criolloSelection={validCriolloSelection}
+                    criolloSelectionLocked={hasPendingInteraction || sceneActionPending}
+                    onSelectCriolloCard={(selection) => { if (!hasPendingInteraction) setCriolloSelection(selection); }}
+                    paisaSelecting={paisaActive}
+                    paisaSelection={validPaisaSelection}
+                    paisaSelectionLocked={hasPendingInteraction || sceneActionPending}
+                    onSelectPaisaCard={handleSelectPaisaCard}
+                    resourceActions={paisaAvailable ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {!paisaActive ? (
+                          <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={() => {
+                            if (hasPendingInteraction) return;
+                            setScumTargetingActive(false);
+                            setSelectedScumTargetId(null);
+                            setPaisaSelection([]);
+                            setPaisaSelecting(true);
+                          }}>Heart of Shadow · Claim Reward</button>
+                        ) : (
+                          <>
+                            <div role="status">Choose 3 Vengeance cards · {validPaisaSelection.length} / 3 selected</div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button type="button" disabled={interactionBlocked || hasPendingInteraction || !canConfirmPaisa || sceneActionPending} title={interactionBlocked ? blockedExplanation : undefined}
+                                onClick={handleConfirmPaisa}>
+                                {sceneActionPending ? "Claiming…" : "Discard 3 · Claim Reward"}
+                              </button>
+                              <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={cancelPaisaSelection}>Cancel</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : criolloAvailable ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {!criolloActive ? (
+                          <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={() => {
+                            if (hasPendingInteraction) return;
+                            setScumTargetingActive(false);
+                            setSelectedScumTargetId(null);
+                            setCriolloSelection(null);
+                            setCriolloSelecting(true);
+                          }}>Law of Lead · Convert</button>
+                        ) : (
+                          <>
+                            <div role="status">
+                              {validCriolloSelection
+                                ? `Convert ${validCriolloSelection.cardId}: ${validCriolloSelection.resource === "scum" ? "Scum → Vengeance" : "Vengeance → Scum"}`
+                                : "Choose one Scum or Vengeance card to convert."}
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button type="button" disabled={interactionBlocked || hasPendingInteraction || !validCriolloSelection || sceneActionPending} title={interactionBlocked ? blockedExplanation : undefined}
+                                onClick={handleConfirmCriollo}>
+                                {sceneActionPending ? "Converting…" : "Confirm conversion"}
+                              </button>
+                              <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={cancelCriolloSelection}>Cancel</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
                     rewardActions={
-                      currentPlayerNeedsHealOrSkip || currentPlayerNeedsDiscardRewards ? (
+                      currentPlayerNeedsDarkRewardLoss || currentPlayerNeedsHealOrSkip || currentPlayerNeedsDiscardRewards ? (
                         <div
                           style={{
                             display: "grid",
                             gap: 10,
                           }}
                         >
+                          {currentPlayerNeedsDarkRewardLoss && <DarkRewardPayment
+                            active={darkDiscardSelectionActive} busy={hasPendingInteraction || sceneActionPending} paused={interactionBlocked}
+                            canConfirm={canConfirmDarkDiscard}
+                            onToggle={() => toggleRewardMode("dark-discard", currentPlayerNeedsDarkRewardLoss)}
+                            onConfirm={handleConfirmDarkReward} />}
                           {currentPlayerNeedsHealOrSkip ? (
                             <div
                               style={{
@@ -1552,6 +1864,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleToggleHealSelection}
+                                disabled={hasPendingInteraction || sceneActionPending}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1570,6 +1883,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleSkipHeal}
+                                disabled={interactionBlocked || hasPendingInteraction || sceneActionPending} title={interactionBlocked ? blockedExplanation : undefined}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1587,7 +1901,7 @@ export default function PlayerTableView({
                                 <button
                                   type="button"
                                   onClick={handleConfirmHeal}
-                                  disabled={!canConfirmHeal}
+                                  disabled={interactionBlocked || !canConfirmHeal || sceneActionPending} title={interactionBlocked ? blockedExplanation : undefined}
                                   style={{
                                     border: "1px solid var(--border-muted)",
                                     borderRadius: 10,
@@ -1619,6 +1933,7 @@ export default function PlayerTableView({
                               <button
                                 type="button"
                                 onClick={handleToggleDiscardSelection}
+                                disabled={hasPendingInteraction || sceneActionPending}
                                 style={{
                                   border: "1px solid var(--border-muted)",
                                   borderRadius: 10,
@@ -1638,7 +1953,7 @@ export default function PlayerTableView({
                                 <button
                                   type="button"
                                   onClick={handleConfirmDiscardReward}
-                                  disabled={!canConfirmDiscard}
+                                  disabled={interactionBlocked || !canConfirmDiscard || sceneActionPending} title={interactionBlocked ? blockedExplanation : undefined}
                                   style={{
                                     border: "1px solid var(--border-muted)",
                                     borderRadius: 10,
@@ -1660,7 +1975,6 @@ export default function PlayerTableView({
                         </div>
                       ) : null
                     }
-                    powerDisabled
                   />
                 </div>
               </div>
@@ -1670,21 +1984,25 @@ export default function PlayerTableView({
                   display: "grid",
                   gap: 14,
                   alignItems: "start",
-                  width: "clamp(240px, 24vw, 461px)",
+                  width: 360,
                 }}
               >
                 <PTVOtherPlayers
                   players={otherPlayers}
-                  sceneTargetingActive={scumTargetingActive}
+                  wholePanelTargeting={chichimecaActive}
+                  targetActionLabel={chichimecaActive ? "Children of the Earth" : undefined}
+                  sceneTargetingActive={!hasPendingInteraction && scumTargetingActive}
                   selectableTargetPlayerIds={
-                    scumTargetingActive
+                    chichimecaActive
+                      ? chichimecaActionAllowed && !sceneActionPending ? chichimecaTargets : []
+                      : !hasPendingInteraction && scumTargetingActive
                       ? otherPlayers
                           .filter((player) => player.inScene && !player.busted)
                           .map((player) => player.playerId)
                       : []
                   }
-                  selectedTargetPlayerId={selectedScumTargetId}
-                  onSelectSceneTarget={handleSelectScumTarget}
+                  selectedTargetPlayerId={chichimecaActive ? selectedChichimecaTarget : hasPendingInteraction ? null : selectedScumTargetId}
+                  onSelectSceneTarget={chichimecaActive ? handleSelectChichimecaTarget : interactionBlocked ? undefined : handleSelectScumTarget}
                 />
               </div>
             </div>

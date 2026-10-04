@@ -3,7 +3,7 @@ import PlayerLobbyView from "./PlayerLobbyView";
 import type { LobbyViewProps, MetaAny } from "./types";
 
 export default function LobbyView(props: LobbyViewProps) {
-  const meta = ((props.resp.state as any)?.meta ?? {}) as MetaAny;
+  const meta = (props.resp.state?.meta ?? {}) as MetaAny;
   const marshalId = meta.marshal_id ?? "";
   const isMarshal = props.currentActorId === marshalId;
 
@@ -16,6 +16,7 @@ export default function LobbyView(props: LobbyViewProps) {
       resp={props.resp}
       view={props.view}
       currentActorId={props.currentActorId}
+      connectionLost={props.connectionLost}
       run={props.run}
     />
   );

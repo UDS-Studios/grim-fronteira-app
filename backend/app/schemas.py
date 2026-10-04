@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 
 class ErrorPayload(BaseModel):
@@ -11,20 +12,40 @@ class ErrorPayload(BaseModel):
     details: Optional[Dict[str, Any]] = None
 
 
-class NewGameRequest(BaseModel):
+class ViewRequest(BaseModel):
+    view: Literal["public", "player", "marshal", "debug"] = "public"
+    viewer_id: str | None = None
+
+    @model_validator(mode="after")
+    def require_private_viewer(self):
+        if self.view in {"player", "marshal"} and (not self.viewer_id or not self.viewer_id.strip()):
+            raise PydanticCustomError(f"{self.view}_viewer_required", f"viewer_id is required for {self.view} view")
+        return self
+
+
+class NewGameRequest(ViewRequest):
     template_path: str = Field(default="data/templates/standard_54.json")
     meta: Dict[str, Any] = Field(default_factory=dict)
     seed: int | None = None
-    view: Literal["public", "player", "debug"] = "debug"
     creator_id: str = "marshal"
 
 
-class ActionRequest(BaseModel):
+class ReconnectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    game_id: str
+    reconnect_token: str = Field(default="", repr=False)
+    takeover: bool = False
+
+
+class ActionRequest(ViewRequest):
     game_id: str
     action: Literal[
         "gf.get_state",
         "gf.setup_players",  # legacy/debug only
         "gf.debug_stack_top_card",
+        "gf.debug_begin_pending_interaction",
+        "gf.debug_resolve_pending_interaction",
+        "gf.pending_reclaim",
         "gf.roll_difficulty",
         "gf.set_character_assignment_mode",
         "gf.claim_character",
@@ -38,6 +59,10 @@ class ActionRequest(BaseModel):
         "gf.scene_set_participants",
         "gf.scene_set_mode",
         "gf.scene_roll_difficulty",
+        "gf.scene_declare_dark",
+        "gf.scene_dark_draw",
+        "gf.scene_dark_reveal",
+        "gf.scene_dark_discard_last",
         "gf.scene_draw_azzardo",
         "gf.scene_remove_azzardo",
         "gf.scene_skip_azzardo",
@@ -49,17 +74,22 @@ class ActionRequest(BaseModel):
         "gf.scene_stand",
         "gf.scene_play_scum",
         "gf.scene_play_vengeance",
+        "gf.faction_paisa_claim_reward",
+        "gf.faction_criollo_convert_resource",
+        "gf.faction_chichimeca_choose_target",
+        "gf.faction_yankee_choose_top_card",
         "gf.scene_acknowledge_resolution",
         "gf.scene_force_acknowledge_resolution",
         "gf.scene_skip_heal",
         "gf.scene_force_skip_heal",
         "gf.scene_heal_wound",
         "gf.scene_discard_reward",
+        "gf.scene_discard_dark_reward",
         "gf.scene_force_discard_rewards",
+        "gf.scene_force_discard_dark_reward",
         "gf.scene_assign_bonus_card",
     ]
     params: Dict[str, Any] = Field(default_factory=dict)
-    view: Literal["public", "player", "debug"] = "debug"
 
 
 class ActionResponse(BaseModel):

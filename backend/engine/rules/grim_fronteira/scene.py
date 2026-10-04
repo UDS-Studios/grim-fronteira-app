@@ -6,6 +6,7 @@ from backend.engine.grimdeck.deck_ops import play, shuffle as shuffle_deck
 from backend.engine.grimdeck.models import CardID, DeckState
 from backend.engine.rules.grim_fronteira.scene_difficulty import marshal_roll_difficulty
 from backend.engine.state.game_state import GameState
+from backend.engine.state.pending_interaction import get_pending_interaction
 from backend.engine.state.validators import validate_unique_cards
 from backend.engine.state.zone_ops import claim_from_in_play
 from backend.engine.rules.grim_fronteira.reward_points import reward_card_points
@@ -24,6 +25,7 @@ SCENE_DUEL_SUBTYPE_NPC = "npc"
 SCENE_DUEL_SUBTYPE_PVP = "pvp"
 
 SCENE_DIFFICULTY_ZONE = "scene.difficulty"
+SCENE_DARK_MARSHAL_HAND_ZONE = "scene.dark.marshal_hand"
 SCENE_AZZARDO_ZONE = "scene.azzardo"
 SCENE_HAND_PREFIX = "scene.hand."
 SCENE_SCUM_MOD_PREFIX = "scene.mod.scum."
@@ -39,9 +41,11 @@ def default_scene_state() -> dict[str, Any]:
             "sudden_death": False,
         },
         "participants": [],
+        "faction_power_usage": {},
         "deck_exhausted": False,
         "deck_exhausted_participants": [],
         "dark_mode": False,
+        "dark": {"revealed": False, "must_discard_last": False},
         "bonus_assignments": {},
         "difficulty": {
             "rule_id": None,
@@ -113,6 +117,7 @@ def scene_set_participants(game: GameState, *, actor_id: str, participant_ids: l
     scene["participants"] = participant_ids.copy()
     if original_status != SCENE_STATUS_SETUP:
         scene["dark_mode"] = False
+        scene["dark"] = default_scene_state()["dark"]
         scene["difficulty"] = default_scene_state()["difficulty"]
         scene["azzardo"] = default_scene_state()["azzardo"]
     scene["players"] = players
@@ -141,12 +146,126 @@ def scene_set_mode(
     if mode != SCENE_MODE_DUEL and duel_subtype is not None:
         raise ValueError("duel_subtype can only be set when mode is 'duel'.")
 
+    if scene["dark_mode"] and mode == SCENE_MODE_DUEL and duel_subtype == SCENE_DUEL_SUBTYPE_PVP:
+        raise ValueError("PVP duels do not support Dark Mode.")
+
     scene["mode"] = mode
     scene["duel"] = {
         "subtype": duel_subtype if mode == SCENE_MODE_DUEL else None,
         "sudden_death": False,
     }
     return _replace_scene(game, scene=scene)
+
+
+def scene_declare_dark(game: GameState, *, actor_id: str) -> GameState:
+    """Declare Dark explicitly before any public difficulty or Azzardo choice."""
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_SETUP:
+        raise ValueError("Dark can only be declared while the scene is in setup.")
+    if _is_pvp_duel(scene):
+        raise ValueError("PVP duels do not support Dark Mode.")
+    if scene["difficulty"]["card_id"] is not None:
+        raise ValueError("Dark must be declared before scene difficulty is rolled.")
+    if scene["dark_mode"]:
+        raise ValueError("Dark has already been declared.")
+    if scene["azzardo"]["status"] != "unavailable" or scene["azzardo"]["card_id"] is not None:
+        raise ValueError("Dark must be declared before any Azzardo choice.")
+
+    scene["dark_mode"] = True
+    return _replace_scene(game, scene=scene)
+
+
+def _dark_marshal_total(game: GameState) -> int:
+    """Derive the hidden hand from physical cards using scene blackjack values."""
+    scene = _scene(game)
+    card_id = scene["difficulty"]["card_id"]
+    cards = ([card_id] if card_id is not None else []) + list(game.zones.get(SCENE_DARK_MARSHAL_HAND_ZONE, []))
+    return _scene_hand_value(figure_card_id=None, hand_cards=cards, base=10)
+
+
+def _require_dark_hand_action(game: GameState, actor_id: str) -> dict[str, Any]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+    scene = _scene(game)
+    if not scene["dark_mode"] or _is_pvp_duel(scene):
+        raise ValueError("Dark hand actions require a Dark encounter using Marshal difficulty.")
+    if scene["status"] not in {SCENE_STATUS_SETUP, SCENE_STATUS_ACTIVE}:
+        raise ValueError("Dark hand actions require setup or active scene status.")
+    if scene["dark"]["revealed"]:
+        raise ValueError("The Dark hand has already been revealed.")
+    if scene["difficulty"]["card_id"] is None:
+        raise ValueError("Scene difficulty must be rolled before Dark hand actions.")
+    return scene
+
+
+def scene_dark_draw(game: GameState, *, actor_id: str) -> tuple[GameState, dict[str, Any]]:
+    scene = _require_dark_hand_action(game, actor_id)
+    if scene["dark"]["must_discard_last"] or _dark_marshal_total(game) > 21:
+        raise ValueError("The last Dark card must be discarded before drawing again.")
+    game, card_id = _draw_to_zone(game, SCENE_DARK_MARSHAL_HAND_ZONE)
+    scene = _scene(game)
+    total = _dark_marshal_total(game)
+    scene["dark"]["must_discard_last"] = total > 21
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {"card_id": card_id, "marshal_total": total}
+
+
+def scene_dark_discard_last(game: GameState, *, actor_id: str) -> tuple[GameState, dict[str, Any]]:
+    scene = _require_dark_hand_action(game, actor_id)
+    cards = game.zones.get(SCENE_DARK_MARSHAL_HAND_ZONE, [])
+    if not scene["dark"]["must_discard_last"] or not cards:
+        raise ValueError("Discard-last requires a busting extra Dark card.")
+    card_id = cards[-1]
+    game = _move_zone_top_card_to_discard(game, SCENE_DARK_MARSHAL_HAND_ZONE)
+    total = _dark_marshal_total(game)
+    if total > 21:
+        raise ValueError("Discarding the last Dark card must restore a non-busting hand.")
+    scene["dark"]["must_discard_last"] = False
+    game = _replace_scene(game, scene=scene)
+    validate_unique_cards(game)
+    return game, {"card_id": card_id, "marshal_total": total}
+
+
+def scene_dark_reveal(game: GameState, *, actor_id: str) -> tuple[GameState, dict[str, Any]]:
+    scene = _require_dark_hand_action(game, actor_id)
+    if scene["status"] != SCENE_STATUS_ACTIVE:
+        raise ValueError("Dark reveal requires an active scene.")
+    if not scene["participants"] or any(
+        not (scene["players"].get(pid, {}).get("standing") or scene["players"].get(pid, {}).get("busted"))
+        for pid in scene["participants"]
+    ):
+        raise ValueError("All participants must stand or bust before Dark reveal.")
+    total = _dark_marshal_total(game)
+    if scene["dark"]["must_discard_last"] or total > 21:
+        raise ValueError("The last Dark card must be discarded before reveal.")
+    # Only the current physical hand becomes public; discarded Jokers do not trigger.
+    # Bonus draws build replacement states, so a failure never publishes partial grants.
+    cards = list(game.zones.get(SCENE_DIFFICULTY_ZONE, [])) + list(
+        game.zones.get(SCENE_DARK_MARSHAL_HAND_ZONE, [])
+    )
+    for card_id in cards:
+        if card_id in {"RJ", "BJ"}:
+            game = _grant_joker_bonus_cards(game, bonus_type="scum" if card_id == "RJ" else "vengeance")
+    scene = _scene(game)
+    scene["dark"]["revealed"] = True
+    game = scene_resolve(_replace_scene(game, scene=scene), actor_id=actor_id)
+    return game, {"marshal_total": total}
+
+
+def _effective_scene_difficulty(game: GameState) -> int:
+    scene = _scene(game)
+    if scene["dark_mode"]:
+        if not scene["dark"]["revealed"]:
+            raise ValueError("Dark must be revealed before resolution.")
+        return _dark_marshal_total(game)
+    value = int(scene["difficulty"].get("value") or 0)
+    if scene["azzardo"]["status"] == "drawn":
+        value += int(scene["azzardo"].get("value") or 0)
+    return value
 
 
 def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = None) -> tuple[GameState, dict[str, Any]]:
@@ -162,7 +281,7 @@ def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = 
 
     game = _replace_scene(game, scene=scene, zones=_reset_scene_zones(game.zones, keep_hands=True))
     game, diff = marshal_roll_difficulty(game, seed=seed, zone_name=SCENE_DIFFICULTY_ZONE)
-    if diff.drawn_cards and diff.drawn_cards[0] in {"RJ", "BJ"}:
+    if not scene["dark_mode"] and diff.drawn_cards and diff.drawn_cards[0] in {"RJ", "BJ"}:
         game = _grant_joker_bonus_cards(
             game,
             bonus_type="scum" if diff.drawn_cards[0] == "RJ" else "vengeance",
@@ -176,7 +295,6 @@ def scene_roll_difficulty(game: GameState, *, actor_id: str, seed: int | None = 
         "card_id": card_id,
         "value": diff.value,
     }
-    scene["dark_mode"] = bool(any(effect.kind == "DARK_MODE" for effect in diff.effects))
 
     game = _replace_scene(game, scene=scene)
     return game, {
@@ -242,6 +360,8 @@ def scene_draw_azzardo(game: GameState, *, actor_id: str, seed: int | None = Non
     _require_marshal(game, actor_id)
 
     scene = _scene(game)
+    if scene["dark_mode"]:
+        raise ValueError("Azzardo cannot be drawn in Dark Mode.")
     if _is_pvp_duel(scene):
         raise ValueError("PVP duels do not use azzardo.")
     if scene["status"] != SCENE_STATUS_SETUP:
@@ -315,7 +435,16 @@ def scene_skip_azzardo(game: GameState, *, actor_id: str) -> GameState:
 def scene_start(game: GameState, *, actor_id: str) -> GameState:
     _require_table_phase(game)
     _require_marshal(game, actor_id)
+    return resume_scene_start(game)
 
+
+def resume_scene_start(game: GameState) -> GameState:
+    """Discover one pre-duel inspection, or perform the shared initial deal."""
+    from .factions import begin_next_yankee_inspection
+
+    _require_table_phase(game)
+    if get_pending_interaction(game) is not None:
+        raise ValueError("Consume the pending interaction before resuming scene-start.")
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_SETUP:
         raise ValueError("Scene can only start from setup.")
@@ -326,6 +455,10 @@ def scene_start(game: GameState, *, actor_id: str) -> GameState:
     if not _is_pvp_duel(scene) and scene["azzardo"]["status"] not in ("unavailable", "drawn", "skipped"):
         raise ValueError("Azzardo is in an invalid state for starting the scene.")
     _validate_scene_configuration(scene)
+
+    game = begin_next_yankee_inspection(game)
+    if get_pending_interaction(game) is not None:
+        return game
 
     initiative_order: list[tuple[str, int, int]] = []
     for original_idx, pid in enumerate(scene["participants"]):
@@ -510,7 +643,9 @@ def scene_play_vengeance(game: GameState, *, player_id: str) -> tuple[GameState,
     game = _replace_scene(game, scene=scene)
     if scene["status"] == SCENE_STATUS_AWAITING_ACK:
         game = _refresh_scene_resolution_preview(game, reset_acknowledgements=True)
-        game = _auto_acknowledge_if_no_post_resolution_actions(game)
+        game = resume_scene_wounds(_queue_bust_wounds(game))
+    else:
+        game = _resolve_scene_if_all_participants_done(game)
     validate_unique_cards(game)
     return game, {
         "player_id": player_id,
@@ -527,6 +662,14 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_ACTIVE:
         raise ValueError("Scene can only be resolved while active.")
+
+    if scene["dark_mode"] and not scene["dark"]["revealed"]:
+        raise ValueError("Dark must be revealed before resolution.")
+
+    game = _apply_pending_scene_wounds(_queue_bust_wounds(game))
+    if get_pending_interaction(game) is not None:
+        return game
+    scene = _scene(game)
 
     if _is_pvp_duel(scene):
         unresolved = [
@@ -552,9 +695,7 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
     if azzardo["status"] == "drawn":
         azzardo["revealed"] = True
 
-    effective_difficulty = int(scene["difficulty"]["value"])
-    if azzardo["status"] == "drawn":
-        effective_difficulty += int(azzardo["value"])
+    effective_difficulty = _effective_scene_difficulty(game)
     marshal_busted = effective_difficulty > 21
 
     winners: list[str] = []
@@ -566,6 +707,7 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
         pstate["acknowledged"] = False
         pstate["wounds_gained"] = 0
         pstate["reward_gained"] = False
+        pstate["reward_cards_gained"] = 0
         pstate["recovery_action"] = None
         pstate["reward_discard_started"] = False
 
@@ -577,14 +719,16 @@ def scene_resolve(game: GameState, *, actor_id: str) -> GameState:
             else:
                 pstate["result"] = "success"
                 pstate["reward_gained"] = True
+                pstate["reward_cards_gained"] = 1
                 winners.append(pid)
         elif pstate.get("busted"):
             pstate["result"] = "bust"
-            pstate["wounds_gained"] = 1
+            pstate["wounds_gained"] = max(0, 1 - int(pstate.get("wounds_applied", 0)))
             losers.append(pid)
         elif int(pstate.get("hand_value", 0)) >= effective_difficulty:
             pstate["result"] = "success"
             pstate["reward_gained"] = True
+            pstate["reward_cards_gained"] = 1
             winners.append(pid)
         else:
             pstate["result"] = "failure"
@@ -648,6 +792,11 @@ def scene_force_acknowledge_resolution(game: GameState, *, actor_id: str, player
 
 
 def _resolve_scene_if_all_participants_done(game: GameState) -> GameState:
+    game = _queue_bust_wounds(game)
+    return resume_scene_wounds(game)
+
+
+def _resolve_scene_after_wounds(game: GameState) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_ACTIVE:
         return game
@@ -664,6 +813,9 @@ def _resolve_scene_if_all_participants_done(game: GameState) -> GameState:
         and not bool((scene["players"].get(pid) or {}).get("busted"))
     ]
     if unresolved:
+        return game
+
+    if scene["dark_mode"] and not scene["dark"]["revealed"]:
         return game
 
     marshal_id = (game.meta or {}).get("marshal_id")
@@ -691,7 +843,7 @@ def _acknowledge_scene_player(game: GameState, *, player_id: str) -> GameState:
     scene["status"] = SCENE_STATUS_RESOLVED
     game = _replace_scene(game, scene=scene)
     validate_unique_cards(game)
-    return game
+    return resume_scene_wounds(game)
 
 
 def _has_post_resolution_reaction_options(game: GameState) -> bool:
@@ -742,7 +894,7 @@ def _auto_acknowledge_if_no_post_resolution_actions(game: GameState) -> GameStat
     scene["status"] = SCENE_STATUS_RESOLVED
     game = _replace_scene(game, scene=scene)
     validate_unique_cards(game)
-    return game
+    return resume_scene_wounds(game)
 
 
 def _get_persistent_wounds(game: GameState, player_id: str) -> int:
@@ -800,7 +952,8 @@ def _has_pending_post_scene_requirements(game: GameState) -> bool:
         return False
 
     for player_id in scene["participants"]:
-        if _must_heal_or_skip(game, player_id) or _must_discard_rewards(game, player_id):
+        if (scene["players"].get(player_id, {}).get("dark_reward_loss_pending")
+                or _must_heal_or_skip(game, player_id) or _must_discard_rewards(game, player_id)):
             return True
     return False
 
@@ -810,10 +963,7 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
     if _is_pvp_duel(scene):
         return _refresh_pvp_duel_resolution_preview(game, reset_acknowledgements=reset_acknowledgements)
 
-    effective_difficulty = int(scene["difficulty"]["value"])
-    azzardo = dict(scene["azzardo"])
-    if azzardo["status"] == "drawn":
-        effective_difficulty += int(azzardo["value"])
+    effective_difficulty = _effective_scene_difficulty(game)
     marshal_busted = effective_difficulty > 21
 
     winners: list[str] = []
@@ -826,7 +976,7 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
         busted = hand_value > 21
         pstate["busted"] = busted
         pstate["resolved"] = True
-        pstate["wounds_gained"] = 0 if marshal_busted else 1 if busted else 0
+        pstate["wounds_gained"] = max(0, (0 if marshal_busted else 1 if busted else 0) - int(pstate.get("wounds_applied", 0)))
         pstate["reward_gained"] = (not busted) if marshal_busted else (not busted and hand_value >= effective_difficulty)
         pstate["recovery_action"] = None
         pstate["reward_discard_started"] = False
@@ -850,6 +1000,15 @@ def _refresh_scene_resolution_preview(game: GameState, *, reset_acknowledgements
             pstate["result"] = "failure"
             losers.append(pid)
 
+        revealed_dark = scene["dark_mode"] and scene["dark"]["revealed"]
+        success = pstate["result"] == "success"
+        pstate["reward_cards_gained"] = (2 if revealed_dark else 1) if success else 0
+        pstate["reward_gained"] = pstate["reward_cards_gained"] > 0
+        pstate["dark_reward_loss_pending"] = bool(
+            revealed_dark and not success and game.zones.get(f"players.{pid}.rewards", [])
+        )
+        if revealed_dark:
+            pstate["wounds_gained"] = max(0, int(not success) - int(pstate.get("wounds_applied", 0)))
         players[pid] = pstate
 
     scene["players"] = players
@@ -868,27 +1027,65 @@ def _grant_resolved_scene_rewards(game: GameState) -> GameState:
         return game
     for pid in scene["participants"]:
         pstate = dict(scene["players"].get(pid) or {})
-        if pstate.get("reward_gained"):
+        for _ in range(pstate.get("reward_cards_gained", 0)):
             game, _reward_card = _draw_to_zone(game, f"players.{pid}.rewards")
     return game
 
 
-def _apply_pending_scene_wounds(game: GameState) -> GameState:
+def _queue_bust_wounds(game: GameState) -> GameState:
     scene = _scene(game)
-    updated_players = dict(scene["players"])
-
+    # An unrevealed Dark bust never exempts player wounds: the Marshal must
+    # discard back to <=21 before reveal. Preserve immediate bust reactions.
+    difficulty = 0 if scene["dark_mode"] and not scene["dark"]["revealed"] else _effective_scene_difficulty(game)
+    wound_exempt = (not _is_pvp_duel(scene) and difficulty > 21) or (
+        _is_pvp_duel(scene) and _pvp_duel_outcome(scene)[0] == "rematch"
+    )
     for pid in scene["participants"]:
-        pstate = dict(updated_players.get(pid) or {})
-        pending_wounds = int(pstate.get("wounds_gained", 0) or 0)
-        if pending_wounds <= 0:
-            continue
-        game = _increment_player_wounds(game, pid, pending_wounds)
-        pstate["wounds_gained"] = 0
-        updated_players[pid] = pstate
+        pstate = dict(scene["players"].get(pid) or {})
+        if pstate.get("busted") or int(pstate.get("hand_value") or 0) > 21:
+            pstate["busted"] = True
+            pstate["wounds_gained"] = 0 if wound_exempt else max(0, 1 - int(pstate.get("wounds_applied", 0)))
+            scene["players"][pid] = pstate
+    return _replace_scene(game, scene=scene)
+
+
+def resume_scene_wounds(game: GameState) -> GameState:
+    """Consume wound units in participant order, then resume the interrupted stage."""
+    _require_table_phase(game)
+    scene = _scene(game)
+    if scene["status"] not in {SCENE_STATUS_ACTIVE, SCENE_STATUS_AWAITING_ACK, SCENE_STATUS_RESOLVED}:
+        raise ValueError("Wound resumption requires an active or resolving scene.")
+    if get_pending_interaction(game) is not None:
+        raise ValueError("Consume the pending interaction before resuming wounds.")
+    game = _apply_pending_scene_wounds(game)
+    if get_pending_interaction(game) is not None:
+        return game
+    if scene["status"] == SCENE_STATUS_ACTIVE:
+        return _resolve_scene_after_wounds(game)
+    return _auto_acknowledge_if_no_post_resolution_actions(game)
+
+
+def _apply_pending_scene_wounds(game: GameState, *, trigger: bool = True) -> GameState:
+    # Import locally: faction effects use the same scene/card movement helpers.
+    from .factions import begin_chichimeca_wound_interaction
 
     scene = _scene(game)
-    scene["players"] = updated_players
-    return _replace_scene(game, scene=scene)
+    for pid in scene["participants"]:
+        pstate = dict(scene["players"].get(pid) or {})
+        if trigger and scene["status"] == SCENE_STATUS_AWAITING_ACK and not pstate.get("busted"):
+            continue  # Non-bust PVP and Dark losses remain provisional until final acknowledgement.
+        while int(pstate.get("wounds_gained", 0) or 0) > 0:
+            game = _increment_player_wounds(game, pid, 1)
+            # Consume debt in the same derived transition as the persistent wound.
+            pstate["wounds_gained"] -= 1
+            pstate["wounds_applied"] = int(pstate.get("wounds_applied", 0)) + 1
+            scene["players"][pid] = pstate
+            game = _replace_scene(game, scene=scene)
+            if trigger:
+                game = begin_chichimeca_wound_interaction(game, player_id=pid)
+            if get_pending_interaction(game) is not None:
+                return game
+    return game
 
 
 def _reward_points_for_player(game: GameState, player_id: str) -> int:
@@ -911,6 +1108,19 @@ def _set_victory(game: GameState, *, winner: str, winner_label: str, reason: str
     }
     validate_unique_cards(game)
     return GameState(deck=game.deck, zones=game.zones, meta=meta)
+
+
+def set_exact_reward_victory(game: GameState, player_id: str) -> GameState:
+    """Declare the selected exact-21 winner using the normal victory state."""
+    # Faction rewards must respect the same deferred Dark settlement as close.
+    if any(p.get("dark_reward_loss_pending") for p in _scene(game)["players"].values()):
+        return game
+    return _set_victory(
+        game,
+        winner=player_id,
+        winner_label=_player_display_name(game, player_id),
+        reason="Reached exactly 21 reward points.",
+    )
 
 
 def _set_marshal_victory(game: GameState) -> GameState:
@@ -983,6 +1193,9 @@ def _start_sudden_death(
 
 
 def _resolve_scene_endgame(game: GameState) -> GameState:
+    # Reward penalties must settle before final point totals can decide victory.
+    if any(p.get("dark_reward_loss_pending") for p in _scene(game)["players"].values()):
+        return game
     meta = dict(game.meta or {})
     endgame = dict(meta.get("endgame") or {})
     if endgame.get("active"):
@@ -997,16 +1210,14 @@ def _resolve_scene_endgame(game: GameState) -> GameState:
     if not active_players:
         return game
 
-    exact_twenty_one_players = [pid for pid in active_players if _reward_points_for_player(game, pid) == 21]
+    exact_twenty_one_players = [
+        pid for pid in active_players
+        if _reward_points_for_player(game, pid) == 21 and not _must_discard_rewards(game, pid)
+    ]
     if exact_twenty_one_players:
         if len(exact_twenty_one_players) == 1:
             winner_id = exact_twenty_one_players[0]
-            return _set_victory(
-                game,
-                winner=winner_id,
-                winner_label=_player_display_name(game, winner_id),
-                reason="Reached exactly 21 reward points.",
-            )
+            return set_exact_reward_victory(game, winner_id)
         return _start_sudden_death(
             game,
             contender_ids=exact_twenty_one_players,
@@ -1133,6 +1344,11 @@ def scene_close(game: GameState, *, actor_id: str) -> GameState:
 
     scene = _scene(game)
     scene["status"] = SCENE_STATUS_CLOSED
+    if scene["dark_mode"] and scene["dark"]["revealed"] and not _is_pvp_duel(scene):
+        for pid in scene["participants"]:
+            scene["players"][pid]["dark_reward_loss_pending"] = bool(
+                scene["players"][pid]["result"] != "success" and game.zones.get(f"players.{pid}.rewards", [])
+            )
     game = _replace_scene(game, scene=scene)
     game = _resolve_scene_endgame(game)
     validate_unique_cards(game)
@@ -1146,10 +1362,24 @@ def scene_new(game: GameState, *, actor_id: str) -> GameState:
     scene = _scene(game)
     if scene["status"] != SCENE_STATUS_CLOSED:
         raise ValueError("A new scene can only be started after the previous one is closed.")
-    if not dict((game.meta or {}).get("endgame") or {}).get("active") and _has_pending_post_scene_requirements(game):
+    if _has_pending_post_scene_requirements(game):
         raise ValueError("All required heal/skip and reward discard decisions must be resolved before starting a new scene.")
 
-    game = _apply_pending_scene_wounds(game)
+    return resume_scene_new(game)
+
+
+def resume_scene_new(game: GameState) -> GameState:
+    """Prepare the next scene; old serialized continuations may still resume here."""
+    _require_table_phase(game)
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Scene-new resumption requires a closed scene.")
+    if get_pending_interaction(game) is not None:
+        raise ValueError("Consume the pending interaction before resuming scene-new.")
+    if any(p.get("dark_reward_loss_pending") for p in scene["players"].values()):
+        raise ValueError("Dark Reward losses must be resolved before starting a new scene.")
+    # Compatibility for old saved wound debt: never trigger a past wound here.
+    game = _apply_pending_scene_wounds(game, trigger=False)
     if _all_non_marshal_players_dead(game):
         return _set_marshal_victory(game)
 
@@ -1238,6 +1468,8 @@ def scene_heal_wound(game: GameState, *, player_id: str, reward_card_ids: list[s
             remaining_to_remove.remove(card_id)
             continue
         updated_reward_zone.append(card_id)
+    if scene["players"].get(player_id, {}).get("dark_reward_loss_pending") and not updated_reward_zone:
+        raise ValueError("Resolve the Dark Reward loss before spending all remaining Rewards.")
     zones[reward_zone_name] = updated_reward_zone
 
     deck = game.deck
@@ -1302,6 +1534,8 @@ def scene_discard_reward(game: GameState, *, player_id: str, reward_card_id: str
     zones = {name: cards.copy() for name, cards in game.zones.items()}
     updated_reward_zone = list(reward_zone_cards)
     updated_reward_zone.remove(reward_card_id)
+    if scene["players"].get(player_id, {}).get("dark_reward_loss_pending") and not updated_reward_zone:
+        raise ValueError("Resolve the Dark Reward loss before spending all remaining Rewards.")
     zones[reward_zone_name] = updated_reward_zone
 
     deck = game.deck
@@ -1332,6 +1566,54 @@ def scene_discard_reward(game: GameState, *, player_id: str, reward_card_id: str
         "reward_card_id": reward_card_id,
         "remaining_reward_points": remaining_points,
     }
+
+
+def scene_discard_dark_reward(game: GameState, *, player_id: str, reward_card_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Dark Reward loss is only available after the scene is closed.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can discard a Dark Reward.")
+    if not scene["players"][player_id]["dark_reward_loss_pending"]:
+        raise ValueError("Player has no pending Dark Reward loss.")
+    zone = f"players.{player_id}.rewards"
+    cards = list(game.zones.get(zone, []))
+    if not reward_card_id or reward_card_id not in cards:
+        raise ValueError("Selected reward card must belong to the player.")
+    # Put only the chosen card on top for the existing discard primitive;
+    # the relative order of all remaining Rewards is preserved.
+    cards.remove(reward_card_id)
+    zones = {name: values.copy() for name, values in game.zones.items()}
+    zones[zone] = cards + [reward_card_id]
+    game = _move_zone_top_card_to_discard(GameState(deck=game.deck, zones=zones, meta=game.meta), zone)
+    scene["players"][player_id]["dark_reward_loss_pending"] = False
+    game = _replace_scene(game, scene=scene)
+    game = _resolve_scene_endgame(game)
+    validate_unique_cards(game)
+    return game, {
+        "player_id": player_id,
+        "reward_card_id": reward_card_id,
+        "remaining_reward_points": _reward_points_for_player(game, player_id),
+    }
+
+
+def scene_force_discard_dark_reward(game: GameState, *, actor_id: str, player_id: str) -> tuple[GameState, dict[str, Any]]:
+    _require_table_phase(game)
+    _require_marshal(game, actor_id)
+    scene = _scene(game)
+    if scene["status"] != SCENE_STATUS_CLOSED:
+        raise ValueError("Dark Reward loss is only available after the scene is closed.")
+    if player_id not in scene["participants"]:
+        raise ValueError("Only scene participants can discard a Dark Reward.")
+    if not scene["players"][player_id]["dark_reward_loss_pending"]:
+        raise ValueError("Player has no pending Dark Reward loss.")
+    cards = game.zones.get(f"players.{player_id}.rewards", [])
+    if not cards:
+        raise ValueError("Player has no reward cards available to discard.")
+    # min preserves the earliest zone entry on equal values.
+    reward_card_id = min(cards, key=reward_card_points)
+    return scene_discard_dark_reward(game, player_id=player_id, reward_card_id=reward_card_id)
 
 
 def scene_force_discard_rewards(game: GameState, *, actor_id: str, player_id: str) -> tuple[GameState, dict[str, Any]]:
@@ -1431,6 +1713,8 @@ def _default_scene_player(game: GameState, player_id: str) -> dict[str, Any]:
         "acknowledged": False,
         "wounds_gained": 0,
         "reward_gained": False,
+        "reward_cards_gained": 0,
+        "dark_reward_loss_pending": False,
         "result": None,
         "recovery_action": None,
         "reward_discard_started": False,
@@ -1578,6 +1862,7 @@ def _resolve_pvp_duel_scene(game: GameState, *, actor_id: str) -> GameState:
         pstate["resolved"] = True
         pstate["acknowledged"] = False
         pstate["reward_gained"] = False
+        pstate["reward_cards_gained"] = 0
         pstate["recovery_action"] = None
         pstate["reward_discard_started"] = False
         if outcome == "friends":
@@ -1587,10 +1872,11 @@ def _resolve_pvp_duel_scene(game: GameState, *, actor_id: str) -> GameState:
             if pid == data["winner"]:
                 pstate["wounds_gained"] = 0
                 pstate["reward_gained"] = not _is_sudden_death_pvp_duel(scene)
+                pstate["reward_cards_gained"] = int(pstate["reward_gained"])
                 pstate["result"] = "duel_win"
                 winners.append(pid)
             else:
-                pstate["wounds_gained"] = 1
+                pstate["wounds_gained"] = max(0, 1 - int(pstate.get("wounds_applied", 0)))
                 pstate["result"] = "wound"
                 losers.append(pid)
         players[pid] = pstate
@@ -1622,6 +1908,7 @@ def _refresh_pvp_duel_resolution_preview(game: GameState, *, reset_acknowledgeme
         pstate = dict(players.get(pid) or {})
         pstate["resolved"] = True
         pstate["reward_gained"] = False
+        pstate["reward_cards_gained"] = 0
         pstate["recovery_action"] = None
         pstate["reward_discard_started"] = False
         if reset_acknowledgements:
@@ -1633,10 +1920,11 @@ def _refresh_pvp_duel_resolution_preview(game: GameState, *, reset_acknowledgeme
             if pid == data["winner"]:
                 pstate["wounds_gained"] = 0
                 pstate["reward_gained"] = not _is_sudden_death_pvp_duel(scene)
+                pstate["reward_cards_gained"] = int(pstate["reward_gained"])
                 pstate["result"] = "duel_win"
                 winners.append(pid)
             else:
-                pstate["wounds_gained"] = 1
+                pstate["wounds_gained"] = max(0, 1 - int(pstate.get("wounds_applied", 0)))
                 pstate["result"] = "wound"
                 losers.append(pid)
         players[pid] = pstate
@@ -1669,6 +1957,8 @@ def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
     reset_scene["duel"] = duel
     reset_scene["difficulty"] = difficulty
     reset_scene["azzardo"] = azzardo
+    # A tied hand restarts within the same scene; faction uses remain spent.
+    reset_scene["faction_power_usage"] = scene["faction_power_usage"]
     reset_scene["participants"] = participant_ids
     reset_scene["players"] = {pid: _default_scene_player(game, pid) for pid in participant_ids}
     game = _replace_scene(game, scene=reset_scene, zones=_reset_scene_zones(game.zones, keep_setup_cards=True))
@@ -1679,13 +1969,26 @@ def _restart_pvp_duel_after_tie(game: GameState, *, actor_id: str) -> GameState:
 def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
     default = default_scene_state()
     scene_in = dict(raw_scene or {})
+    dark_in = dict(scene_in.get("dark") or {})
     duel_in = dict(scene_in.get("duel") or {})
     difficulty_in = dict(scene_in.get("difficulty") or {})
     azzardo_in = dict(scene_in.get("azzardo") or {})
     resolution_in = dict(scene_in.get("resolution") or {})
     players_in = dict(scene_in.get("players") or {})
 
+    usage_in = scene_in.get("faction_power_usage") or {}
+    if not isinstance(usage_in, dict):
+        raise ValueError("scene.faction_power_usage must be a mapping.")
+    usage = {}
+    for pid, powers in usage_in.items():
+        if (not isinstance(pid, str) or not isinstance(powers, dict)
+                or any(not isinstance(power, str) or not isinstance(used, bool)
+                       for power, used in powers.items())):
+            raise ValueError("Faction usage must map player IDs to boolean power flags.")
+        usage[pid] = dict(powers)
+
     scene = {
+        "faction_power_usage": usage,
         "status": scene_in.get("status") if scene_in.get("status") in {
             SCENE_STATUS_IDLE,
             SCENE_STATUS_SETUP,
@@ -1709,6 +2012,10 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             pid for pid in scene_in.get("deck_exhausted_participants") or [] if isinstance(pid, str)
         ],
         "dark_mode": bool(scene_in.get("dark_mode", default["dark_mode"])),
+        "dark": {
+            "revealed": bool(dark_in.get("revealed", False)),
+            "must_discard_last": bool(dark_in.get("must_discard_last", False)),
+        },
         "bonus_assignments": {
             pid: bonus
             for pid, bonus in dict(scene_in.get("bonus_assignments") or {}).items()
@@ -1741,6 +2048,7 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
         if not isinstance(pid, str):
             continue
         pdata = dict(pstate or {})
+        reward_count = max(0, int(pdata.get("reward_cards_gained", int(bool(pdata.get("reward_gained", False)))) or 0))
         scene["players"][pid] = {
             "figure_card_id": pdata.get("figure_card_id"),
             "figure_value": pdata.get("figure_value"),
@@ -1755,7 +2063,10 @@ def _normalized_scene(raw_scene: Any) -> dict[str, Any]:
             "resolved": bool(pdata.get("resolved", False)),
             "acknowledged": bool(pdata.get("acknowledged", False)),
             "wounds_gained": int(pdata.get("wounds_gained", 0) or 0),
-            "reward_gained": bool(pdata.get("reward_gained", False)),
+            "wounds_applied": int(pdata.get("wounds_applied", 0) or 0),
+            "reward_gained": reward_count > 0,
+            "reward_cards_gained": reward_count,
+            "dark_reward_loss_pending": bool(pdata.get("dark_reward_loss_pending", False)),
             "result": pdata.get("result"),
             "recovery_action": pdata.get("recovery_action")
             if pdata.get("recovery_action") in {"healed", "skipped"}
@@ -1880,6 +2191,7 @@ def _discard_scene_modifier_zones(game: GameState) -> GameState:
 
 
 def _discard_scene_play_zones(game: GameState) -> GameState:
+    game = _discard_zone_if_present(game, SCENE_DARK_MARSHAL_HAND_ZONE)
     game = _discard_zone_if_present(game, SCENE_DIFFICULTY_ZONE)
     game = _discard_zone_if_present(game, SCENE_AZZARDO_ZONE)
     game = _discard_pvp_duel_play_zones(game)
@@ -1996,9 +2308,9 @@ def _cards_blackjack_value(cards: list[str]) -> int:
     return sum(_blackjack_value(card_id) for card_id in cards)
 
 
-def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str]) -> int:
+def _scene_hand_value(*, figure_card_id: str | None, hand_cards: list[str], base: int = 0) -> int:
     cards = [card_id for card_id in [figure_card_id, *hand_cards] if isinstance(card_id, str) and card_id]
-    total = sum(_scene_card_value(card_id) for card_id in cards)
+    total = base + sum(_scene_card_value(card_id) for card_id in cards)
     aces = sum(1 for card_id in cards if _rank(card_id) == "A")
 
     # Count aces as 1 instead of 11 when that produces the best non-busting total.

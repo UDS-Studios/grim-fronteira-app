@@ -1,4 +1,18 @@
-import { useMemo, useState } from "react";
+import { isGameplayPaused, PAUSE_EXPLANATION } from "../utils/sessionPause";
+import PresenceIndicator from "../components/PresenceIndicator";
+import { getPresenceStatus, type PresenceStatus } from "../utils/presence";
+import { useDarkHandActions } from "../utils/useDarkHandActions";
+import MarshalDarkHand from "../components/MarshalDarkHand";
+import DarkDeclareControl from "../components/DarkDeclareControl";
+import { hasDarkAtmosphere, isDarkScene, canDarkDraw, canRollDarkDifficulty, mustMarshalDiscardDarkCard } from "../utils/dark";
+import { getViewRequest } from "../utils/sessionView";
+import ReclaimInteractionControl from "../components/ReclaimInteractionControl";
+import { DIFFICULTY_CARD_WIDTH, DECK_CARD_WIDTH } from "../components/difficultyDisplay";
+import SceneStatus from "../components/SceneStatus";
+import DiscardPile from "../components/DiscardPile";
+import { getWoundDisplay } from "../utils/wounds";
+import { useEffect, useMemo, useState } from "react";
+import { useId } from "react";
 import CardImg from "../components/CardImg";
 import IconButton from "../components/IconButton";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
@@ -6,6 +20,7 @@ import TableZone from "../components/TableZone";
 import PlayerSummaryCard from "../components/PlayerSummaryCard";
 import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
+import { getPendingInteraction, getPendingInteractionIdentity } from "../utils/pendingInteractions";
 import type { ActionResponse, View } from "../api/types";
 import {
   getSceneHandTotal,
@@ -18,6 +33,7 @@ type MarshalTableViewProps = {
   resp: ActionResponse;
   view: View;
   currentActorId: string;
+  connectionLost?: boolean;
   run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
   onBackHome: () => void;
 };
@@ -73,7 +89,9 @@ type SceneState = {
     resolved?: boolean;
     acknowledged?: boolean;
     wounds_gained?: number;
+    wounds_applied?: number;
     reward_gained?: boolean;
+    dark_reward_loss_pending?: boolean;
     result?: "success" | "failure" | "bust" | "wound" | "duel_win" | "friendship" | null;
     recovery_action?: "healed" | "skipped" | null;
     reward_discard_started?: boolean;
@@ -121,6 +139,7 @@ function ActionButton({
 
 function PlayerLane({
   playerId,
+  presenceStatus,
   pstate,
   figureCardId,
   playedCards,
@@ -134,14 +153,18 @@ function PlayerLane({
   stateLabel,
   laneState,
   outcome,
+  actionsLocked,
   canForceAcknowledge,
   onForceAcknowledge,
   mustHealOrSkip,
   mustDiscardRewards,
+  mustLoseDarkReward,
   onForceSkipHeal,
   onForceDiscardRewards,
+  onForceDarkLoss,
 }: {
   playerId: string;
+  presenceStatus: PresenceStatus;
   pstate: LobbyPlayerState;
   figureCardId?: string | null;
   playedCards: string[];
@@ -155,13 +178,17 @@ function PlayerLane({
   stateLabel?: string | null;
   laneState: "waiting" | "active" | "done";
   outcome?: SceneOutcome | null;
+  actionsLocked: boolean;
   canForceAcknowledge: boolean;
   onForceAcknowledge: () => void;
   mustHealOrSkip: boolean;
   mustDiscardRewards: boolean;
+  mustLoseDarkReward: boolean;
   onForceSkipHeal: () => void;
   onForceDiscardRewards: () => void;
+  onForceDarkLoss: () => void;
 }) {
+  const darkLossWarningId = useId();
   const totalColor = getTwentyOneColor(total);
   const displayName = pstate.chosen_name ?? playerId;
   const requirementTint =
@@ -226,7 +253,7 @@ function PlayerLane({
             lineHeight: 1.15,
           }}
         >
-          {displayName}
+          {displayName} <PresenceIndicator status={presenceStatus} />
         </div>
       </div>
 
@@ -262,6 +289,7 @@ function PlayerLane({
               <button
                 type="button"
                 onClick={onForceAcknowledge}
+                disabled={actionsLocked}
                 style={{
                   border: "1px solid var(--border-muted)",
                   borderRadius: 10,
@@ -292,6 +320,16 @@ function PlayerLane({
           </div>
         ) : null}
 
+        {mustLoseDarkReward && <div style={{ display: "grid", gap: 8 }}>
+          <div role="status">Dark Reward loss pending — player must choose 1 Reward.</div>
+          <div className="reclaim-control">
+            <button type="button" className="reclaim-button" aria-describedby={darkLossWarningId}
+              onClick={onForceDarkLoss} disabled={actionsLocked}>Force Dark Loss</button>
+            <div id={darkLossWarningId} role="tooltip" className="reclaim-warning">
+              Emergency action. Use only if the player is unavailable. This automatically discards their lowest-value Reward to clear the pending Dark loss.
+            </div>
+          </div>
+        </div>}
         {mustHealOrSkip || mustDiscardRewards ? (
           <div
             style={{
@@ -319,6 +357,7 @@ function PlayerLane({
                 <ActionButton
                   label="Force Skip"
                   onClick={onForceSkipHeal}
+                  disabled={actionsLocked}
                   title="Force this participant to skip healing"
                 />
               </div>
@@ -344,6 +383,7 @@ function PlayerLane({
                 <ActionButton
                   label="Force Discard"
                   onClick={onForceDiscardRewards}
+                  disabled={actionsLocked}
                   title="Automatically discard rewards until this participant reaches 20 or less"
                 />
               </div>
@@ -573,8 +613,12 @@ export default function MarshalTableView({
   view,
   currentActorId,
   run,
+  connectionLost = false,
   onBackHome,
 }: MarshalTableViewProps) {
+  const interactionBlocked = isGameplayPaused(resp.state.meta) || connectionLost;
+  const blockedExplanation = isGameplayPaused(resp.state.meta) ? PAUSE_EXPLANATION : "Connection lost";
+  const { busy: darkBusy, submit: submitDark } = useDarkHandActions(resp, currentActorId, view, run, connectionLost);
   const duelBorderColor = "#caa23a";
   const duelBackground = "color-mix(in srgb, #d9b94b 20%, var(--surface-bg))";
   const duelTitleColor = "#7f5a12";
@@ -582,23 +626,32 @@ export default function MarshalTableView({
   const playersRailScale = 1.6;
   const [pendingBonusType, setPendingBonusType] = useState<"scum" | "vengeance" | null>(null);
   const ds = (value: number) => value * deckScale;
-  const state = (resp.state as any) ?? {};
+  const [darkLossBusy, setDarkLossBusy] = useState(false);
+  const [reclaimPending, setReclaimPending] = useState(false);
+  const state = resp.state ?? {};
+  const pendingInteraction = getPendingInteraction(state);
+  const hasPendingInteraction = pendingInteraction !== null;
+  const pendingIdentity = getPendingInteractionIdentity(state);
+
+  useEffect(() => {
+    if (pendingIdentity !== null) setPendingBonusType(null);
+  }, [pendingIdentity]);
   const meta = state.meta ?? {};
-  const zones: Record<string, string[]> = state.zones ?? {};
+  const zones = state.zones ?? {};
   const deck = state.deck ?? {};
 
   const playersOrder: string[] = meta.players_order ?? [];
   const marshalId = meta.marshal_id ?? "";
-  const scene: SceneState = meta.scene ?? {};
+  const scene = (meta.scene ?? {}) as SceneState;
   const scenePlayers = scene.players ?? {};
   const metaPlayers: Record<string, MetaPlayerState> = meta.players ?? {};
   const lobby = meta.lobby ?? {};
-  const lobbyPlayers: Record<string, LobbyPlayerState> = lobby.players ?? {};
+  const lobbyPlayers = (lobby.players ?? {}) as Record<string, LobbyPlayerState>;
 
   const nonMarshalPlayers = playersOrder.filter((pid) => pid !== marshalId);
 
   const deckCount =
-    typeof deck?.draw_pile?.count === "number"
+    deck.draw_pile != null && "count" in deck.draw_pile && typeof deck.draw_pile.count === "number"
       ? deck.draw_pile.count
       : Array.isArray(deck?.draw_pile)
         ? deck.draw_pile.length
@@ -646,23 +699,20 @@ export default function MarshalTableView({
     return scene.bonus_assignments?.[pid] ?? null;
   }
 
-  function getPersistentWounds(pid: string): number {
-    return metaPlayers?.[pid]?.wounds ?? 0;
+  function getPlayerWoundDisplay(pid: string) {
+    return getWoundDisplay(metaPlayers?.[pid]?.wounds, scenePlayers?.[pid]);
   }
 
   function getDisplayedWounds(pid: string): number {
-    const persistentWounds = getPersistentWounds(pid);
-    const pendingWounds =
-      sceneResolved ? scenePlayers?.[pid]?.wounds_gained ?? 0 : !!scenePlayers?.[pid]?.busted ? 1 : 0;
-    return persistentWounds + pendingWounds;
+    return getPlayerWoundDisplay(pid).wounds;
   }
 
   function getIsDead(pid: string): boolean {
-    return getDisplayedWounds(pid) >= 2;
+    return getPlayerWoundDisplay(pid).dead;
   }
 
   function getFigureRotated(pid: string): boolean {
-    return getDisplayedWounds(pid) > 0;
+    return getPlayerWoundDisplay(pid).wounded;
   }
 
   const backendParticipantIds: string[] = Array.isArray(scene.participants)
@@ -671,8 +721,11 @@ export default function MarshalTableView({
 
   const participantIds = backendParticipantIds;
 
-  const isEditable = scene.status === "idle" || scene.status === "setup";
+  const isEditable = !interactionBlocked && !hasPendingInteraction && (scene.status === "idle" || scene.status === "setup");
   const isLocked = !isEditable;
+  const darkMode = isDarkScene(meta.scene);
+  const showDarkHand = darkMode && meta.scene?.dark?.revealed !== true &&
+    view === "marshal" && currentActorId === marshalId;
   const hasDifficulty = scene.difficulty?.card_id != null;
   const azzardoStatus = scene.azzardo?.status ?? "unavailable";
   const hasAzzardo = azzardoStatus !== "unavailable";
@@ -776,14 +829,6 @@ export default function MarshalTableView({
   const isDuelScene = scene.mode === "duel";
   const isPvpDuelScene = isDuelScene && scene.duel?.subtype === "pvp";
 
-  const difficultyValueLabel =
-    scene.difficulty?.value == null
-      ? "-"
-      : scene.azzardo?.revealed && scene.azzardo?.value != null
-        ? `${scene.difficulty.value} + ${scene.azzardo.value}`
-        : hasAzzardo
-          ? `${scene.difficulty.value} + ?`
-          : `${scene.difficulty.value}`;
   const totalBoxLabel =
     scene.difficulty?.value == null
       ? "-"
@@ -805,10 +850,18 @@ export default function MarshalTableView({
     ["J", "Q", "K"].includes(difficultyCardId.trim().toUpperCase().charAt(0));
   const azzardoBlockedByDifficulty = isJokerDifficulty || isAceDifficulty || isFigureDifficulty;
 
-  const canDeckClick =
-    !isPvpDuelScene &&
+  const canDeckClick = !interactionBlocked && (darkMode
+    ? view === "marshal" && !darkBusy && (canRollDarkDifficulty(state, currentActorId) || canDarkDraw(state, currentActorId))
+    : !isPvpDuelScene &&
     isEditable &&
-    (!hasDifficulty || (!hasAzzardo && !azzardoBlockedByDifficulty));
+    (!hasDifficulty || (!darkMode && !hasAzzardo && !azzardoBlockedByDifficulty)));
+
+  const darkDeckInstruction = mustMarshalDiscardDarkCard(meta.scene)
+    ? "Discard the last Dark card before drawing again."
+    : meta.scene?.dark?.revealed ? "The Dark hand has been revealed."
+    : !hasDifficulty ? "Draw the hidden difficulty."
+    : canDarkDraw(state, currentActorId) ? "Click the deck to draw another Dark card."
+    : "Dark draw unavailable.";
 
   const canStartScene =
     !isLocked &&
@@ -821,6 +874,7 @@ export default function MarshalTableView({
   function getParticipantPostSceneRequirements(pid: string): {
     mustHealOrSkip: boolean;
     mustDiscardRewards: boolean;
+    mustLoseDarkReward: boolean;
   } {
     const wounds = getDisplayedWounds(pid);
     const rewardPoints = getPlayerRewardPoints(pid);
@@ -828,6 +882,7 @@ export default function MarshalTableView({
     const rewardDiscardStarted = !!scenePlayers?.[pid]?.reward_discard_started;
 
     return {
+      mustLoseDarkReward: scenePlayers?.[pid]?.dark_reward_loss_pending === true,
       mustHealOrSkip: wounds === 1 && rewardPoints > 11 && recoveryAction == null,
       mustDiscardRewards: rewardPoints > 21 || (rewardDiscardStarted && rewardPoints > 20),
     };
@@ -837,7 +892,7 @@ export default function MarshalTableView({
     scene.status === "closed" &&
     participantIds.some((pid) => {
       const requirements = getParticipantPostSceneRequirements(pid);
-      return requirements.mustHealOrSkip || requirements.mustDiscardRewards;
+      return requirements.mustLoseDarkReward || requirements.mustHealOrSkip || requirements.mustDiscardRewards;
     });
 
   const sortedNonMarshalPlayers = useMemo(() => {
@@ -850,7 +905,25 @@ export default function MarshalTableView({
   const [debugCardId, setDebugCardId] = useState("BJ");
 
 
+  async function handleReclaimPending() {
+    if (interactionBlocked) return;
+    if (!hasPendingInteraction || reclaimPending || currentActorId !== marshalId) return;
+    setReclaimPending(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: "gf.pending_reclaim",
+        params: { actor_id: currentActorId },
+        ...getViewRequest(view, currentActorId),
+      }));
+    } finally {
+      setReclaimPending(false);
+    }
+  }
+
   async function toggleParticipant(pid: string) {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (!isEditable) return;
 
     const nextParticipantIds = participantIds.includes(pid)
@@ -865,12 +938,14 @@ export default function MarshalTableView({
           actor_id: currentActorId,
           participant_ids: nextParticipantIds,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleToggleDuelMode() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (duelToggleDisabled) return;
 
     const nextMode = isDuelScene ? "standard" : "duel";
@@ -892,12 +967,19 @@ export default function MarshalTableView({
           mode: nextMode,
           duel_subtype: nextDuelSubtype,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleDeckClick() {
+    if (interactionBlocked) return;
+    if (darkMode) {
+      if (!canDeckClick) return;
+      await submitDark(hasDifficulty ? "gf.scene_dark_draw" : "gf.scene_roll_difficulty");
+      return;
+    }
+    if (hasPendingInteraction) return;
     if (!isEditable) return;
     if (isPvpDuelScene) return;
 
@@ -909,13 +991,13 @@ export default function MarshalTableView({
           params: {
             actor_id: currentActorId,
           },
-          view,
+          ...getViewRequest(view, currentActorId),
         })
       );
       return;
     }
 
-    if (!hasAzzardo && !azzardoBlockedByDifficulty) {
+    if (!darkMode && !hasAzzardo && !azzardoBlockedByDifficulty) {
       await run(
         gfAction({
           game_id: resp.game_id,
@@ -923,13 +1005,15 @@ export default function MarshalTableView({
           params: {
             actor_id: currentActorId,
           },
-          view,
+          ...getViewRequest(view, currentActorId),
         })
       );
     }
   }
 
   async function handleForceAcknowledge(pid: string) {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     await run(
       gfAction({
         game_id: resp.game_id,
@@ -938,12 +1022,14 @@ export default function MarshalTableView({
           actor_id: currentActorId,
           player_id: pid,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleForceSkipHeal(pid: string) {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     await run(
       gfAction({
         game_id: resp.game_id,
@@ -952,12 +1038,30 @@ export default function MarshalTableView({
           actor_id: currentActorId,
           player_id: pid,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
+  async function handleForceDarkLoss(pid: string) {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction || darkLossBusy || scene.status !== "closed" || !scenePlayers?.[pid]?.dark_reward_loss_pending) return;
+    setDarkLossBusy(true);
+    try {
+      await run(gfAction({
+        game_id: resp.game_id,
+        action: "gf.scene_force_discard_dark_reward",
+        params: { actor_id: currentActorId, player_id: pid },
+        ...getViewRequest(view, currentActorId),
+      }));
+    } finally {
+      setDarkLossBusy(false);
+    }
+  }
+
   async function handleForceDiscardRewards(pid: string) {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     await run(
       gfAction({
         game_id: resp.game_id,
@@ -966,12 +1070,14 @@ export default function MarshalTableView({
           actor_id: currentActorId,
           player_id: pid,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleNewScene() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction || hasBlockedParticipantForNewScene) return;
     setPendingBonusType(null);
     await run(
       gfAction({
@@ -980,12 +1086,14 @@ export default function MarshalTableView({
         params: {
           actor_id: currentActorId,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleCloseScene() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     setPendingBonusType(null);
     await run(
       gfAction({
@@ -994,12 +1102,14 @@ export default function MarshalTableView({
         params: {
           actor_id: currentActorId,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleAssignBonus(pid: string) {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (!pendingBonusType) return;
     await run(
       gfAction({
@@ -1010,13 +1120,15 @@ export default function MarshalTableView({
           player_id: pid,
           bonus_type: pendingBonusType,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
     setPendingBonusType(null);
   }
 
   async function handleAzzardoUndo() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (!isEditable) return;
     if (azzardoStatus !== "drawn") return;
 
@@ -1027,12 +1139,14 @@ export default function MarshalTableView({
         params: {
           actor_id: currentActorId,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleStartScene() {
+    if (interactionBlocked) return;
+    if (hasPendingInteraction) return;
     if (!canStartScene) return;
 
     await run(
@@ -1042,12 +1156,14 @@ export default function MarshalTableView({
         params: {
           actor_id: currentActorId,
         },
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
 
   async function handleDebugStackTopCard(cardId?: string) {
+    if (connectionLost) return;
+    if (hasPendingInteraction) return;
     if (view !== "debug") return;
     const chosen = (cardId ?? debugCardId).trim().toUpperCase();
     if (!chosen) return;
@@ -1063,6 +1179,10 @@ export default function MarshalTableView({
   }
 
   function getSceneInstruction(): string {
+    if (darkMode && scene.status === "setup") {
+      if (!hasDifficulty) return "Dark declared. Draw the hidden difficulty.";
+      return participantIds.length ? "Dark declared. Start the scene when ready." : "Dark declared. Select participants before starting the scene.";
+    }
     if (scene.status === "idle") {
       if (isPvpDuelScene) {
         return "Select the two duelists and start the duel. No difficulty is drawn.";
@@ -1155,7 +1275,7 @@ export default function MarshalTableView({
         return scene.resolution.message;
       }
       if (hasBlockedParticipantForNewScene) {
-        return "Scene closed. Resolve participant heal/skip or reward discard requirements before opening a new scene.";
+        return "Scene closed. Resolve participant Dark Reward loss, heal/skip or reward discard requirements before opening a new scene.";
       }
       return "Scene closed. Click New Scene to prepare the next one.";
     }
@@ -1165,10 +1285,11 @@ export default function MarshalTableView({
 
   return (
     <div
+      className={hasDarkAtmosphere(meta.scene) ? "saloon-table dark-mode-active" : "saloon-table"}
       style={{
         display: "flex",
         flexDirection: "column",
-        marginTop: 12,
+        marginTop: 0,
         gap: 12,
       }}
     >
@@ -1209,9 +1330,20 @@ export default function MarshalTableView({
             src={publicAsset("ui/refresh.png")}
             alt="Refresh"
             title="Refresh Table"
-            onClick={() => run(getGame(resp.game_id, view))}
+            onClick={() => run(getGame(resp.game_id, view, getViewRequest(view, currentActorId).viewer_id))}
           />
         </div>
+
+        {hasPendingInteraction && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
+            <div role="status">
+              Interaction pending for {lobbyPlayers[pendingInteraction.actor_id]?.chosen_name ?? pendingInteraction.actor_id}. Scene actions are paused.
+            </div>
+            <ReclaimInteractionControl busy={reclaimPending}
+              disabled={interactionBlocked || reclaimPending || currentActorId !== marshalId}
+              onReclaim={handleReclaimPending} />
+          </div>
+        )}
 
         <div
           style={{
@@ -1232,28 +1364,28 @@ export default function MarshalTableView({
       <div
         style={{
           minHeight: 0,
-          overflowX: "auto",
-          overflowY: "hidden",
+          overflowX: "visible",
+          overflowY: "visible",
           display: "grid",
           gridTemplateColumns: "auto minmax(0, 1fr) auto",
           gap: 14,
           alignItems: "start",
-          minWidth: "max-content",
+          minWidth: 0,
         }}
       >
         {/* LEFT RAIL */}
-        <div
+        <div className="table-deck-stack"
           style={{
-            width: "clamp(176px, 18vw, 352px)",
+            width: 400,
             display: "grid",
             gap: 14,
-            overflowY: "auto",
+            overflowY: "visible",
             minHeight: 0,
             alignContent: "start",
         }}
       >
           {canCloseScene || canOpenNewScene ? (
-            <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+            <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
               <TableZone title={canCloseScene ? "Close Scene" : "Next Scene"}>
                 <div
                   style={{
@@ -1265,16 +1397,17 @@ export default function MarshalTableView({
                     <ActionButton
                       label="Close Scene"
                       onClick={handleCloseScene}
+                      disabled={interactionBlocked || hasPendingInteraction}
                       title="Discard scene cards and distribute rewards"
                     />
                   ) : (
                     <ActionButton
                       label="New Scene"
                       onClick={handleNewScene}
-                      disabled={hasBlockedParticipantForNewScene}
+                      disabled={interactionBlocked || hasPendingInteraction || hasBlockedParticipantForNewScene}
                       title={
                         hasBlockedParticipantForNewScene
-                          ? "Resolve participant heal/skip or reward discard requirements first"
+                          ? "Resolve participant Dark Reward loss, heal/skip or reward discard requirements first"
                           : "Prepare a new scene"
                       }
                     />
@@ -1310,18 +1443,18 @@ export default function MarshalTableView({
                           label="Vengeance"
                           onClick={() =>
                             setPendingBonusType((prev) =>
-                              prev === "vengeance" ? null : "vengeance"
+                              hasPendingInteraction || prev === "vengeance" ? null : "vengeance"
                             )
                           }
-                          disabled={!canAssignBonus}
+                          disabled={interactionBlocked || hasPendingInteraction || !canAssignBonus}
                           title="Assign one bonus Vengeance card"
                         />
                         <ActionButton
                           label="Scum"
                           onClick={() =>
-                            setPendingBonusType((prev) => (prev === "scum" ? null : "scum"))
+                            setPendingBonusType((prev) => (hasPendingInteraction || prev === "scum" ? null : "scum"))
                           }
-                          disabled={!canAssignBonus}
+                          disabled={interactionBlocked || hasPendingInteraction || !canAssignBonus}
                           title="Assign one bonus Scum card"
                         />
                       </div>
@@ -1332,12 +1465,14 @@ export default function MarshalTableView({
             </ResponsiveScaleBox>
           ) : null}
 
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
+          <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
             <TableZone title="Deck">
+              {darkMode && <p className="marshal-dark-status">{darkDeckInstruction}</p>}
               <button
                 type="button"
+                aria-label="Draw from deck"
                 onClick={handleDeckClick}
-                disabled={!canDeckClick}
+                disabled={interactionBlocked || !canDeckClick}
                 style={{
                   border: "1px solid var(--border-muted)",
                   borderRadius: ds(12),
@@ -1351,7 +1486,7 @@ export default function MarshalTableView({
                   opacity: canDeckClick ? 1 : 0.65,
                 }}
                 title={
-                  !canDeckClick
+                  interactionBlocked ? blockedExplanation : darkMode ? darkDeckInstruction : !canDeckClick
                     ? azzardoBlockedByDifficulty
                       ? isJokerDifficulty
                         ? "Joker difficulty: no azzardo allowed"
@@ -1364,13 +1499,13 @@ export default function MarshalTableView({
                       : "Click to draw azzardo"
                 }
               >
-                {deckCount > 0 ? (
-                  <CardImg cardId="BACK" faceDown width={ds(86)} title="Deck" />
+                {typeof deckCount === "number" && deckCount > 0 ? (
+                  <CardImg cardId="BACK" faceDown width={DECK_CARD_WIDTH} title="Deck" />
                 ) : (
                   <div
                     style={{
-                      width: ds(86),
-                      height: ds(124),
+                      width: DECK_CARD_WIDTH,
+                      height: DECK_CARD_WIDTH * 1.45,
                       border: "2px dashed var(--border-muted)",
                       borderRadius: ds(10),
                       display: "flex",
@@ -1385,24 +1520,16 @@ export default function MarshalTableView({
                     empty
                   </div>
                 )}
-                <div style={{ fontSize: ds(16) }}>
+                <div style={{ fontSize: 28 }}>
                   <b>{deckCount}</b> cards
                 </div>
               </button>
             </TableZone>
           </ResponsiveScaleBox>
 
-          <ResponsiveScaleBox baseWidth={352} minScale={0.5} maxScale={1}>
-            <TableZone title="Discard">
-              {discardPile.length === 0 ? (
-                <div style={{ opacity: 0.6, fontSize: ds(13) }}>— empty —</div>
-              ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: ds(8) }}>
-                  {discardPile.map((cardId, idx) => (
-                    <CardImg key={`${cardId}:${idx}`} cardId={cardId} width={ds(70)} />
-                  ))}
-                </div>
-              )}
+          <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
+            <TableZone title={`Discard · ${discardPile.length}`}>
+              <DiscardPile cards={discardPile} />
             </TableZone>
           </ResponsiveScaleBox>
 
@@ -1424,16 +1551,19 @@ export default function MarshalTableView({
                   <ActionButton
                     label="Black Joker"
                     onClick={() => handleDebugStackTopCard("BJ")}
+                    disabled={hasPendingInteraction}
                   />
                   <ActionButton
                     label="Red Joker"
                     onClick={() => handleDebugStackTopCard("RJ")}
+                    disabled={hasPendingInteraction}
                   />
                 </div>
 
                 <input
                   type="text"
                   value={debugCardId}
+                  disabled={hasPendingInteraction}
                   onChange={(e) => setDebugCardId(e.target.value)}
                   placeholder="Card ID"
                   spellCheck={false}
@@ -1451,6 +1581,7 @@ export default function MarshalTableView({
                 <ActionButton
                   label="Stack On Top"
                   onClick={() => handleDebugStackTopCard()}
+                  disabled={hasPendingInteraction}
                 />
               </div>
             </TableZone>
@@ -1466,11 +1597,23 @@ export default function MarshalTableView({
             minHeight: 0,
           }}
         >
-          <TableZone title="Difficulty / Scene">
+          <TableZone title="Difficulty / Scene" headerRight={
+            !darkMode && <DarkDeclareControl state={state} gameId={resp.game_id}
+              actorId={currentActorId} view={view} run={run} />
+          }>
+            {showDarkHand ? (
+              <>
+                <MarshalDarkHand resp={resp} actorId={currentActorId} view={view} busy={interactionBlocked || darkBusy}
+                  onDiscardLast={() => submitDark("gf.scene_dark_discard_last")}
+                  onReveal={() => submitDark("gf.scene_dark_reveal")} />
+                {scene.status === "setup" && <ActionButton label="Start Scene" onClick={handleStartScene}
+                  disabled={interactionBlocked || darkBusy || !canStartScene} title="Lock setup and begin scene" />}
+              </>
+            ) : (
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "max-content max-content minmax(320px, 1fr)",
+                gridTemplateColumns: "max-content max-content minmax(0, 1fr)",
                 gap: 14,
                 alignItems: "center",
                 justifyContent: "start",
@@ -1502,7 +1645,7 @@ export default function MarshalTableView({
                   <div
                     style={{
                       fontFamily: "LavaArabic, serif",
-                      fontSize: isJokerDifficulty ? "4.2rem" : "3rem",
+                      fontSize: "var(--difficulty-base-size)",
                       lineHeight: 1,
                       whiteSpace: "nowrap",
                       color: isJokerDifficulty ? "#7a1f1f" : "inherit",
@@ -1514,7 +1657,7 @@ export default function MarshalTableView({
                   {difficultyCardId ? (
                     <CardImg
                       cardId={difficultyCardId}
-                      width={ds(86)}
+                      width={DIFFICULTY_CARD_WIDTH}
                       title="Difficulty card"
                     />
                   ) : (
@@ -1525,7 +1668,7 @@ export default function MarshalTableView({
                     <button
                       type="button"
                       onClick={handleAzzardoUndo}
-                      disabled={isLocked}
+                      disabled={interactionBlocked || isLocked}
                       style={{
                         border: "none",
                         background: "transparent",
@@ -1550,7 +1693,7 @@ export default function MarshalTableView({
                         />
                       )}
                     </button>
-                  ) : (
+                  ) : !darkMode && (
                     <div style={{ opacity: 0.35, fontSize: 13 }}>no azzardo</div>
                   )}
                 </div>
@@ -1558,7 +1701,7 @@ export default function MarshalTableView({
                 <ActionButton
                   label="Start Scene"
                   onClick={handleStartScene}
-                  disabled={!canStartScene}
+                  disabled={interactionBlocked || !canStartScene}
                   title={
                     canStartScene
                       ? "Lock setup and begin scene"
@@ -1617,27 +1760,10 @@ export default function MarshalTableView({
                   minWidth: 0,
                 }}
               >
-                <div><b>difficulty value:</b> {difficultyValueLabel}</div>
-                <div><b>difficulty rule:</b> {scene.difficulty?.rule_id ?? "-"}</div>
-                <div><b>difficulty base:</b> {scene.difficulty?.base ?? "-"}</div>
-                <div><b>azzardo status:</b> {azzardoStatus}</div>
-                <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
-                <div><b>participants selected:</b> {participantIds.length}</div>
-                <div>
-                  <b>scene status:</b> {scene.status ?? "-"}
-                </div>
-                <div
-                  style={{
-                    opacity: 0.72,
-                    whiteSpace: "pre-line",
-                    overflowWrap: "break-word",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {getSceneInstruction()}
-                </div>
+                <SceneStatus message={getSceneInstruction()} />
               </div>
             </div>
+            )}
           </TableZone>
 
           <div style={{ minHeight: 0 }}>
@@ -1665,7 +1791,7 @@ export default function MarshalTableView({
                     <button
                       type="button"
                       onClick={handleToggleDuelMode}
-                      disabled={duelToggleDisabled}
+                      disabled={interactionBlocked || duelToggleDisabled}
                       title={
                         canUseDuelMode
                           ? `Mark this scene as a ${participantIds.length === 1 ? "duel vs NPC" : "PvP duel"}`
@@ -1709,6 +1835,7 @@ export default function MarshalTableView({
                         <PlayerLane
                           key={pid}
                           playerId={pid}
+                          presenceStatus={getPresenceStatus(meta, pid)}
                           pstate={lobbyPlayers[pid] ?? {}}
                           figureCardId={getPlayerFigureCardId(pid)}
                           playedCards={getPlayerSceneHand(pid)}
@@ -1722,16 +1849,19 @@ export default function MarshalTableView({
                           stateLabel={getParticipantStateLabel(pid)}
                           laneState={getParticipantLaneState(pid)}
                           outcome={getParticipantOutcome(pid)}
+                          actionsLocked={interactionBlocked || hasPendingInteraction || darkLossBusy}
                           canForceAcknowledge={
                             scene.status === "awaiting_ack" && !scenePlayers?.[pid]?.acknowledged
                           }
                           onForceAcknowledge={() => handleForceAcknowledge(pid)}
+                          mustLoseDarkReward={scene.status === "closed" && requirements.mustLoseDarkReward}
                           mustHealOrSkip={scene.status === "closed" && requirements.mustHealOrSkip}
                           mustDiscardRewards={
                             scene.status === "closed" && requirements.mustDiscardRewards
                           }
                           onForceSkipHeal={() => handleForceSkipHeal(pid)}
                           onForceDiscardRewards={() => handleForceDiscardRewards(pid)}
+                          onForceDarkLoss={() => handleForceDarkLoss(pid)}
                         />
                       );
                     })()
@@ -1746,7 +1876,7 @@ export default function MarshalTableView({
         <div
           style={{
             minHeight: 0,
-            width: "clamp(216px, 24vw, 432px)",
+            width: 400,
           }}
         >
           <ResponsiveScaleBox baseWidth={480} minScale={0.5} maxScale={1}>
@@ -1765,7 +1895,7 @@ export default function MarshalTableView({
                   {sortedNonMarshalPlayers.map((pid) => {
                     const selected = participantIds.includes(pid);
                     const assignedBonusType = getAssignedBonusType(pid);
-                    const targetingBonus = pendingBonusType !== null;
+                    const targetingBonus = !hasPendingInteraction && pendingBonusType !== null;
                     const dead = getIsDead(pid);
                     const canTargetForBonus =
                       targetingBonus && canAssignBonus && assignedBonusType == null && !dead;
@@ -1774,13 +1904,14 @@ export default function MarshalTableView({
                       <SelectablePlayerCard
                         key={pid}
                         selected={targetingBonus ? false : selected}
-                        disabled={targetingBonus ? !canTargetForBonus : isLocked || dead}
+                        disabled={interactionBlocked || (targetingBonus ? !canTargetForBonus : isLocked || dead)}
                         onToggle={() =>
                           targetingBonus ? handleAssignBonus(pid) : toggleParticipant(pid)
                         }
                       >
                         <PlayerSummaryCard
                           playerId={pid}
+                          presenceStatus={getPresenceStatus(meta, pid)}
                           pstate={lobbyPlayers[pid] ?? {}}
                           figureCardId={getPlayerFigureCardId(pid)}
                           scumCount={getPlayerScumCount(pid)}

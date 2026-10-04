@@ -1,8 +1,8 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { ActionResponse, View } from "../api/types";
+import type { ActionResponse, GameMeta, GameZones, View } from "../api/types";
 
-export type MetaAny = Record<string, any>;
-export type Zones = Record<string, string[]>;
+export type MetaAny = GameMeta;
+export type Zones = GameZones;
 export type RunAction = (p: Promise<ActionResponse>) => Promise<ActionResponse>;
 
 export type LobbyViewProps = {
@@ -15,6 +15,7 @@ export type LobbyViewProps = {
   setSelectedPlayerId: (v: string) => void;
   claimCardId: string;
   setClaimCardId: (v: string) => void;
+  connectionLost?: boolean;
   run: RunAction;
   setResp: Dispatch<SetStateAction<ActionResponse | null>>;
   onBackHome: () => void;

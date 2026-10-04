@@ -32,3 +32,6 @@ __pycache__/
 *.sw?
 # KDE directory metadata
 .directory
+
+# Development application durability
+/var/games/

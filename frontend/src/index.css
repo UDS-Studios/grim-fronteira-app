@@ -5,6 +5,20 @@
   font-style: normal;
 }
 
+.presence-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin-inline-start: 0.35em;
+  font-family: system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -21,6 +35,7 @@
   --text-primary: #213547;
   --text-muted: rgba(33, 53, 71, 0.75);
   --accent-danger: #7a1f1f;
+  --target-positive: #2f8f3e;
   --danger-bg: #fff4f4;
   --danger-border: #c00;
   --input-bg: #ffffff;
@@ -127,6 +142,7 @@ button:focus-visible {
     --text-primary: #f3ead3;
     --text-muted: rgba(243, 234, 211, 0.78);
     --accent-danger: #d47f72;
+    --target-positive: #78c98a;
     --danger-bg: #4f2d2d;
     --danger-border: #d47f72;
     --input-bg: #40382a;
@@ -137,3 +153,380 @@ button:focus-visible {
     --player-selected-bg: rgba(255, 255, 255, 0.12);
   }
 }
+
+.other-player-target:focus-visible {
+  outline: 3px solid var(--target-positive);
+  outline-offset: 3px;
+}
+
+/* The table is measured at its natural size, then scaled once into the flex remainder. */
+.saloon-composition { display: flow-root; }
+.saloon-composition > div { min-width: 0; min-height: 0; }
+.table-dev-controls button { padding: 0.35em 0.8em; }
+.table-debug { position: relative; margin-left: auto; }
+.table-debug summary { cursor: pointer; }
+.table-debug pre {
+  position: absolute; right: 0; top: 100%; z-index: 100;
+  width: min(720px, calc(100vw - 32px)); max-height: 60dvh;
+  overflow: auto; padding: 12px; box-sizing: border-box;
+  border: 1px solid var(--border-strong); background: var(--surface-strong);
+}
+
+.table-target-prompt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  align-items: center;
+}
+.table-target-prompt > :not(button) { grid-column: 1; }
+.table-target-prompt > button { grid-column: 2; grid-row: 1 / 4; }
+.discard-card { position: relative; min-width: 0; }
+.discard-card:hover, .discard-card:focus-visible { z-index: 20; }
+.discard-card:focus-visible { outline: 3px solid var(--border-strong); }
+
+.scene-status {
+  min-width: 0;
+  padding: 14px 16px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  font-family: LavaArabic, serif;
+  font-size: 28px;
+  line-height: 1.3;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.scene-status--your-turn {
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
+  font-size: 34px;
+  font-weight: 800;
+}
+
+:root { --difficulty-base-size: 3rem; }
+.table-deck-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-content: start;
+}
+
+/* Status only: the focusable medallion never activates a faction power. */
+.faction-medallion {
+  --medallion-gold: #c39a50;
+  --medallion-light: #edca85;
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border-muted);
+  background: var(--surface-muted);
+  color: inherit;
+  cursor: default;
+  overflow: visible;
+  transition: filter 180ms ease;
+}
+.faction-medallion[data-power-state="idle"] {
+  opacity: 1;
+  filter: brightness(1);
+  box-shadow: none;
+}
+.faction-medallion[data-power-state="available"] {
+  border-color: var(--medallion-gold);
+  filter: brightness(1.06);
+  box-shadow: 0 0 0 1px var(--medallion-gold), 0 0 18px #c39a5066;
+  animation: medallion-breathe 4.8s ease-in-out infinite;
+}
+.faction-medallion[data-power-state="resolving"] {
+  border-color: var(--medallion-light);
+  filter: brightness(1.12);
+  box-shadow: 0 0 0 2px var(--medallion-light), 0 0 28px #c39a5099;
+  animation: medallion-resolving-breathe 4s ease-in-out infinite;
+}
+@keyframes medallion-breathe {
+  50% { box-shadow: 0 0 0 1px var(--medallion-gold), 0 0 24px #c39a5080; }
+}
+@keyframes medallion-resolving-breathe {
+  50% { box-shadow: 0 0 0 2px var(--medallion-light), 0 0 34px #c39a50b3; }
+}
+.faction-medallion:hover,
+.faction-medallion:focus {
+  z-index: 30;
+}
+.faction-medallion:hover > img,
+.faction-medallion:focus > img {
+  filter: brightness(1.04);
+}
+.faction-medallion:focus-visible {
+  outline: 3px solid var(--text-primary);
+  outline-offset: 5px;
+}
+.faction-medallion-tooltip {
+  /* Open inward over the resource panel, inside the board's overflow clip.
+     Absolute positioning preserves the medallion's existing layout footprint. */
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 0;
+  z-index: 40;
+  width: 320px;
+  box-sizing: border-box;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--medallion-gold);
+  border-radius: 10px;
+  background: #292217;
+  color: #fff3d9;
+  box-shadow: 0 6px 18px #0006;
+  font-size: 16px;
+  line-height: 1.45;
+  text-align: left;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.faction-medallion-tooltip strong {
+  font-family: LavaArabic, serif;
+  font-size: 24px;
+  font-weight: normal;
+  line-height: 1.2;
+  color: #edca85;
+}
+/* Bridge the gap so the tooltip remains hoverable without a click. */
+.faction-medallion-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 100%;
+  top: 0;
+  width: 12px;
+  height: 100%;
+}
+.faction-medallion:hover .faction-medallion-tooltip,
+.faction-medallion:focus .faction-medallion-tooltip {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .faction-medallion[data-power-state] {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Recovery help is secondary to normal pending-player controls. */
+.reclaim-control {
+  position: relative;
+}
+.reclaim-control:hover,
+.reclaim-control:focus-within {
+  z-index: 50;
+}
+.reclaim-button {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-muted);
+}
+.reclaim-button:focus-visible {
+  outline: 3px solid var(--accent-danger);
+  outline-offset: 3px;
+}
+.reclaim-warning {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: var(--accent-danger);
+  box-shadow: 0 6px 18px #0004;
+  font-size: 15px;
+  line-height: 1.45;
+  visibility: hidden;
+  pointer-events: none;
+}
+.reclaim-control:hover .reclaim-warning,
+.reclaim-control:focus-within .reclaim-warning {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Lamps lowered: shared surfaces change, card images and controls stay unfiltered. */
+.saloon-table.dark-mode-active {
+  --surface-bg: #282823;
+  --surface-muted: #32332c;
+  --surface-strong: #3d3e34;
+  --surface-hover: #444438;
+  --border-strong: #9c957c;
+  --border-muted: #777461;
+  --text-primary: #eee5ce;
+  --text-muted: #c8c1ac;
+  --button-bg: #393a31;
+  --button-text: #eee5ce;
+  --input-bg: #303129;
+  --input-text: #eee5ce;
+  --accent-danger: #eba497;
+  --target-positive: #93d59c;
+  position: relative;
+  isolation: isolate;
+  color: var(--text-primary);
+  background: #20221e;
+  box-shadow: 0 0 32px 10px #11140fe6;
+  border-radius: 14px;
+}
+.saloon-table.dark-mode-active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 60px #080b0866;
+  pointer-events: none;
+  z-index: -1;
+}
+.dark-declare-control { position: relative; display: flex; }
+.dark-declare-control:hover, .dark-declare-control:focus-within { z-index: 50; }
+.dark-declare-button:focus-visible { outline: 3px solid var(--text-primary); outline-offset: 3px; }
+.dark-declare-button:not(:disabled):hover { filter: brightness(1.15); }
+.dark-declare-tooltip {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 320px;
+  box-sizing: border-box;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid #b79860;
+  border-radius: 10px;
+  background: #29271f;
+  color: #fff3d9;
+  box-shadow: 0 6px 18px #0006;
+  font-size: 16px;
+  line-height: 1.45;
+  visibility: hidden;
+  pointer-events: none;
+}
+.dark-declare-tooltip strong { font-family: LavaArabic, serif; font-size: 24px; color: #edca85; }
+.dark-declare-control:hover .dark-declare-tooltip,
+.dark-declare-control:focus-within .dark-declare-tooltip { visibility: visible; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .dark-declare-button { transition: none !important; }
+}
+
+/* Bounded, ordered fan inside the existing Difficulty / Scene zone. */
+.marshal-dark-hand {
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid #b79860;
+  border-radius: 10px;
+  background: #24271f;
+  color: #eee5ce;
+  display: grid;
+  gap: 10px;
+}
+.marshal-dark-hand-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.marshal-dark-hand-heading > strong { letter-spacing: .08em; font-size: 15px; color: #d5bc87; }
+.marshal-dark-total { display: flex; align-items: center; gap: 12px; }
+.marshal-dark-total span { font-size: 12px; letter-spacing: .06em; }
+.marshal-dark-total strong { font-family: LavaArabic, serif; font-size: 38px; line-height: 1; }
+.marshal-dark-cards { display: grid; max-width: 100%; padding-right: 88px; height: 168px; align-items: start; }
+.marshal-dark-card { position: relative; min-width: 0; width: 86px; outline-offset: 3px; }
+.marshal-dark-card:hover, .marshal-dark-card:focus-visible { z-index: 30; }
+.marshal-dark-card-label { display: block; width: 86px; font-size: 11px; font-weight: 700; text-align: center; background: #24271f; }
+.marshal-dark-card[data-forced-discard="true"] { outline: 3px solid #eba497; border-radius: 10px; }
+.marshal-dark-card[data-forced-discard="true"] .marshal-dark-card-label { color: #ffd0bb; }
+.marshal-dark-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.marshal-dark-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.marshal-dark-actions button:focus-visible { outline: 3px solid #eee5ce; outline-offset: 3px; }
+.marshal-dark-reveal { border: 2px solid #d5bc87; background: #55452c; color: #fff3d9; font-weight: 800; margin-left: auto; }
+.marshal-dark-status, .marshal-dark-warning { margin: 0; min-height: 24px; font-size: 15px; }
+.marshal-dark-warning { color: #ffd0bb; font-weight: 700; border-left: 3px solid #eba497; padding-left: 8px; }
+.marshal-dark-discard-card { display: block; padding: 0; border: 0; background: transparent; color: inherit; }
+.marshal-dark-discard-card:not(:disabled):hover { outline: 3px solid #fff3d9; }
+.marshal-dark-discard-card:focus-visible { outline: 3px solid #fff3d9; outline-offset: 4px; }
+.marshal-dark-discard-card:disabled { opacity: .5; cursor: not-allowed; }
+.marshal-dark-card:focus-within { z-index: 30; }
+
+/* Player Dark hand: a fixed-height fan, independent of the number of cards. */
+.player-dark-scene { display: grid; gap: 8px; min-width: 0; }
+.player-dark-hand {
+  min-width: 0;
+  padding: 10px 16px;
+  border: 1px solid #847348;
+  border-radius: 14px;
+  background: #24271f;
+  color: #eee5ce;
+  display: grid;
+  gap: 8px;
+}
+.player-dark-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.player-dark-heading span { white-space: nowrap; }
+.player-dark-cards {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  padding-right: 74px;
+  height: 112px;
+  align-items: start;
+}
+.player-dark-card { position: relative; min-width: 0; width: 72px; }
+.player-dark-card:hover, .player-dark-card:focus-visible { z-index: 20; }
+.player-dark-card:focus-visible { outline: 2px solid #cfb772; outline-offset: 3px; border-radius: 10px; }
+.player-dark-total { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+.player-dark-total strong { font-size: 20px; }
+.player-dark-cards--revealed { animation: dark-hand-reveal 240ms ease-out; }
+@keyframes dark-hand-reveal {
+  from { opacity: .35; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-dark-cards--revealed { animation: none; }
+  .player-dark-card img { transition: none !important; }
+}
+
+.dark-reward-payment {
+  padding: 8px 12px;
+  border: 1px solid #847348;
+  border-radius: 10px;
+  background: #24271f;
+  color: #eee5ce;
+  font-size: 14px;
+}
+.dark-reward-payment-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.dark-reward-payment button { padding: 6px 10px; font-weight: 800; }
+.dark-reward-payment button:focus-visible { outline: 2px solid #cfb772; outline-offset: 2px; }
+
+/* Filled semantic lights retain visible status text for accessibility. */
+.presence-light {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--presence-light-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-primary) 25%, transparent);
+}
+
+.presence-indicator--online { --presence-light-color: #28a745; }
+.presence-indicator--offline { --presence-light-color: #e04444; }
+
+.marshal-offline-banner {
+  --presence-light-color: #e04444;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 10px 14px;
+  border: 2px solid var(--danger-border);
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.marshal-offline-banner strong { display: block; font-weight: 800; }

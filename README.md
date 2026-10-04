@@ -158,3 +158,37 @@ rules.
 PYTHONPATH=. uvicorn backend.app.main:app --reload
 npm run dev
 ```
+
+## Backend durability
+
+The API persists complete games and seat recovery-token hashes before acknowledging
+creation, joins, and gameplay mutations. Linux local filesystem storage is supported.
+The default directory is `<repository>/var/games`, resolved independently of the
+working directory. Set `GF_PERSISTENCE_DIR` to an **absolute** path to override it.
+For production, use a service-owned directory such as `/var/lib/grim-fronteira/games`,
+outside deployment/build output. The directory is restricted to `0700`, files to `0600`.
+Initialization failures stop startup; there is no memory-only fallback.
+
+Run **one backend serving process per directory**: an exclusive process-lifetime
+filesystem lock rejects a second writer. Do not enable multiple Uvicorn workers.
+Normal shutdown/reload releases ownership. Deployments must preserve the directory
+and grant the backend service user access; the service unit is managed outside this repo.
+
+Startup restores valid game snapshots independently. Invalid/unsupported snapshots
+remain untouched and their games return `503 GAME_UNAVAILABLE`. Internal diagnostics
+include only a game ID and fixed reason category. An uncertain save after atomic
+replacement fences that game until restart; never roll back by overwriting its file.
+A failure before replacement returns `503 PERSISTENCE_UNAVAILABLE` without committing
+candidate gameplay state. Atomic save uses file fsync, replacement, and directory fsync.
+
+After restart all seats are offline and old active sessions return `SESSION_INVALID`.
+Persistent reconnect credentials recover the same seat with a new active session;
+revision and pending interactions are preserved. Post-lobby games remain paused until
+Marshal recovery. Reconnect/takeover and presence polling do not write snapshots.
+There is no migration/import of engine-only saves, deletion endpoint, or retention policy.
+Debug mutations use the same transactions; seat changes without matching recovery
+authority are rejected as `409 SESSION_TOPOLOGY_INVALID`.
+
+A committed request can lose its response during a crash: client retries are not
+exactly-once. In particular, a lost initial credential-issuance response cannot be
+reconstructed from the saved hash. No plaintext bearer credentials are stored.

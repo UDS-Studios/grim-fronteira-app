@@ -1,3 +1,5 @@
+import { isGameplayPaused, PAUSE_EXPLANATION } from "../utils/sessionPause";
+import { getViewRequest } from "../utils/sessionView";
 // frontend/src/views/HookSelectionView.tsx
 import { useState } from "react";
 import { gfAction } from "../api/gf";
@@ -8,6 +10,7 @@ type HookSelectionViewProps = {
   resp: ActionResponse;
   view: View;
   currentActorId: string;
+  connectionLost?: boolean;
   run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
 };
 
@@ -16,8 +19,9 @@ export default function HookSelectionView({
   view,
   currentActorId,
   run,
+  connectionLost = false,
 }: HookSelectionViewProps) {
-  const state = (resp.state as any) ?? {};
+  const state = resp.state ?? {};
   const meta = state.meta ?? {};
   const marshalId = meta.marshal_id ?? "";
   const hooks = meta.hooks ?? {};
@@ -25,10 +29,13 @@ export default function HookSelectionView({
   const selectedFromBackend: string | null = hooks.selected_hook ?? null;
 
   const [selectedHook, setSelectedHook] = useState<string | null>(selectedFromBackend);
+  const interactionBlocked = isGameplayPaused(meta) || connectionLost;
+  const blockedExplanation = isGameplayPaused(meta) ? PAUSE_EXPLANATION : "Connection lost";
   const isMarshal = currentActorId === marshalId;
 
   async function beginTable() {
-    const params: Record<string, any> = {
+    if (interactionBlocked) return;
+    const params: Record<string, unknown> = {
       actor_id: currentActorId,
     };
 
@@ -41,7 +48,7 @@ export default function HookSelectionView({
         game_id: resp.game_id,
         action: "gf.begin_table",
         params,
-        view,
+        ...getViewRequest(view, currentActorId),
       })
     );
   }
@@ -172,6 +179,8 @@ export default function HookSelectionView({
           <button
             type="button"
             onClick={beginTable}
+            disabled={interactionBlocked}
+            title={interactionBlocked ? blockedExplanation : undefined}
             style={{
               fontFamily: "LavaArabic, serif",
               fontSize: "3rem",
