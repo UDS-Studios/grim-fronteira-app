@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 import { createElement, isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getSessionView, getViewRequest } from "../src/utils/sessionView.ts";
-import { yankeeLiveState, YANKEE_A, YANKEE_B, INSPECTED_CARD } from "./fixtures/yankeeLiveState.ts";
+import { yankeeLiveState as fixtureState, YANKEE_A, YANKEE_B, INSPECTED_CARD } from "./fixtures/yankeeLiveState.ts";
+
+const yankeeLiveState: typeof fixtureState = (...args) => ({ ...fixtureState(...args), game_id: "11111111-1111-4111-8111-111111111111" });
 
 test("registered players override developer inspection; Marshal overrides inspection too", () => {
   const meta = yankeeLiveState().state.meta!;
@@ -80,7 +82,7 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
     for (const actor of [YANKEE_A, YANKEE_B, "marshal"]) {
       hooks.resetHooks();
       requests.length = 0;
-      const tab = new Map([["gf_player_id", "legacy-untrusted"], ["gf_session:yankee-live", JSON.stringify({ player_id: actor, role: actor === "marshal" ? "marshal" : "player", active_session: "test-active" })]]);
+      const tab = new Map([["gf_player_id", "legacy-untrusted"], ["gf_session:11111111-1111-4111-8111-111111111111", JSON.stringify({ player_id: actor, role: actor === "marshal" ? "marshal" : "player", active_session: "test-active" })]]);
       const storage = { getItem: (key: string) => tab.get(key) ?? null, setItem: (key: string, value: string) => tab.set(key, value), removeItem: (key: string) => tab.delete(key) };
       Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: storage });
       Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
@@ -96,7 +98,7 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
       };
       let tree = render();
       await flush();
-      (findElement(tree, Home)!.props.setJoinGameId as (id: string) => void)("yankee-live");
+      (findElement(tree, Home)!.props.setJoinGameId as (id: string) => void)("11111111-1111-4111-8111-111111111111");
       tree = render();
       await (findElement(tree, Home)!.props.onJoinGame as () => Promise<void>)();
       const expectedView = actor === "marshal" ? "marshal" : "player";
@@ -137,7 +139,7 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
         assert.equal(request.url.searchParams.get("view"), expectedView);
         assert.equal(request.url.searchParams.get("viewer_id"), actor);
       }
-      assert.equal(JSON.parse(tab.get("gf_session:yankee-live")!).player_id, actor, "credential seat supplies session identity");
+      assert.equal(JSON.parse(tab.get("gf_session:11111111-1111-4111-8111-111111111111")!).player_id, actor, "credential seat supplies session identity");
       hooks.resetHooks(); // Simulate a refresh: hooks reset, tab storage survives.
       requests.length = 0;
       render();
@@ -150,7 +152,7 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
     // A fresh join must request its own private action response immediately.
     hooks.resetHooks();
     sessionStorage.removeItem("gf_last_game");
-    sessionStorage.removeItem("gf_session:yankee-live");
+    sessionStorage.removeItem("gf_session:11111111-1111-4111-8111-111111111111");
     sessionStorage.setItem("gf_player_id", "new-visitor");
     requests.length = 0;
     globalThis.fetch = async (input, options) => {
@@ -171,12 +173,12 @@ test("App default session reconnects, polls, refreshes and renders private Yanke
       return new Response(JSON.stringify(response));
     };
     let home = render();
-    (findElement(home, Home)!.props.setJoinGameId as (id: string) => void)("yankee-live");
+    (findElement(home, Home)!.props.setJoinGameId as (id: string) => void)("11111111-1111-4111-8111-111111111111");
     home = render();
     await (findElement(home, Home)!.props.onJoinGame as () => Promise<void>)();
     const joinedTable = findElement(render(), Table)!;
     assert.equal(joinedTable.props.view, "player");
-    assert.equal(joinedTable.props.currentActorId, JSON.parse(sessionStorage.getItem("gf_session:yankee-live")!).player_id);
+    assert.equal(joinedTable.props.currentActorId, JSON.parse(sessionStorage.getItem("gf_session:11111111-1111-4111-8111-111111111111")!).player_id);
     assert.ok(renderToStaticMarkup(createElement(Table, joinedTable.props)).includes("Inspected top card: 7D"));
     assert.equal(requests.length, 2, "no intermediate public gameplay request");
 

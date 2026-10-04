@@ -5,8 +5,8 @@ import { newGame, getGame, gfAction, reconnectGame, takeoverGame } from "./api/g
 import type { ActionResponse } from "./api/types";
 import { getFreshPlayerId } from "./utils/identity";
 import { getSessionView, type InspectionView } from "./utils/sessionView";
-import { getGameEntryMode, getRecoveryReason, type RecoveryReason } from "./utils/reconnect";
-import { loadSession, getReconnectToken, getActiveSession, getLastGame, setLastGame } from "./utils/session";
+import { getGameEntryMode, getRecoveryReason, normalizeGameId, type RecoveryReason } from "./utils/reconnect";
+import { loadSession, clearActiveSession, getReconnectToken, getActiveSession, getLastGame, setLastGame } from "./utils/session";
 import SessionRecoveryView from "./views/SessionRecoveryView";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
@@ -28,6 +28,7 @@ export default function App() {
   const [selectedPlayerId, setSelectedPlayerId] = useState(currentActorId);
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed" | "recovery">(() => getLastGame() ? "game" : "home");
   const [closedGameId, setClosedGameId] = useState("");
   const [recovery, setRecovery] = useState<{ reason: RecoveryReason; gameId: string } | null>(null);
@@ -38,7 +39,13 @@ export default function App() {
   const responseEpoch = useRef(0);
 
   function backHome() {
+    clearActiveSession(recovery?.gameId || gameId);
+    resetToHome();
+  }
+
+  function resetToHome() {
     responseEpoch.current++;
+    setJoinError(null);
     setGameId("");
     setLastGame("");
     setJoinGameId("");
@@ -129,7 +136,8 @@ export default function App() {
           setScreen("error");
         }
         if (r.error.code === "HTTP_404") {
-          backHome();
+          clearActiveSession(gameId);
+          resetToHome();
         }
       } catch {
         // ignore transient polling failures for now
@@ -145,14 +153,18 @@ export default function App() {
     };
   }, [screen, gameId, view, viewerId]);
 
-  async function run(p: Promise<ActionResponse>): Promise<ActionResponse> {
+  async function run(p: Promise<ActionResponse>, targetGameId = gameId): Promise<ActionResponse> {
     const epoch = responseEpoch.current;
     try {
       const r = await p;
       if (epoch !== responseEpoch.current) return r;
       const reason = getRecoveryReason(r.error?.code);
       if (reason) {
-        enterRecovery(reason, r.game_id || gameId);
+        enterRecovery(reason, r.game_id || targetGameId);
+        return r;
+      }
+      if (r.error?.code === "HTTP_404" && screen === "home") {
+        setJoinError("Game not found.");
         return r;
       }
       if (r.error?.code === "GAME_PAUSED") {
@@ -228,22 +240,30 @@ export default function App() {
         >
           <HomeView
             joinGameId={joinGameId}
-            setJoinGameId={setJoinGameId}
-            onNewGame={() =>
-              run(
+            joinError={joinError}
+            setJoinGameId={value => { setJoinGameId(value); setJoinError(null); }}
+            onNewGame={() => {
+              setJoinError(null);
+              return run(
                 newGame({
                   creator_id: currentActorId,
                   template_path: "data/templates/standard_54.json",
                   // No authoritative role exists yet; the response establishes the Marshal session.
                   view: inspectionView,
                 })
-              )
-            }
+              );
+            }}
             onJoinGame={async () => {
+              const targetGameId = normalizeGameId(joinGameId);
+              if (!targetGameId) {
+                setJoinError("Invalid game ID. Please enter the complete game ID.");
+                return;
+              }
+              setJoinError(null);
               let entryMode: ReturnType<typeof getGameEntryMode> | undefined;
               const response = await run((async () => {
                 // Discover identity/routing without entering gameplay on this public response.
-                const loaded = await getGame(joinGameId, "public");
+                const loaded = await getGame(targetGameId, "public");
                 if (loaded.error) return loaded;
                 const loadedMeta = loaded.state.meta ?? {};
                 const stored = loadSession(loaded.game_id);
@@ -269,7 +289,7 @@ export default function App() {
                   setSelectedPlayerId(freshPlayerId);
                 }
                 return joined;
-              })());
+              })(), targetGameId);
               if (!response.error && entryMode === "closed") {
                 setClosedGameId(response.game_id);
                 setScreen("registration-closed");

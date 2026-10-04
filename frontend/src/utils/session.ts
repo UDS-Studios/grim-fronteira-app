@@ -55,6 +55,12 @@ export function storeIssuedSession(gameId: string, session: BrowserSession, rese
   if (resetRecovery) replacedRecoveryUsed.delete(gameId);
 }
 
+// Declining control forgets this tab's controller, never the seat recovery token
+// or its consumed automatic replacement-recovery allowance.
+export function clearActiveSession(gameId: string): void {
+  globalThis.sessionStorage?.removeItem(sessionKey(gameId));
+}
+
 export function clearSession(gameId: string): void {
   replacedRecoveryUsed.delete(gameId);
   globalThis.sessionStorage?.removeItem(sessionKey(gameId));

@@ -38,7 +38,7 @@ test("App recovery requires explicit takeover and preserves seat, projection and
     for (const entry of ["restart", "home", "displaced"] as const) {
       for (const role of ["player", "marshal"] as const) {
         await t.test(`${entry} ${role}: conflict, explicit click, busy guard, same seat and pause projection`, async () => {
-          const gameId = `recovery-${scenario++}`;
+          const gameId = `11111111-1111-4111-8111-${String(scenario++).padStart(12, "0")}`;
           const tab = new Map<string, string>(), persistent = new Map<string, string>();
           for (const [key, values] of [["sessionStorage", tab], ["localStorage", persistent]] as const) {
             Object.defineProperty(globalThis, key, { configurable: true, value: {
@@ -128,7 +128,7 @@ test("App recovery requires explicit takeover and preserves seat, projection and
     }
     for (const outcome of ["resume", "invalid", "cancel", "failure", "network", "takeover-invalid", "late-success"] as const) {
       await t.test(`restart recovery: ${outcome}`, async () => {
-        const gameId = `recovery-${scenario++}`;
+        const gameId = `11111111-1111-4111-8111-${String(scenario++).padStart(12, "0")}`;
         const tab = new Map<string, string>(), persistent = new Map<string, string>();
         for (const [key, values] of [["sessionStorage", tab], ["localStorage", persistent]] as const) {
           Object.defineProperty(globalThis, key, { configurable: true, value: {
@@ -209,6 +209,102 @@ test("App recovery requires explicit takeover and preserves seat, projection and
         hooks.resetHooks();
       });
     }
+    for (const stale of [false, true]) {
+      await t.test(`Back Home re-entry preserves target with empty error game_id (stale=${stale})`, async () => {
+        const gameId = `11111111-1111-4111-8111-${String(scenario++).padStart(12, "0")}`;
+        const tab = new Map<string, string>(), persistent = new Map<string, string>();
+        for (const [key, values] of [["sessionStorage", tab], ["localStorage", persistent]] as const) {
+          Object.defineProperty(globalThis, key, { configurable: true, value: {
+            getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value),
+            removeItem: (key: string) => values.delete(key),
+          } });
+        }
+        Object.defineProperty(globalThis, "window", { configurable: true, value: { setInterval: () => 1, clearInterval: () => {} } });
+        const seat = { player_id: "seat", role: "player", active_session: "stale-active", reconnect_token: "stable-token" };
+        sessions.storeIssuedSession(gameId, seat);
+        sessions.setLastGame(gameId);
+        assert.equal(sessions.consumeReplacedRecovery(gameId), true);
+        const credential = persistent.get(`gf_reconnect:${gameId}`);
+        const calls: { path: string; body?: Record<string, unknown> }[] = [];
+        globalThis.fetch = async (input, options) => {
+          const path = String(input), body = options?.body ? JSON.parse(String(options.body)) : undefined;
+          calls.push({ path, body });
+          const result: ActionResponse = { game_id: gameId, revision: 3, events: [], result: {}, error: null,
+            state: { meta: { phase: "table", marshal_id: "host" }, zones: {} } };
+          if (body?.takeover === true) {
+            result.result = { mode: "takeover", reconnected: true, session: { player_id: "seat", role: "player", active_session: "new-active" } };
+          } else if (!path.includes("view=public")) {
+            result.game_id = ""; result.state = {};
+            result.error = { code: body ? "TAKEOVER_REQUIRED" : "SESSION_REPLACED", message: "conflict", details: null };
+          }
+          return new Response(JSON.stringify(result));
+        };
+        hooks.resetHooks();
+        const render = () => { hooks.beginRender(); return App(); };
+        render(); hooks.flushEffects(); await tick();
+        let recovery = find(render(), type => type === Recovery)!;
+        assert.equal(recovery.reason, "session-replaced");
+        (recovery.onBackHome as () => void)();
+        assert.equal(sessions.getActiveSession(gameId), undefined);
+        assert.equal(persistent.get(`gf_reconnect:${gameId}`), credential);
+        assert.equal(sessions.consumeReplacedRecovery(gameId), false, "Back Home does not reset recovery allowance");
+        // Retained/legacy credentials must also work: reproduce the original stale GET path.
+        if (stale) sessions.storeIssuedSession(gameId, seat, false);
+        (find(render(), type => type === Home)!.setJoinGameId as (v: string) => void)(`  ${gameId.toUpperCase()}  `);
+        await (find(render(), type => type === Home)!.onJoinGame as () => Promise<void>)();
+        recovery = find(render(), type => type === Recovery)!;
+        assert.equal(recovery.gameId, gameId);
+        assert.match(renderToStaticMarkup(Recovery(recovery)), new RegExp(`Game: ${gameId}`));
+        assert.ok(calls.every(c => c.body?.takeover !== true));
+        if (!stale) assert.deepEqual(calls.at(-1)!.body, { game_id: gameId, reconnect_token: "stable-token", takeover: false });
+        else assert.ok(calls.at(-1)!.path.includes(`/${gameId}?view=player`));
+        await (recovery.onTakeOver as () => Promise<void>)();
+        assert.deepEqual(calls.at(-1)!.body, { game_id: gameId, reconnect_token: "stable-token", takeover: true });
+        assert.equal(calls.filter(c => c.body?.takeover === true).length, 1);
+        const table = find(render(), type => type === Table)!;
+        assert.equal(table.currentActorId, "seat"); assert.equal(table.view, "player");
+        assert.equal(sessions.getActiveSession(gameId), "new-active");
+        assert.equal(persistent.get(`gf_reconnect:${gameId}`), credential);
+        hooks.resetHooks();
+      });
+    }
+    await t.test("Home validates IDs locally and shows unknown-game feedback", async () => {
+      for (const key of ["sessionStorage", "localStorage"]) {
+        const values = new Map<string, string>();
+        Object.defineProperty(globalThis, key, { configurable: true, value: {
+          getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => values.set(k, v), removeItem: (k: string) => values.delete(k),
+        } });
+      }
+      let requests = 0;
+      const valid = "ABCDEF12-1234-4567-89AB-123456789ABC";
+      globalThis.fetch = async input => {
+        requests++;
+        assert.ok(String(input).includes(valid.toLowerCase()));
+        return new Response(JSON.stringify({ game_id: "", revision: 0, state: {}, events: [], result: {},
+          error: { code: "HTTP_404", message: "missing", details: null } }), { status: 404 });
+      };
+      hooks.resetHooks();
+      const render = () => { hooks.beginRender(); return App(); };
+      for (const invalid of ["abcdef12-1234", "not-a-uuid", "xxxxxxxx-1234-4567-89ab-123456789abc"]) {
+        let home = find(render(), type => type === Home)!;
+        (home.setJoinGameId as (v: string) => void)(invalid);
+        home = find(render(), type => type === Home)!;
+        assert.equal(home.joinError, null);
+        await (home.onJoinGame as () => Promise<void>)();
+        home = find(render(), type => type === Home)!;
+        assert.match(renderToStaticMarkup(Home(home)), /Invalid game ID. Please enter the complete game ID./);
+        assert.equal(requests, 0);
+      }
+      (find(render(), type => type === Home)!.setJoinGameId as (v: string) => void)(` ${valid} `);
+      await (find(render(), type => type === Home)!.onJoinGame as () => Promise<void>)();
+      const home = find(render(), type => type === Home)!;
+      assert.match(renderToStaticMarkup(Home(home)), /Game not found./);
+      assert.equal(find(render(), type => type === ErrorView), undefined);
+      assert.equal(requests, 1);
+      (home.setJoinGameId as (v: string) => void)(valid);
+      assert.equal(find(render(), type => type === Home)!.joinError, null);
+      hooks.resetHooks();
+    });
   } finally {
     globalThis.fetch = oldFetch;
     for (const [key, descriptor] of saved) {

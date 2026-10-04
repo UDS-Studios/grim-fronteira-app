@@ -18,3 +18,10 @@ export function getRecoveryReason(code: string | undefined): RecoveryReason | nu
     default: return null;
   }
 }
+
+// Backend issues canonical UUIDs. Normalize casing without restricting UUID version.
+export function normalizeGameId(input: string): string | null {
+  const value = input.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+    ? value.toLowerCase() : null;
+}
