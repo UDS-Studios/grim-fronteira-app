@@ -1,6 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  echo "Usage: $0 [--force-host] [-h|--help]"
+  echo "  --force-host  Override only the hostname safety check (deployment requires root)."
+  echo "  -h, --help    Show this help and exit."
+}
+
+FORCE_HOST=false
+SHOW_HELP=false
+for arg in "$@"; do
+  case "$arg" in
+    --force-host) FORCE_HOST=true ;;
+    -h|--help) SHOW_HELP=true ;;
+    *)
+      echo "[ERROR] Unknown argument: $arg" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$SHOW_HELP" == true ]]; then
+  usage
+  exit 0
+fi
+
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
@@ -35,9 +60,15 @@ npm $*
 CURRENT_HOST="$(hostname -s)"
 
 if [[ "$CURRENT_HOST" != "$EXPECTED_HOST" ]]; then
-  echo "[ERROR] This script must be run on '$EXPECTED_HOST'"
-  echo "Current host: '$CURRENT_HOST'"
-  exit 1
+  if [[ "$FORCE_HOST" == true ]]; then
+    echo "[WARNING] --force-host: overriding the hostname safety check." >&2
+    echo "Expected host: '$EXPECTED_HOST'; actual host: '$CURRENT_HOST'" >&2
+  else
+    echo "[ERROR] This script must be run on '$EXPECTED_HOST'"
+    echo "Current host: '$CURRENT_HOST'"
+    echo "Use --force-host to explicitly override the hostname safety check."
+    exit 1
+  fi
 fi
 
 # --------------------------------------------------
