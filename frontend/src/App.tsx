@@ -8,6 +8,7 @@ import { getSessionView, type InspectionView } from "./utils/sessionView";
 import { getGameEntryMode, getRecoveryReason, normalizeGameId, type RecoveryReason } from "./utils/reconnect";
 import { loadSession, clearActiveSession, getReconnectToken, getActiveSession, getLastGame, setLastGame } from "./utils/session";
 import SessionRecoveryView from "./views/SessionRecoveryView";
+import GameUnavailableView from "./views/GameUnavailableView";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
 import LobbyView from "./views/LobbyView";
@@ -18,6 +19,7 @@ import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
+  const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
   const [pauseNotice, setPauseNotice] = useState<string | null>(null);
   const [inspectionView, setInspectionView] = useState<InspectionView>("public");
   const [gameId, setGameId] = useState(getLastGame);
@@ -29,23 +31,30 @@ export default function App() {
   const [claimCardId, setClaimCardId] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed" | "recovery">(() => getLastGame() ? "game" : "home");
+  const [screen, setScreen] = useState<"home" | "game" | "error" | "registration-closed" | "recovery" | "unavailable">(() => getLastGame() ? "game" : "home");
   const [closedGameId, setClosedGameId] = useState("");
   const [recovery, setRecovery] = useState<{ reason: RecoveryReason; gameId: string } | null>(null);
   const [takeoverBusy, setTakeoverBusy] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState<{ gameId: string; reason: "game-unavailable" | "topology-invalid" } | null>(null);
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retryInFlight = useRef(false);
   const takeoverInFlight = useRef(false);
   // Invalidate responses from the gameplay screen after recovery or navigation.
   const responseEpoch = useRef(0);
 
   function backHome() {
-    clearActiveSession(recovery?.gameId || gameId);
+    clearActiveSession(unavailable?.gameId || recovery?.gameId || gameId);
     resetToHome();
   }
 
   function resetToHome() {
     responseEpoch.current++;
     setJoinError(null);
+    setPersistenceNotice(null);
+    setUnavailable(null);
+    setRetryError(null);
     setGameId("");
     setLastGame("");
     setJoinGameId("");
@@ -63,6 +72,52 @@ export default function App() {
     setScreen("recovery");
   }
 
+  function handleDurabilityError(r: ActionResponse, targetGameId: string): boolean {
+    if (r.error?.code === "PERSISTENCE_UNAVAILABLE") {
+      setPersistenceNotice("The game could not be saved safely. Please try again.");
+      return true;
+    }
+    if (r.error?.code === "GAME_UNAVAILABLE" || r.error?.code === "SESSION_TOPOLOGY_INVALID") {
+      responseEpoch.current++;
+      setUnavailable({ gameId: r.game_id || targetGameId,
+        reason: r.error.code === "GAME_UNAVAILABLE" ? "game-unavailable" : "topology-invalid" });
+      setRetryError(null);
+      setScreen("unavailable");
+      return true;
+    }
+    return false;
+  }
+
+  async function retryUnavailable() {
+    if (!unavailable || retryInFlight.current) return;
+    retryInFlight.current = true;
+    setRetryBusy(true);
+    setRetryError(null);
+    const target = unavailable.gameId;
+    const epoch = responseEpoch.current;
+    try {
+      // Discover availability first. Retry never acquires a new seat or takes over.
+      let r = await getGame(target, "public");
+      if (epoch !== responseEpoch.current) return;
+      const stored = loadSession(target);
+      if (!r.error && stored) r = await getGame(target, stored.role, stored.player_id);
+      if (epoch !== responseEpoch.current) return;
+      if (!r.error) restoreGame(r);
+      else {
+        const handled = handleDurabilityError(r, target);
+        const reason = getRecoveryReason(r.error.code);
+        if (!handled && reason) enterRecovery(reason, target);
+        else if (!handled || r.error.code === "PERSISTENCE_UNAVAILABLE")
+          setRetryError("Unable to load this game. Please try again or return home.");
+      }
+    } catch {
+      if (epoch === responseEpoch.current) setRetryError("Unable to connect. Please try again or return home.");
+    } finally {
+      retryInFlight.current = false;
+      setRetryBusy(false);
+    }
+  }
+
   function restoreGame(r: ActionResponse) {
     const restored = loadSession(r.game_id);
     if (restored) {
@@ -70,6 +125,8 @@ export default function App() {
       setSelectedPlayerId(restored.player_id);
     }
     setPauseNotice(null);
+    setPersistenceNotice(null);
+    setUnavailable(null);
     setResp(current => acceptResponse(current, r));
     setLastGame(r.game_id);
     setGameId(r.game_id);
@@ -88,6 +145,8 @@ export default function App() {
       if (epoch !== responseEpoch.current) return;
       if (!r.error) restoreGame(r);
       else {
+        if (handleDurabilityError(r, recovery.gameId)) return;
+
         const reason = getRecoveryReason(r.error.code);
         if (reason) enterRecovery(reason, recovery.gameId);
         setRecoveryError("Unable to take over this seat. Please try again or return home.");
@@ -120,9 +179,12 @@ export default function App() {
 
         if (!r.error) {
           setPauseNotice(null);
+          setPersistenceNotice(null);
           setResp(current => acceptResponse(current, r));
           return;
         }
+
+        if (handleDurabilityError(r, gameId)) return;
 
         const reason = getRecoveryReason(r.error.code);
         if (reason) {
@@ -158,6 +220,7 @@ export default function App() {
     try {
       const r = await p;
       if (epoch !== responseEpoch.current) return r;
+      if (handleDurabilityError(r, targetGameId)) return r;
       const reason = getRecoveryReason(r.error?.code);
       if (reason) {
         enterRecovery(reason, r.game_id || targetGameId);
@@ -229,6 +292,8 @@ export default function App() {
         flexDirection: "column",
       }}
     >
+      {persistenceNotice && screen !== "game" && <p role="alert">{persistenceNotice}</p>}
+
       {screen === "home" && (
         <div
           style={{
@@ -241,9 +306,10 @@ export default function App() {
           <HomeView
             joinGameId={joinGameId}
             joinError={joinError}
-            setJoinGameId={value => { setJoinGameId(value); setJoinError(null); }}
+            setJoinGameId={value => { setJoinGameId(value); setJoinError(null); setPersistenceNotice(null); }}
             onNewGame={() => {
               setJoinError(null);
+              setPersistenceNotice(null);
               return run(
                 newGame({
                   creator_id: currentActorId,
@@ -297,6 +363,11 @@ export default function App() {
             }}
           />
         </div>
+      )}
+
+      {screen === "unavailable" && unavailable && (
+        <GameUnavailableView gameId={unavailable.gameId} reason={unavailable.reason}
+          busy={retryBusy} errorMessage={retryError} onRetry={retryUnavailable} onBackHome={backHome} />
       )}
 
       {screen === "recovery" && recovery && (
@@ -363,6 +434,7 @@ export default function App() {
             </details>}
           </div>
 
+          {persistenceNotice && <p role="alert" style={{ margin: "8px 0", flexShrink: 0 }}>{persistenceNotice}</p>}
           {pauseNotice && <div role="status">{pauseNotice}</div>}
           {view === "player" && !isTable && phase !== "lobby" && <SessionPauseBanner meta={meta} />}
 
@@ -446,7 +518,7 @@ export default function App() {
         </div>
       )}
 
-      {resp && screen !== "home" && screen !== "recovery" && !isTable && (
+      {resp && screen !== "home" && screen !== "recovery" && screen !== "unavailable" && !isTable && (
         <pre
           style={{
             marginTop: 14,

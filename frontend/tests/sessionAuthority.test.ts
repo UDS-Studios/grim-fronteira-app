@@ -139,7 +139,7 @@ test("per-game session storage, transport, bounded recovery and acquisition", as
       assert.equal(result.error?.code, "SESSION_INVALID"); assert.equal(calls.length, 3);
       assert.deepEqual(calls[0].body, calls[2].body);
     });
-    for (const code of ["ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID", "TAKEOVER_REQUIRED", "GAME_PAUSED"]) {
+    for (const code of ["ACTOR_MISMATCH", "VIEWER_MISMATCH", "RECONNECT_INVALID", "TAKEOVER_REQUIRED", "GAME_PAUSED", "GAME_UNAVAILABLE", "PERSISTENCE_UNAVAILABLE", "SESSION_TOPOLOGY_INVALID"]) {
       await t.test(`${code} never triggers recovery`, async () => {
         reset(); storeIssuedSession("A", session); replies = [response(code)];
         assert.equal((await getGame("A", "player", "p1")).error?.code, code);
