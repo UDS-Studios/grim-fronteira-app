@@ -47,7 +47,7 @@ test("Home tutorials preserve session state, source slide order, captions and na
       const homeProps = find(render(), type => type === Home)!;
       const before = stores.map(store => [...store]);
       const homeTree = Home(homeProps);
-      (find(homeTree, (_type, props) => props.children === "Tutorial")!.onClick as () => void)();
+      (find(homeTree, (_type, props) => props.children === "Tutorials")!.onClick as () => void)();
       const tutorial = find(render(), type => type === Tutorial)!;
       assert.ok(tutorial);
       (tutorial.onBackHome as () => void)();

@@ -150,7 +150,7 @@ export default function HomeView({
             Download Rules
           </a>
           <button type="button" className="home-tutorial-button" onClick={onTutorial}>
-            Tutorial
+            Tutorials
           </button>
         </div>
       </div>
