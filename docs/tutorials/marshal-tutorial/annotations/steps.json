@@ -4,7 +4,7 @@
     "num": 1,
     "filename": "01-create-game",
     "title": "Create your game",
-    "caption": "Click New Game. You become the Marshal of a new game.",
+    "caption": "Click New Game (1). You become the Marshal of a new game.",
     "marks": [
       {
         "height": 260,
@@ -19,7 +19,7 @@
     "num": 2,
     "filename": "02-share-game-id",
     "title": "Invite your players",
-    "caption": "Click Copy Game ID, then send the copied ID to your friends. Each friend uses it to join from their own browser.",
+    "caption": "Click Copy Game ID (1), then send the copied ID to your friends. Each friend uses it to join from their own browser.",
     "marks": [
       {
         "height": 40,
@@ -34,7 +34,7 @@
     "num": 3,
     "filename": "03-character-mode",
     "title": "Choose character assignment",
-    "caption": "Keep CHOICE so players pick their own figure, or select RANDOM to assign figures randomly. This guide uses CHOICE.",
+    "caption": "Keep CHOICE (1) so players pick their own figure, or select RANDOM (2) to assign figures randomly. This guide uses CHOICE.",
     "marks": [
       {
         "height": 84,
@@ -55,7 +55,7 @@
     "num": 4,
     "filename": "04-start-session",
     "title": "Start when everyone is ready",
-    "caption": "Players become ready after choosing their figure, name, and feature. When everyone is ready, click Start Game.",
+    "caption": "Once at least one player has joined and every joined player has chosen a figure, name, and feature, click Start Game (1). Players become ready automatically when their character is complete.",
     "marks": [
       {
         "height": 64,
@@ -70,7 +70,7 @@
     "num": 5,
     "filename": "05-choose-story",
     "title": "Choose the opening story",
-    "caption": "Choose a suggested narrative hook or prepare your own. Then click Bring the Frontier to life!! to move to the game table.",
+    "caption": "Choose a suggested narrative hook, such as the highlighted Story Hook (1), or prepare your own. Then click Bring the Frontier to life!! (2) to move to the game table.",
     "marks": [
       {
         "height": 74.796875,
@@ -91,7 +91,7 @@
     "num": 6,
     "filename": "06-select-participants",
     "title": "Choose who is in the scene",
-    "caption": "Click each player who takes part in the challenge. Selected characters appear in Scene Participants. Leave other players outside the scene.",
+    "caption": "Click Leonor del Paso\u2019s player panel (1) and Abner Coldiron\u2019s player panel (2) to include both in this challenge. Selected characters appear in Scene Participants. Leave other players outside the scene.",
     "marks": [
       {
         "height": 181.7777404785156,
@@ -112,7 +112,7 @@
     "num": 7,
     "filename": "07-draw-difficulty",
     "title": "Set the challenge",
-    "caption": "For this ordinary scene, leave the Dark off and click the deck once to draw the difficulty. Players must match or exceed it without busting.",
+    "caption": "For this ordinary scene, leave the Dark off and click the deck (1) once to draw the difficulty. Players must match or exceed it without busting.",
     "marks": [
       {
         "height": 166.84359741210938,
@@ -127,7 +127,7 @@
     "num": 8,
     "filename": "08-start-scene",
     "title": "Deal the first hands",
-    "caption": "The difficulty is set. Click Start Scene to deal one card to each participant. For this introductory scene, skip the optional Azzardo.",
+    "caption": "The difficulty is set. Click Start Scene (1) to deal one card to each participant. For this introductory scene, skip the optional Azzardo.",
     "marks": [
       {
         "height": 30.546676635742188,
@@ -142,7 +142,7 @@
     "num": 9,
     "filename": "09-follow-turns",
     "title": "Follow the player turns",
-    "caption": "The highest initial hand acts first. Watch Acting now and each total while players draw, stand, and use their resources. Let each player control their own hand.",
+    "caption": "The highest initial hand acts first. The Acting now label (1) identifies the current player\u2014in this screenshot, Abner Coldiron. Follow each total while players draw, Stay, and use their resources. Let each player control their own hand.",
     "marks": [
       {
         "height": 13.693328857421877,
@@ -157,7 +157,7 @@
     "num": 10,
     "filename": "10-review-results",
     "title": "Review results and wait",
-    "caption": "The scene resolves when everyone has stood or busted. Players may still react before acknowledging. Wait for their acknowledgments; Force Acknowledge is an emergency control.",
+    "caption": "The status message (1) says the scene is resolved and is waiting for acknowledgments from 2 participants. Players may still react before acknowledging. Wait for their acknowledgments; Force Acknowledge is an emergency control.",
     "marks": [
       {
         "height": 65.64384460449219,
@@ -172,7 +172,7 @@
     "num": 11,
     "filename": "11-close-scene",
     "title": "Close the completed scene",
-    "caption": "Once acknowledgments are complete, click Close Scene. This deals earned Rewards and clears the played cards. Optional bonus Scum or Vengeance can be assigned before closing.",
+    "caption": "Once acknowledgments are complete, click Close Scene (1). This deals earned Rewards and clears the played cards. Optional bonus Scum or Vengeance can be assigned before closing.",
     "marks": [
       {
         "height": 30.546669006347656,
@@ -187,7 +187,7 @@
     "num": 12,
     "filename": "12-next-scene",
     "title": "Prepare the next scene",
-    "caption": "Click New Scene in the Next Scene panel. If it is blocked, wait for required healing choices or Reward discards to finish, then continue with the next challenge.",
+    "caption": "Click New Scene (1) in the Next Scene panel. If it is blocked, wait for required healing choices or Reward discards to finish, then continue with the next challenge.",
     "marks": [
       {
         "height": 30.546669006347656,

@@ -65,11 +65,17 @@ test("Home tutorials preserve session state, source slide order, captions and na
         const title = role === "marshal" ? "Marshal Tutorial" : "Player Tutorial";
         click(render(), title);
         const steps = JSON.parse(await readFile(new URL(`../../docs/tutorials/${role}-tutorial/annotations/steps.json`, import.meta.url), "utf8"));
+        const captures = JSON.parse(await readFile(new URL("../../docs/tutorials/captures.json", import.meta.url), "utf8"));
+        const readme = await readFile(new URL(`../../docs/tutorials/${role}-tutorial/README.md`, import.meta.url), "utf8");
         const shipped = await readdir(new URL(`../public/assets/tutorials/${role}/`, import.meta.url));
         assert.equal(shipped.length, total);
         for (let index = 0; index < total; index++) {
           const tree = render();
           const step = steps[index];
+          assert.equal(step.caption, captures.find((capture: { role: string; num: number }) => capture.role === role && capture.num === step.num).caption);
+          assert.ok(readme.includes(step.caption));
+          const markers = [...new Set([...step.caption.matchAll(/\((\d+)\)/g)].map(match => Number(match[1])))].sort((a, b) => a - b);
+          assert.deepEqual(markers, Array.from({ length: step.marks.length }, (_, index) => index + 1), "every real marker is explained, with no invented numbers");
           const img = find(tree, type => type === "img")!;
           assert.equal(img.src, `/grim-fronteira/assets/tutorials/${role}/${step.filename}.png`);
           assert.equal(img.alt, `Step ${step.num}: ${step.title}. ${step.caption}`);
@@ -99,6 +105,11 @@ test("Home tutorials preserve session state, source slide order, captions and na
         assert.equal(homeReturns, 1);
       });
     }
+    await t.test("screenshots are centered at 80% on desktop and full-width on mobile", async () => {
+      const css = await readFile(new URL("../src/views/TutorialView.css", import.meta.url), "utf8");
+      assert.match(css, /\.tutorial-slide img\s*\{[^}]*width: 80%;[^}]*height: auto;[^}]*margin-inline: auto;/);
+      assert.match(css, /@media \(max-width: 768px\)\s*\{\s*\.tutorial-slide img\s*\{\s*width: 100%;/);
+    });
     hooks.resetHooks();
   } finally {
     globalThis.fetch = oldFetch;

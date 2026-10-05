@@ -60,8 +60,15 @@
 
 .tutorial-slide img {
   display: block;
-  width: 100%;
+  width: 80%;
   height: auto;
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  .tutorial-slide img {
+    width: 100%;
+  }
 }
 
 .tutorial-slide figcaption {

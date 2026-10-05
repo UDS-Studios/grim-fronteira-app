@@ -3,7 +3,7 @@ Titles and instructions remain editable in captures.json and steps.json.
 """
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-import json, base64, math
+import argparse, json, base64, math
 
 ROOT=Path(__file__).resolve().parent
 FONT_ROOT=Path('/usr/share/fonts/truetype/dejavu')
@@ -11,11 +11,9 @@ def font(n,bold=False):
     return ImageFont.truetype(str(FONT_ROOT/('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf')),n)
 INK='#332a22'; RUST='#95462e'; PAPER='#faf5e9'; OLIVE='#535b42'; BRASS='#9b793c'
 records=json.loads((ROOT/'captures.json').read_text())
-# The custom-name field was below the viewport. Only point at the visible name.
-for r in records:
-    if r['role']=='player' and r['num']==3:
-        r['marks']=r['marks'][:1]
-        r['caption']='Click a suggested name. To write your own instead, scroll to the custom-name field, enter the name, and click Submit.'
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--metadata-only', action='store_true', help='Update steps.json and READMEs without modifying PNGs, SVGs, or review sheets.')
+args=parser.parse_args()
 
 for role in ['marshal','player']:
     out=ROOT/(role+'-tutorial')
@@ -29,6 +27,9 @@ for role in ['marshal','player']:
         '**Capture size:** 1280 x 720 CSS pixels (browser default).',
         '', '## Reading order','']
     for r in steps:
+        readme.extend([f"### {r['num']:02d}. {r['title']}",'',f"![{r['title']}](images/{r['filename']}.png)",'',r['caption'],''])
+        if args.metadata_only:
+            continue
         shot=out/'originals'/(r['filename']+'.jpg')
         im=Image.open(shot).convert('RGB')
         sw,sh=im.size; pad=20; sy=20; w=sw+2*pad; height=sh+2*pad
@@ -65,14 +66,17 @@ for role in ['marshal','player']:
         svg.append('</g></svg>')
         canvas.save(out/'images'/(r['filename']+'.png'),optimize=True)
         (out/'annotations'/(r['filename']+'.svg')).write_text('\n'.join(svg))
-        readme.extend([f"### {r['num']:02d}. {r['title']}",'',f"![{r['title']}](images/{r['filename']}.png)",'',r['caption'],''])
     readme.extend(['## Editing and regeneration','',
        'Edit the corresponding record in ../captures.json and run ../render_annotations.py with Python 3 and Pillow. The script regenerates PNGs, editable self-contained SVGs, steps.json, and this reading-order guide. Original screenshots remain unchanged.',
+       'Use --metadata-only to update steps.json and this README without modifying any images. Numbered markers follow the marks array order, starting at 1. Titles and captions stay outside the PNGs and SVGs.',
        '','## Scope and verified flow','',
        'Verified through an ordinary two-player scene, player acknowledgments, Close Scene, Reward distribution, and New Scene. The UI automatically marks a character ready after name and feature selection.',
        '','Healing, excess-Reward discards, detailed Azzardo and Dark play, and the other faction powers are not illustrated as separate walkthroughs. They are advanced follow-ups. The final Player screenshot shows the successful second player (Abner), while most earlier Player screenshots follow Leonor. The faction screenshot is an optional example: its selection was cancelled before ordinary play continued.',
        '', 'These are local disposable sample games. No invitations were sent, no source files were changed, and nothing was committed or deployed.'])
     (out/'README.md').write_text('\n'.join(readme))
+    if args.metadata_only:
+        print(role,len(steps),'steps updated; images unchanged')
+        continue
     # Two-column review sheets retain enough detail to spot annotation errors.
     for group_start in range(0,len(steps),6):
         group=steps[group_start:group_start+6]
