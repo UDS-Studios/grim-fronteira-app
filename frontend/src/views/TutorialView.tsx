@@ -23,8 +23,8 @@ export default function TutorialView({ onBackHome }: { onBackHome: () => void })
         <header className="tutorial-header">
           <h1>{tutorial?.title ?? "Tutorial"}</h1>
           <div className="tutorial-controls">
-            {role && <button type="button" onClick={() => setRole(null)}>Choose tutorial</button>}
-            <button type="button" onClick={onBackHome}>Back Home</button>
+            {role && <button className="tutorial-button-return" type="button" onClick={() => setRole(null)}>Choose tutorial</button>}
+            <button className="tutorial-button-return" type="button" onClick={onBackHome}>Back Home</button>
           </div>
         </header>
 
@@ -39,9 +39,9 @@ export default function TutorialView({ onBackHome }: { onBackHome: () => void })
         ) : step && (
           <>
             <nav className="tutorial-controls tutorial-step-navigation" aria-label="Tutorial steps">
-              <button type="button" disabled={stepIndex === 0} onClick={() => setStepIndex(index => Math.max(0, index - 1))}>Previous</button>
+              <button className="tutorial-button-return" type="button" disabled={stepIndex === 0} onClick={() => setStepIndex(index => Math.max(0, index - 1))}>Previous</button>
               <span role="status" aria-live="polite">Step {stepIndex + 1} of {tutorial.steps.length}</span>
-              <button type="button" disabled={stepIndex === tutorial.steps.length - 1} onClick={() => setStepIndex(index => Math.min(tutorial.steps.length - 1, index + 1))}>Next</button>
+              <button className="tutorial-button-next" type="button" disabled={stepIndex === tutorial.steps.length - 1} onClick={() => setStepIndex(index => Math.min(tutorial.steps.length - 1, index + 1))}>Next</button>
             </nav>
             <h2>{step.title}</h2>
             <figure className="tutorial-slide">

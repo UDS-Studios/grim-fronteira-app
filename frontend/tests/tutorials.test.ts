@@ -81,6 +81,10 @@ test("Home tutorials preserve session state, source slide order, captions and na
           assert.equal(img.alt, `Step ${step.num}: ${step.title}. ${step.caption}`);
           assert.equal(find(tree, type => type === "figcaption")!.children, step.caption);
           assert.deepEqual(find(tree, (_type, props) => props.role === "status")!.children, ["Step ", index + 1, " of ", total]);
+          assert.equal(button(tree, "Previous").className, "tutorial-button-return");
+          assert.equal(button(tree, "Next").className, "tutorial-button-next");
+          assert.equal(button(tree, "Choose tutorial").className, "tutorial-button-return");
+          assert.equal(button(tree, "Back Home").className, "tutorial-button-return");
           assert.equal(button(tree, "Previous").disabled, index === 0);
           assert.equal(button(tree, "Next").disabled, index === total - 1);
           const fullSize = find(tree, (type, props) => type === "a" && props.children === "Open full-size image (new tab)")!;
@@ -105,9 +109,9 @@ test("Home tutorials preserve session state, source slide order, captions and na
         assert.equal(homeReturns, 1);
       });
     }
-    await t.test("screenshots are centered at 80% on desktop and full-width on mobile", async () => {
+    await t.test("screenshots are centered at 70% on desktop and full-width on mobile", async () => {
       const css = await readFile(new URL("../src/views/TutorialView.css", import.meta.url), "utf8");
-      assert.match(css, /\.tutorial-slide img\s*\{[^}]*width: 80%;[^}]*height: auto;[^}]*margin-inline: auto;/);
+      assert.match(css, /\.tutorial-slide img\s*\{[^}]*width: 70%;[^}]*height: auto;[^}]*margin-inline: auto;/);
       assert.match(css, /@media \(max-width: 768px\)\s*\{\s*\.tutorial-slide img\s*\{\s*width: 100%;/);
     });
     hooks.resetHooks();
