@@ -1,0 +1,200 @@
+[
+  {
+    "role": "marshal",
+    "num": 1,
+    "filename": "01-create-game",
+    "title": "Create your game",
+    "caption": "Click New Game. You become the Marshal of a new game.",
+    "marks": [
+      {
+        "height": 260,
+        "width": 260,
+        "x": 313,
+        "y": 240.8515625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 2,
+    "filename": "02-share-game-id",
+    "title": "Invite your players",
+    "caption": "Click Copy Game ID, then send the copied ID to your friends. Each friend uses it to join from their own browser.",
+    "marks": [
+      {
+        "height": 40,
+        "width": 40,
+        "x": 1182,
+        "y": 115.5703125
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 3,
+    "filename": "03-character-mode",
+    "title": "Choose character assignment",
+    "caption": "Keep CHOICE so players pick their own figure, or select RANDOM to assign figures randomly. This guide uses CHOICE.",
+    "marks": [
+      {
+        "height": 84,
+        "width": 268.25,
+        "x": 63,
+        "y": 289.015625
+      },
+      {
+        "height": 84,
+        "width": 268.25,
+        "x": 341.25,
+        "y": 289.015625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 4,
+    "filename": "04-start-session",
+    "title": "Start when everyone is ready",
+    "caption": "Players become ready after choosing their figure, name, and feature. When everyone is ready, click Start Game.",
+    "marks": [
+      {
+        "height": 64,
+        "width": 546.5,
+        "x": 655.5,
+        "y": 357.015625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 5,
+    "filename": "05-choose-story",
+    "title": "Choose the opening story",
+    "caption": "Choose a suggested narrative hook or prepare your own. Then click Bring the Frontier to life!! to move to the game table.",
+    "marks": [
+      {
+        "height": 74.796875,
+        "width": 930,
+        "x": 167.5,
+        "y": 170.078125
+      },
+      {
+        "height": 80.5,
+        "width": 476.6484375,
+        "x": 394.171875,
+        "y": 590.265625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 6,
+    "filename": "06-select-participants",
+    "title": "Choose who is in the scene",
+    "caption": "Click each player who takes part in the challenge. Selected characters appear in Scene Participants. Leave other players outside the scene.",
+    "marks": [
+      {
+        "height": 181.7777404785156,
+        "width": 265.67401123046875,
+        "x": 998.7185668945312,
+        "y": 108.7597427368164
+      },
+      {
+        "height": 181.7777099609375,
+        "width": 265.67401123046875,
+        "x": 998.7185668945312,
+        "y": 299.9004211425781
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 7,
+    "filename": "07-draw-difficulty",
+    "title": "Set the challenge",
+    "caption": "For this ordinary scene, leave the Dark off and click the deck once to draw the difficulty. Players must match or exceed it without busting.",
+    "marks": [
+      {
+        "height": 166.84359741210938,
+        "width": 262.6311340332031,
+        "x": 17.128889083862305,
+        "y": 114.26049041748048
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 8,
+    "filename": "08-start-scene",
+    "title": "Deal the first hands",
+    "caption": "The difficulty is set. Click Start Scene to deal one card to each participant. For this introductory scene, skip the optional Azzardo.",
+    "marks": [
+      {
+        "height": 30.546676635742188,
+        "width": 81.63882446289062,
+        "x": 366.9836730957031,
+        "y": 252.6311798095703
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 9,
+    "filename": "09-follow-turns",
+    "title": "Follow the player turns",
+    "caption": "The highest initial hand acts first. Watch Acting now and each total while players draw, stand, and use their resources. Let each player control their own hand.",
+    "marks": [
+      {
+        "height": 13.693328857421877,
+        "width": 51.1689453125,
+        "x": 407.564453125,
+        "y": 391.9893798828125
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 10,
+    "filename": "10-review-results",
+    "title": "Review results and wait",
+    "caption": "The scene resolves when everyone has stood or busted. Players may still react before acknowledging. Wait for their acknowledgments; Force Acknowledge is an emergency control.",
+    "marks": [
+      {
+        "height": 65.64384460449219,
+        "width": 309.55181884765625,
+        "x": 638.4878540039062,
+        "y": 164.2488555908203
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 11,
+    "filename": "11-close-scene",
+    "title": "Close the completed scene",
+    "caption": "Once acknowledgments are complete, click Close Scene. This deals earned Rewards and clears the played cards. Optional bonus Scum or Vengeance can be assigned before closing.",
+    "marks": [
+      {
+        "height": 30.546669006347656,
+        "width": 262.6311340332031,
+        "x": 17.128889083862305,
+        "y": 114.26049041748048
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 12,
+    "filename": "12-next-scene",
+    "title": "Prepare the next scene",
+    "caption": "Click New Scene in the Next Scene panel. If it is blocked, wait for required healing choices or Reward discards to finish, then continue with the next challenge.",
+    "marks": [
+      {
+        "height": 30.546669006347656,
+        "width": 262.6311340332031,
+        "x": 17.128889083862305,
+        "y": 114.26049041748048
+      }
+    ]
+  }
+]

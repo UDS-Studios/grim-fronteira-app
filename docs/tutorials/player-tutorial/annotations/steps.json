@@ -1,0 +1,227 @@
+[
+  {
+    "role": "player",
+    "num": 1,
+    "filename": "01-join-game",
+    "title": "Join your friends",
+    "caption": "Paste the Game ID shared by the Marshal, then click Join Game. Do not click New Game to join an existing session.",
+    "marks": [
+      {
+        "height": 33.5,
+        "width": 282,
+        "x": 696,
+        "y": 240.8515625
+      },
+      {
+        "height": 260,
+        "width": 260,
+        "x": 707,
+        "y": 284.3515625
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 2,
+    "filename": "02-choose-figure",
+    "title": "Choose your figure",
+    "caption": "In CHOICE mode, click an available Jack, Queen, or King. Its suit gives your faction power; its rank sets your starting Scum and Vengeance.",
+    "marks": [
+      {
+        "height": 129.3984375,
+        "width": 90,
+        "x": 450,
+        "y": 170.3203125
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 3,
+    "filename": "03-name-character",
+    "title": "Name your character",
+    "caption": "Click a suggested name. To write your own instead, scroll to the custom-name field, enter the name, and click Submit.",
+    "marks": [
+      {
+        "height": 43.5,
+        "width": 562.5,
+        "x": 654.5,
+        "y": 527.03125
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 4,
+    "filename": "04-choose-feature",
+    "title": "Give your character a feature",
+    "caption": "Pick a suggested feature, or write your own and click Submit. This completes the character\u2019s description.",
+    "marks": [
+      {
+        "height": 43.5,
+        "width": 562.5,
+        "x": 654.5,
+        "y": 421.53125
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 5,
+    "filename": "05-ready-and-wait",
+    "title": "Your character is ready",
+    "caption": "After choosing your name and feature, you are marked ready automatically. Keep this browser open and wait for the Marshal to start.",
+    "marks": [
+      {
+        "height": 36,
+        "width": 562.5,
+        "x": 654.5,
+        "y": 553.84375
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 6,
+    "filename": "06-read-your-board",
+    "title": "Read your character board",
+    "caption": "Your character contributes 10 to scene hands. Scum is on the left, Vengeance on the right, and earned Rewards below. Reward points are separate from your hand total.",
+    "marks": [
+      {
+        "height": 143.09490966796875,
+        "width": 102.59634399414062,
+        "x": 469.9079284667969,
+        "y": 323.6936950683594
+      },
+      {
+        "height": 12.14959716796875,
+        "width": 626.3777465820312,
+        "x": 352.46209716796875,
+        "y": 559.724365234375
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 7,
+    "filename": "07-wait-your-turn",
+    "title": "Wait for your turn",
+    "caption": "Watch the status message and Acting now. The deck stays disabled while another participant is acting; your turn follows the initial hand order.",
+    "marks": [
+      {
+        "height": 43.4674072265625,
+        "width": 279.4400939941406,
+        "x": 41.298126220703125,
+        "y": 236.7588806152344
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 8,
+    "filename": "08-draw-or-stay",
+    "title": "Draw or Stay",
+    "caption": "On your turn, click the deck to draw another card, or click Stay to stop. Match or beat the difficulty without going over 21. Your total already includes your character\u2019s 10 points.",
+    "marks": [
+      {
+        "height": 143.25253295898438,
+        "width": 267.6363525390625,
+        "x": 66.58372497558594,
+        "y": 346.2979736328125
+      },
+      {
+        "height": 25.535354614257812,
+        "width": 39.131317138671875,
+        "x": 447.9978637695313,
+        "y": 155.9242401123047
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 9,
+    "filename": "09-play-vengeance",
+    "title": "Boost your hand with Vengeance",
+    "caption": "Click your Vengeance pile to spend its top card: +1 to your total, or +2 when its suit matches your character. A boost can still take you over 21.",
+    "marks": [
+      {
+        "height": 125.41415405273438,
+        "width": 103.434326171875,
+        "x": 588.9271850585938,
+        "y": 367.7676696777344
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 10,
+    "filename": "10-faction-power",
+    "title": "Optional: use your faction power",
+    "caption": "Criollo example: click Law of Lead \u00b7 Convert, select a resource card, then Confirm conversion. Other factions have different powers. Cancel returns to ordinary play.",
+    "marks": [
+      {
+        "height": 88.66741943359375,
+        "width": 63.603179931640625,
+        "x": 395.8774719238281,
+        "y": 356.26837158203125
+      },
+      {
+        "height": 26.618255615234375,
+        "width": 117.10763549804688,
+        "x": 393.0714416503906,
+        "y": 502.8051452636719
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 11,
+    "filename": "11-play-scum",
+    "title": "Optional: target another player",
+    "caption": "Click your Scum pile, then click an in-scene opponent\u2019s figure. Scum lowers their total by 1, or by 2 when the spent card matches your own character\u2019s suit. Busted players cannot be targeted.",
+    "marks": [
+      {
+        "height": 125.41415405273438,
+        "width": 103.434326171875,
+        "x": 376.24029541015625,
+        "y": 367.7676696777344
+      },
+      {
+        "height": 73.86741638183594,
+        "width": 51.587158203125,
+        "x": 1079.656982421875,
+        "y": 183.7727203369141
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 12,
+    "filename": "12-acknowledge",
+    "title": "Confirm the scene result",
+    "caption": "Review your outcome, then click Acknowledge when finished. A bust causes a wound. At two wounds, your character is eliminated.",
+    "marks": [
+      {
+        "height": 26.28355407714844,
+        "width": 88.51983642578125,
+        "x": 492.7150268554687,
+        "y": 159.5930938720703
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 13,
+    "filename": "13-rewards-and-next",
+    "title": "Collect Rewards and continue",
+    "caption": "Here is the successful player\u2019s board: earned Rewards appear after Close Scene. Aim for exactly 21 Reward points. If Heal/Skip or Reward-discard choices appear, complete them before the next scene.",
+    "marks": [
+      {
+        "height": 91.426025390625,
+        "width": 63.20001220703125,
+        "x": 340.85333251953125,
+        "y": 564.6592407226562
+      }
+    ]
+  }
+]
