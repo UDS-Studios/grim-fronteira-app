@@ -20,6 +20,7 @@ import VictoryView from "./views/VictoryView";
 import type { MetaAny } from "./views/types";
 
 export default function App() {
+  const showDevControls = import.meta.env.DEV;
   const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
   const [connectionNotice, setConnectionNotice] = useState<{ kind: "poll" | "action"; message: string } | null>(null);
   const [pauseNotice, setPauseNotice] = useState<string | null>(null);
@@ -434,7 +435,7 @@ export default function App() {
             flexShrink: 0,
           }}
         >
-          <div className={isTable ? "table-dev-controls" : undefined} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
+          {showDevControls && <div className={isTable ? "table-dev-controls" : undefined} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
             <label>
               Non-player inspection:&nbsp;
               <select value={inspectionView} disabled={view === "player" || view === "marshal"} onChange={(e) => {
@@ -461,7 +462,7 @@ export default function App() {
               <summary>State JSON</summary>
               <pre>{JSON.stringify(resp, null, 2)}</pre>
             </details>}
-          </div>
+          </div>}
 
           {persistenceNotice && <p role="alert" style={{ margin: "8px 0", flexShrink: 0 }}>{persistenceNotice}</p>}
           {connectionNotice && <div role="alert" style={{ margin: "8px 0", flexShrink: 0 }}>
@@ -485,11 +486,11 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ marginTop: isTable ? 4 : 12, display: "flex", gap: 16, flexWrap: "wrap", flexShrink: 0, fontSize: isTable ? 12 : undefined }}>
+          {showDevControls && <div style={{ marginTop: isTable ? 4 : 12, display: "flex", gap: 16, flexWrap: "wrap", flexShrink: 0, fontSize: isTable ? 12 : undefined }}>
             <div><b>revision:</b> {resp?.revision ?? "-"}</div>
             <div><b>game_id:</b> {resp?.game_id ?? "-"}</div>
             <div><b>phase:</b> {phase}</div>
-          </div>
+          </div>}
 
           <div
             style={{
@@ -554,7 +555,7 @@ export default function App() {
         </div>
       )}
 
-      {resp && (screen === "game" || screen === "error") && !isTable && (
+      {showDevControls && resp && (screen === "game" || screen === "error") && !isTable && (
         <pre
           style={{
             marginTop: 14,
