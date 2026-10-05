@@ -1,4 +1,5 @@
 import { publicAsset } from "../app/assets";
+import "./HomeView.css";
 
 type HomeViewProps = {
   joinGameId: string;
@@ -138,6 +139,13 @@ export default function HomeView({
             </button>
           </div>
         </div>
+        <a
+          className="home-rules-download"
+          href={publicAsset("assets/Grim-Fronteira-Rules.pdf")}
+          download="Grim-Fronteira-Rules.pdf"
+        >
+          Download Rules
+        </a>
       </div>
     </div>
   );
