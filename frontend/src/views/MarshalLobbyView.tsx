@@ -58,6 +58,18 @@ export default function MarshalLobbyView({
   const allPlayersReady = !!lobby.all_players_ready;
 
   const joinedPlayers = playersOrder.filter((pid) => pid !== marshalId);
+  const hasJoinedPlayers = joinedPlayers.length > 0;
+  const startDisabled = connectionLost || !isMarshal || !hasJoinedPlayers || !allPlayersReady;
+
+  async function startGame() {
+    if (startDisabled) return;
+    return submitAction({
+      game_id: resp.game_id,
+      action: "gf.start_game",
+      params: { actor_id: effectiveActorId },
+      ...getViewRequest(view, currentActorId),
+    });
+  }
 
   async function copyGameId() {
     const text = resp.game_id;
@@ -373,15 +385,8 @@ export default function MarshalLobbyView({
 
               <button
                 type="button"
-                onClick={() =>
-                  submitAction({
-                    game_id: resp.game_id,
-                    action: "gf.start_game",
-                    params: { actor_id: effectiveActorId },
-                    ...getViewRequest(view, currentActorId),
-                  })
-                }
-                disabled={connectionLost || !isMarshal || !allPlayersReady}
+                onClick={startGame}
+                disabled={startDisabled}
                 style={{
                   fontFamily: "LavaArabic, serif",
                   fontSize: "1.9em",
@@ -397,9 +402,13 @@ export default function MarshalLobbyView({
                   padding: "14px 18px",
                 }}
                 title={
-                  allPlayersReady
-                    ? "Start the game"
-                    : "All non-marshal players must finalize their character first"
+                  !hasJoinedPlayers
+                    ? "At least one player must join before the game can start."
+                    : !allPlayersReady
+                    ? "All non-marshal players must finalize their character first"
+                    : connectionLost
+                    ? "Connection lost"
+                    : "Start the game"
                 }
               >
                 Start Game
