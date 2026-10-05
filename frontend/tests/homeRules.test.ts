@@ -10,7 +10,7 @@ import { join } from "node:path";
 
 test("Home offers a native base-aware rules download with visible keyboard focus", async () => {
   const cacheDir = await mkdtemp(join(tmpdir(), "gf-home-rules-"));
-  const server = await createServer({ cacheDir, root: fileURLToPath(new URL("..", import.meta.url)),
+  const server = await createServer({ cacheDir, root: fileURLToPath(new URL("..", import.meta.url)), optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true, hmr: false, watch: null }, appType: "custom" });
   try {
     const { default: Home } = await server.ssrLoadModule("/src/views/HomeView.tsx");
@@ -24,8 +24,8 @@ test("Home offers a native base-aware rules download with visible keyboard focus
     assert.ok(!anchor.includes("onclick") && !anchor.includes("target="));
     assert.ok(html.includes('alt="New Game"') && html.includes('alt="Join Game"'));
     const css = await readFile(new URL("../src/views/HomeView.css", import.meta.url), "utf8");
-    assert.match(css, /\.home-rules-download:focus-visible\s*\{[^}]*outline: 3px solid[^}]*outline-offset: 3px/);
-    assert.match(css, /\.home-rules-download\s*\{[^}]*justify-self: center/);
+    assert.match(css, /\.home-rules-download:focus-visible,[^}]*outline: 3px solid[^}]*outline-offset: 3px/);
+    assert.match(css, /\.home-rules-download,[^}]*justify-self: center/);
   } finally {
     await server.close();
     await rm(cacheDir, { recursive: true, force: true });

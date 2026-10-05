@@ -1,4 +1,12 @@
-.home-rules-download {
+.home-secondary-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.home-rules-download,
+.home-tutorial-button {
   justify-self: center;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
@@ -11,12 +19,14 @@
   text-decoration: none;
 }
 
-.home-rules-download:hover {
+.home-rules-download:hover,
+.home-tutorial-button:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
 }
 
-.home-rules-download:focus-visible {
+.home-rules-download:focus-visible,
+.home-tutorial-button:focus-visible {
   outline: 3px solid var(--border-strong);
   outline-offset: 3px;
 }

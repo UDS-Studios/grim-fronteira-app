@@ -11,6 +11,7 @@ import SessionRecoveryView from "./views/SessionRecoveryView";
 import GameUnavailableView from "./views/GameUnavailableView";
 import ErrorView from "./views/ErrorView";
 import HomeView from "./views/HomeView";
+import TutorialView from "./views/TutorialView";
 import LobbyView from "./views/LobbyView";
 import HookSelectionView from "./views/HookSelectionView";
 import GameAlreadyStartedView from "./views/GameAlreadyStartedView";
@@ -21,6 +22,7 @@ import type { MetaAny } from "./views/types";
 
 export default function App() {
   const showDevControls = import.meta.env.DEV;
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null);
   const [connectionNotice, setConnectionNotice] = useState<{ kind: "poll" | "action"; message: string } | null>(null);
   const [pauseNotice, setPauseNotice] = useState<string | null>(null);
@@ -300,6 +302,10 @@ export default function App() {
   const useScrollableGameContent = phase === "lobby";
   const useFixedGameViewport = phase === "lobby" || isTable;
 
+  if (tutorialOpen) {
+    return <TutorialView onBackHome={() => setTutorialOpen(false)} />;
+  }
+
   return (
     <div
       style={{
@@ -326,6 +332,7 @@ export default function App() {
           }}
         >
           <HomeView
+            onTutorial={() => setTutorialOpen(true)}
             joinGameId={joinGameId}
             joinError={joinError}
             setJoinGameId={value => { setJoinGameId(value); setJoinError(null); setPersistenceNotice(null); }}

@@ -1,0 +1,82 @@
+.tutorial-page {
+  min-height: 100dvh;
+  padding: clamp(12px, 3vw, 32px);
+  box-sizing: border-box;
+  background: var(--app-bg);
+  color: var(--text-primary);
+}
+
+.tutorial-panel {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: clamp(12px, 2vw, 24px);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface-bg);
+}
+
+.tutorial-header,
+.tutorial-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.tutorial-header,
+.tutorial-step-navigation {
+  justify-content: space-between;
+}
+
+.tutorial-header h1 {
+  margin: 0;
+  font-family: "LavaArabic", serif;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+}
+
+.tutorial-step-navigation {
+  margin-top: 20px;
+}
+
+.tutorial-role-selection {
+  margin: 24px 0;
+}
+
+.tutorial-page button {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  min-height: 44px;
+}
+
+.tutorial-page button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tutorial-slide {
+  margin: 16px 0;
+}
+
+.tutorial-slide img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.tutorial-slide figcaption {
+  margin-top: 12px;
+  line-height: 1.6;
+}
+
+.tutorial-full-size {
+  display: inline-block;
+  color: var(--text-primary);
+  text-decoration: underline;
+  padding: 8px 0;
+}
+
+.tutorial-page :is(button, a):focus-visible {
+  outline: 3px solid var(--border-strong);
+  outline-offset: 3px;
+}
