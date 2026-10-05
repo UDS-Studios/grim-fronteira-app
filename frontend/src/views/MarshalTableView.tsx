@@ -1352,9 +1352,11 @@ export default function MarshalTableView({
             flexWrap: "wrap",
           }}
         >
+          {import.meta.env.DEV && <>
           <div><b>phase:</b> {meta.phase ?? "-"}</div>
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
+          </>}
           <div><b>difficulty:</b> {scene.difficulty?.value ?? (hasDifficulty ? "drawn" : "-")}</div>
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
@@ -1386,7 +1388,11 @@ export default function MarshalTableView({
       >
           {canCloseScene || canOpenNewScene ? (
             <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
-              <TableZone title={canCloseScene ? "Close Scene" : "Next Scene"}>
+              <TableZone
+                title={canCloseScene ? "Close Scene" : "Next Scene"}
+                background={canCloseScene ? "color-mix(in srgb, #92513d 18%, var(--surface-bg))" : "color-mix(in srgb, #65734b 18%, var(--surface-bg))"}
+                borderColor={canCloseScene ? "color-mix(in srgb, #92513d 75%, var(--border-strong))" : "color-mix(in srgb, #65734b 75%, var(--border-strong))"}
+              >
                 <div
                   style={{
                     display: "grid",
@@ -1447,7 +1453,7 @@ export default function MarshalTableView({
                             )
                           }
                           disabled={interactionBlocked || hasPendingInteraction || !canAssignBonus}
-                          title="Assign one bonus Vengeance card"
+                          title="Give Vengeance to those who made justice through violence."
                         />
                         <ActionButton
                           label="Scum"
@@ -1455,7 +1461,7 @@ export default function MarshalTableView({
                             setPendingBonusType((prev) => (hasPendingInteraction || prev === "scum" ? null : "scum"))
                           }
                           disabled={interactionBlocked || hasPendingInteraction || !canAssignBonus}
-                          title="Assign one bonus Scum card"
+                          title="Give Scum to those who proved themselves real bastards."
                         />
                       </div>
                     </div>

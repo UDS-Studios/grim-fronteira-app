@@ -9,7 +9,7 @@ export default function YankeeDeck({ cardId, deckCount, busy, onChoose }: {
   onChoose: (choice: YankeeChoice) => void;
 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, textAlign: "center" }}>
+    <div className="faction-power-panel" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, textAlign: "center" }}>
       <div>
         <CardImg cardId="BACK" faceDown width={DECK_CARD_WIDTH} title="Deck" />
         <div><b>{deckCount}</b> cards</div>
