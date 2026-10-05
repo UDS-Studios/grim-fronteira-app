@@ -1434,7 +1434,7 @@ export default function PlayerTableView({
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
           </>}
-          <div><b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>
+          <div><b>Marshal:</b> {import.meta.env.DEV && (marshalId || "-")} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>
           {!isDarkScene(meta.scene) && <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>}
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
