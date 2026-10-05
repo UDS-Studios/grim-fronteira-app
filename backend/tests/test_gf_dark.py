@@ -916,9 +916,12 @@ def test_two_reward_grant_can_exhaust_deck_after_second_card(game_id):
     hand_action(game_id, "scene_close")
     game = GAMES[game_id].state
     assert game.zones["players.p1.rewards"] == ["5D", "6H"]
-    # Existing exhaustion flags are set during setup/active draws, not close.
-    assert game.meta["scene"]["deck_exhausted"] is False
-    assert game.meta["phase"] == "table"
+    assert game.deck.draw_pile == []
+    assert game.meta["scene"]["deck_exhausted"] is True
+    assert game.meta["scene"]["deck_exhausted_participants"] == ["p1"]
+    assert game.meta["phase"] == "victory"
+    assert game.meta["victory"]["winner"] == "p1"
+    assert game.meta["victory"]["reason"] == "Won with the most reward points after the deck was exhausted."
 
 
 def test_dark_discard_does_not_cancel_started_overflow_at_21(game_id):
@@ -1119,3 +1122,36 @@ def test_force_dark_loss_rechecks_victory(game_id):
     dispatch(game_id, "scene_force_discard_dark_reward", player_id="p1")
     assert GAMES[game_id].state.meta["phase"] == "victory"
     assert GAMES[game_id].state.meta["victory"]["winner"] == "p2"
+
+
+def test_reward_exhaustion_waits_for_dark_loss_and_survives_reload(game_id, tmp_path):
+    dispatch(game_id, "scene_set_participants", participant_ids=["p1", "p2"])
+    prepare_hand(game_id, ["2H", "3C", "4D", "9S", "8S"])
+    hand_action(game_id)
+    hand_action(game_id)
+    dispatch(game_id, "scene_start")
+    dispatch(game_id, "scene_stand", player_id="p1")
+    dispatch(game_id, "scene_stand", player_id="p2")
+    set_rewards(game_id, ["10C", "10D"], player_id="p2")
+    hand_action(game_id, "scene_dark_reveal")
+    finish_acknowledgements(game_id)
+    GAMES[game_id].state = _with_exact_draw_pile(GAMES[game_id].state, ["10H", "7H"])
+    hand_action(game_id, "scene_close")
+    game = GAMES[game_id].state
+    assert game.deck.draw_pile == []
+    assert game.meta["scene"]["deck_exhausted"] is True
+    assert game.meta["scene"]["deck_exhausted_participants"] == ["p1", "p2"]
+    assert game.zones["players.p1.rewards"] == ["10H", "7H"]
+    assert game.meta["scene"]["players"]["p2"]["dark_reward_loss_pending"]
+    assert game.meta["phase"] == "table"
+    assert "victory" not in game.meta
+    reject(game_id, "scene_new")
+    path = tmp_path / "exhausted-dark-loss.json"
+    save_game_state(game, path)
+    GAMES[game_id].state = load_game_state(path)
+    hand_action(game_id, "scene_discard_dark_reward", player_id="p2", reward_card_id="10D")
+    game = GAMES[game_id].state
+    assert not game.meta["scene"]["players"]["p2"]["dark_reward_loss_pending"]
+    assert game.meta["phase"] == "victory"
+    assert game.meta["victory"]["winner"] == "p1"
+    assert game.meta["victory"]["reason"] == "Won with the most reward points after the deck was exhausted."
