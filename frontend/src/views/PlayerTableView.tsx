@@ -1401,12 +1401,12 @@ export default function PlayerTableView({
         {hasPendingInteraction && (
           <div role="status" style={{ padding: "10px 14px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-muted)" }}>
             {yankeeCardId !== null ? (
-              <div className="table-target-prompt">
+              <div className="table-target-prompt faction-power-panel">
                 <strong>Order and Profit · Inspect the top card</strong>
                 <div>Keep it on top or bury it at the bottom of the deck.</div>
               </div>
             ) : chichimecaActive ? (
-              <div className="table-target-prompt">
+              <div className="table-target-prompt faction-power-panel">
                 <strong>Children of the Earth · Choose an enemy</strong>
                 <div>Choose an enemy to steal 1 Scum from.</div>
                 <div>{chichimecaTargets.length === 0
@@ -1791,7 +1791,7 @@ export default function PlayerTableView({
                     paisaSelectionLocked={hasPendingInteraction || sceneActionPending}
                     onSelectPaisaCard={handleSelectPaisaCard}
                     resourceActions={paisaAvailable ? (
-                      <div style={{ display: "grid", gap: 8 }}>
+                      <div className={paisaActive ? "faction-power-panel" : undefined} style={{ display: "grid", gap: 8 }}>
                         {!paisaActive ? (
                           <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={() => {
                             if (hasPendingInteraction) return;
@@ -1814,7 +1814,7 @@ export default function PlayerTableView({
                         )}
                       </div>
                     ) : criolloAvailable ? (
-                      <div style={{ display: "grid", gap: 8 }}>
+                      <div className={criolloActive ? "faction-power-panel" : undefined} style={{ display: "grid", gap: 8 }}>
                         {!criolloActive ? (
                           <button type="button" disabled={hasPendingInteraction || sceneActionPending} onClick={() => {
                             if (hasPendingInteraction) return;

@@ -530,3 +530,11 @@ button:focus-visible {
 }
 
 .marshal-offline-banner strong { display: block; font-weight: 800; }
+
+.faction-power-panel {
+  background: color-mix(in srgb, #9a7b3c 18%, var(--surface-bg));
+  border: 1px solid color-mix(in srgb, #9a7b3c 75%, var(--border-strong));
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text-primary);
+}
