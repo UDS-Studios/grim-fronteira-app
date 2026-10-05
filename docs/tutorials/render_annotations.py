@@ -1,7 +1,9 @@
-"""Regenerate annotated PNGs and editable SVGs from unchanged browser captures."""
+"""Regenerate screenshot-only PNGs/SVGs with arrows and numbered callouts.
+Titles and instructions remain editable in captures.json and steps.json.
+"""
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-import json, base64, html, math, textwrap
+import json, base64, math
 
 ROOT=Path(__file__).resolve().parent
 FONT_ROOT=Path('/usr/share/fonts/truetype/dejavu')
@@ -29,25 +31,14 @@ for role in ['marshal','player']:
     for r in steps:
         shot=out/'originals'/(r['filename']+'.jpg')
         im=Image.open(shot).convert('RGB')
-        sw,sh=im.size; pad=40; sy=116; w=sw+2*pad
-        lines=textwrap.wrap(r['caption'],width=100,break_long_words=False)
-        foot_y=sy+sh+27; height=foot_y+len(lines)*31+65
+        sw,sh=im.size; pad=20; sy=20; w=sw+2*pad; height=sh+2*pad
         canvas=Image.new('RGB',(w,height),PAPER); draw=ImageDraw.Draw(canvas)
-        rolelabel=f'{role.upper()} TUTORIAL'
-        draw.text((pad,22),rolelabel,font=font(14,True),fill=OLIVE)
-        draw.text((pad,48),r['title'],font=font(30,True),fill=INK)
-        step_label=f"{r['num']:02d} / {len(steps):02d}"
-        draw.text((w-pad-draw.textlength(step_label,font=font(18,True)),26),step_label,font=font(18,True),fill=RUST)
-        draw.line((pad,99,w-pad,99),fill=BRASS,width=2)
         canvas.paste(im,(pad,sy))
         draw.rectangle((pad-1,sy-1,pad+sw,sy+sh),outline=BRASS,width=1)
         b64=base64.b64encode(shot.read_bytes()).decode()
         svg=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{height}" viewBox="0 0 {w} {height}">',
           f'<rect width="100%" height="100%" fill="{PAPER}"/>',
-          f'<g font-family="DejaVu Sans, sans-serif"><text x="40" y="36" font-size="14" font-weight="bold" fill="{OLIVE}">{rolelabel}</text>',
-          f'<text x="40" y="78" font-size="30" font-weight="bold" fill="{INK}">{html.escape(r["title"])}</text>',
-          f'<text x="{w-40}" y="44" text-anchor="end" font-size="18" font-weight="bold" fill="{RUST}">{step_label}</text>',
-          f'<path d="M40 99 H{w-40}" stroke="{BRASS}" stroke-width="2"/>',
+          '<g font-family="DejaVu Sans, sans-serif">',
           f'<image x="{pad}" y="{sy}" width="{sw}" height="{sh}" href="data:image/jpeg;base64,{b64}"/>']
         for i,m in enumerate(r['marks'],1):
             assert m['x']>=0 and m['y']>=0 and m['x']+m['width']<=sw+1 and m['y']+m['height']<=sh+1,(r,m)
@@ -71,12 +62,7 @@ for role in ['marshal','player']:
              f'<polygon points="{tip[0]},{tip[1]} {a[0]},{a[1]} {b[0]},{b[1]}" fill="{RUST}"/>',
              f'<circle cx="{cx}" cy="{cy}" r="18" fill="{RUST}" stroke="{PAPER}" stroke-width="2"/>',
              f'<text x="{cx}" y="{cy+7}" text-anchor="middle" font-size="19" font-weight="bold" fill="white">{i}</text>'])
-        for i,line in enumerate(lines):
-            draw.text((pad,foot_y+i*31),line,font=font(22),fill=INK)
-            svg.append(f'<text x="{pad}" y="{foot_y+i*31+22}" font-size="22" fill="{INK}">{html.escape(line)}</text>')
-        footer='GRIM FRONTEIRA  /  '+('FIRST GAME' if role=='marshal' else 'JOIN AND PLAY')
-        draw.text((pad,height-30),footer,font=font(12,True),fill=OLIVE)
-        svg.append(f'<text x="40" y="{height-18}" font-size="12" font-weight="bold" fill="{OLIVE}">{footer}</text></g></svg>')
+        svg.append('</g></svg>')
         canvas.save(out/'images'/(r['filename']+'.png'),optimize=True)
         (out/'annotations'/(r['filename']+'.svg')).write_text('\n'.join(svg))
         readme.extend([f"### {r['num']:02d}. {r['title']}",'',f"![{r['title']}](images/{r['filename']}.png)",'',r['caption'],''])
