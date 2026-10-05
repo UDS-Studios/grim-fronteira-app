@@ -1726,11 +1726,10 @@ def _mark_scene_deck_exhausted_if_needed(game: GameState) -> GameState:
         return game
 
     scene = _scene(game)
-    if scene["status"] not in {SCENE_STATUS_SETUP, SCENE_STATUS_ACTIVE}:
-        return game
     if scene.get("deck_exhausted"):
         return game
 
+    # Keep the exhausting scene's participant order, including settlement draws.
     scene["deck_exhausted"] = True
     scene["deck_exhausted_participants"] = list(scene.get("participants") or [])
     return _replace_scene(game, scene=scene)
