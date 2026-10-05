@@ -1388,7 +1388,11 @@ export default function MarshalTableView({
       >
           {canCloseScene || canOpenNewScene ? (
             <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
-              <TableZone title={canCloseScene ? "Close Scene" : "Next Scene"}>
+              <TableZone
+                title={canCloseScene ? "Close Scene" : "Next Scene"}
+                background={canCloseScene ? "color-mix(in srgb, #92513d 18%, var(--surface-bg))" : undefined}
+                borderColor={canCloseScene ? "color-mix(in srgb, #92513d 75%, var(--border-strong))" : undefined}
+              >
                 <div
                   style={{
                     display: "grid",
@@ -1449,7 +1453,7 @@ export default function MarshalTableView({
                             )
                           }
                           disabled={interactionBlocked || hasPendingInteraction || !canAssignBonus}
-                          title="Assign one bonus Vengeance card"
+                          title="Give Vengeance to those who made justice through violence."
                         />
                         <ActionButton
                           label="Scum"
@@ -1457,7 +1461,7 @@ export default function MarshalTableView({
                             setPendingBonusType((prev) => (hasPendingInteraction || prev === "scum" ? null : "scum"))
                           }
                           disabled={interactionBlocked || hasPendingInteraction || !canAssignBonus}
-                          title="Assign one bonus Scum card"
+                          title="Give Scum to those who proved themselves real bastards."
                         />
                       </div>
                     </div>
