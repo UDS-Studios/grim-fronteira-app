@@ -110,3 +110,17 @@
   outline: 3px solid var(--border-strong);
   outline-offset: 3px;
 }
+
+.tutorial-page .tutorial-role-badge {
+  width: min(200px, 100%);
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tutorial-role-badge img {
+  display: block;
+  width: 100%;
+  height: auto;
+}

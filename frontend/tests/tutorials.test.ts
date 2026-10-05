@@ -60,7 +60,7 @@ test("Home tutorials preserve session state, source slide order, captions and na
         hooks.resetHooks();
         let homeReturns = 0;
         const render = () => { hooks.beginRender(); return Tutorial({ onBackHome: () => homeReturns++ }); };
-        const button = (tree: ReactNode, label: string) => find(tree, (type, props) => type === "button" && props.children === label)!;
+        const button = (tree: ReactNode, label: string) => find(tree, (type, props) => type === "button" && (props.children === label || props["aria-label"] === label))!;
         const click = (tree: ReactNode, label: string) => (button(tree, label).onClick as () => void)();
         const title = role === "marshal" ? "Marshal Tutorial" : "Player Tutorial";
         click(render(), title);

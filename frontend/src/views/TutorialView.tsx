@@ -21,7 +21,7 @@ export default function TutorialView({ onBackHome }: { onBackHome: () => void })
     <main className="tutorial-page">
       <div className="tutorial-panel">
         <header className="tutorial-header">
-          <h1>{tutorial?.title ?? "Tutorial"}</h1>
+          <h1>{tutorial?.title ?? "Tutorials"}</h1>
           <div className="tutorial-controls">
             {role && <button className="tutorial-button-return" type="button" onClick={() => setRole(null)}>Choose tutorial</button>}
             <button className="tutorial-button-return" type="button" onClick={onBackHome}>Back Home</button>
@@ -32,8 +32,12 @@ export default function TutorialView({ onBackHome }: { onBackHome: () => void })
           <div className="tutorial-role-selection">
             <p>Choose your role to follow the graphical tutorial.</p>
             <div className="tutorial-controls">
-              <button type="button" onClick={() => chooseRole("marshal")}>Marshal Tutorial</button>
-              <button type="button" onClick={() => chooseRole("player")}>Player Tutorial</button>
+              <button className="tutorial-role-badge" type="button" aria-label="Marshal Tutorial" onClick={() => chooseRole("marshal")}>
+                <img src={publicAsset("ui/tutorials/Vintage Marshal Tutorial Badge.png")} alt="Marshal Tutorial" />
+              </button>
+              <button className="tutorial-role-badge" type="button" aria-label="Player Tutorial" onClick={() => chooseRole("player")}>
+                <img src={publicAsset("ui/tutorials/Gritty Outlaw Player Tutorial Badge.png")} alt="Player Tutorial" />
+              </button>
             </div>
           </div>
         ) : step && (
