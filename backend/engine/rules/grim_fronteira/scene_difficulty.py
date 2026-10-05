@@ -4,9 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from backend.engine.grimdeck.models import CardID
-from backend.engine.grimdeck.deck_ops import play
 from backend.engine.state.game_state import GameState
-from backend.engine.state.zone_ops import claim_from_in_play
 from backend.engine.state.validators import validate_unique_cards
 
 
@@ -56,15 +54,6 @@ def _difficulty_card_points(card_id: CardID) -> int:
     return int(r)
 
 
-def _zones_copy(zones: dict[str, list[CardID]]) -> dict[str, list[CardID]]:
-    return {k: v.copy() for k, v in zones.items()}
-
-
-def _ensure_zone(zones: dict[str, list[CardID]], name: str) -> None:
-    if name not in zones:
-        zones[name] = []
-
-
 def _bump_scene_meta(game: GameState, *, base: int, value: int, rule_id: str) -> GameState:
     meta = dict(game.meta or {})
     scene = dict(meta.get("scene") or {})
@@ -103,16 +92,10 @@ def marshal_roll_difficulty(
     if game.deck is None:
         raise ValueError("GameState has no deck.")
 
-    # 1) play -> card to deck.in_play
-    new_deck = play(game.deck)
-    game = GameState(deck=new_deck, zones=game.zones, meta=game.meta)
+    # Import locally because scene actions also import this difficulty helper.
+    from .scene import _draw_to_zone
 
-    # 2) move that card into difficulty zone
-    card_id = game.deck.in_play[-1]
-    new_zones = _zones_copy(game.zones)
-    _ensure_zone(new_zones, zone_name)
-    game = GameState(deck=game.deck, zones=new_zones, meta=game.meta)
-    game = claim_from_in_play(game, card_id, zone_name)
+    game, card_id = _draw_to_zone(game, zone_name)
 
     points = _difficulty_card_points(card_id)
     value = base + points

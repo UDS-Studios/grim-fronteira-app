@@ -1877,3 +1877,91 @@ def test_pending_interaction_blocks_scene_action_at_dispatch(authenticated_appli
         assert game == snapshot
     finally:
         GAMES.pop(game_id)
+
+
+def _resolved_scene_with_final_reward(stored_rewards):
+    game = _ready_table_game()
+    for pid, cards in stored_rewards.items():
+        game = _replace_zone_cards(game, f"players.{pid}.rewards", cards)
+    game = _with_exact_draw_pile(game, ["4H", "9H", "10D"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    game = scene_skip_azzardo(game, actor_id="host1")
+    game = scene_start(game, actor_id="host1")
+    game = scene_stand(game, player_id="p1")
+    game = _ack_all_scene_participants(game)
+    assert game.meta["scene"]["status"] == "resolved"
+    assert game.meta["scene"]["deck_exhausted"] is False
+    assert game.deck.draw_pile == ["10D"]
+    assert game.meta["scene"]["players"]["p1"]["reward_cards_gained"] == 1
+    return game
+
+
+def test_final_reward_exhaustion_declares_highest_reward_winner():
+    game = _resolved_scene_with_final_reward({"p1": ["10C"]})
+    game = scene_close(game, actor_id="host1")
+    assert game.deck.draw_pile == []
+    assert game.deck.discard_pile
+    assert game.zones["players.p1.rewards"] == ["10C", "10D"]
+    assert game.meta["scene"]["deck_exhausted"] is True
+    assert game.meta["scene"]["deck_exhausted_participants"] == ["p1"]
+    assert game.meta["phase"] == "victory"
+    assert game.meta["victory"] == {
+        "winner": "p1", "winner_label": "Ash",
+        "reason": "Won with the most reward points after the deck was exhausted.",
+    }
+
+
+def test_final_reward_exhaustion_tie_reshuffles_and_starts_pvp_sudden_death():
+    game = _resolved_scene_with_final_reward({"p2": ["10C"]})
+    game = scene_close(game, actor_id="host1")
+    assert game.zones["players.p1.rewards"] == ["10D"]
+    assert game.meta["scene"]["deck_exhausted"] is True
+    assert game.meta["scene"]["deck_exhausted_participants"] == ["p1"]
+    assert game.meta["phase"] == "table"
+    assert "victory" not in game.meta
+    assert game.meta["endgame"] == {
+        "active": True, "kind": "sudden_death",
+        "reason": "The deck was exhausted with a tie for the most reward points.",
+        "contenders": ["p1", "p2"], "champion": "p1", "cursor": 1,
+    }
+    assert game.deck.draw_pile
+    assert game.deck.discard_pile == []
+    game = scene_new(game, actor_id="host1")
+    assert game.meta["scene"]["status"] == "setup"
+    assert game.meta["scene"]["mode"] == "duel"
+    assert game.meta["scene"]["duel"] == {"subtype": "pvp", "sudden_death": True}
+    assert game.meta["scene"]["participants"] == ["p1", "p2"]
+    game = scene_start(game, actor_id="host1")
+    assert game.meta["scene"]["status"] == "active"
+
+
+def test_final_reward_exhaustion_preserves_exact_21_priority():
+    game = _resolved_scene_with_final_reward({"p1": ["AC"]})
+    game = scene_close(game, actor_id="host1")
+    assert game.deck.draw_pile == []
+    assert game.meta["scene"]["deck_exhausted"] is True
+    assert game.meta["phase"] == "victory"
+    assert game.meta["victory"]["winner"] == "p1"
+    assert game.meta["victory"]["reason"] == "Reached exactly 21 reward points."
+
+
+def test_final_difficulty_card_marks_exhaustion():
+    game = _with_exact_draw_pile(_ready_table_game(), ["4H"])
+    game = scene_set_participants(game, actor_id="host1", participant_ids=["p2"])
+    game, _difficulty = scene_roll_difficulty(game, actor_id="host1")
+    assert game.deck.draw_pile == []
+    assert game.meta["scene"]["deck_exhausted"] is True
+    assert game.meta["scene"]["deck_exhausted_participants"] == ["p2"]
+    assert game.meta["phase"] == "table"
+
+
+def test_final_post_resolution_bonus_marks_exhaustion_until_close():
+    game = _resolved_scene_with_final_reward({"p1": ["10C"]})
+    game, _bonus = scene_assign_bonus_card(game, actor_id="host1", player_id="p2", bonus_type="scum")
+    assert game.deck.draw_pile == []
+    assert game.meta["scene"]["deck_exhausted"] is True
+    assert game.meta["scene"]["deck_exhausted_participants"] == ["p1"]
+    assert game.meta["phase"] == "table"
+    game = scene_close(game, actor_id="host1")
+    assert game.meta["phase"] == "victory"
