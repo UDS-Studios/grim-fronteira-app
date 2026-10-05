@@ -1390,8 +1390,8 @@ export default function MarshalTableView({
             <ResponsiveScaleBox baseWidth={400} minScale={0.5} maxScale={1}>
               <TableZone
                 title={canCloseScene ? "Close Scene" : "Next Scene"}
-                background={canCloseScene ? "color-mix(in srgb, #92513d 18%, var(--surface-bg))" : undefined}
-                borderColor={canCloseScene ? "color-mix(in srgb, #92513d 75%, var(--border-strong))" : undefined}
+                background={canCloseScene ? "color-mix(in srgb, #92513d 18%, var(--surface-bg))" : "color-mix(in srgb, #65734b 18%, var(--surface-bg))"}
+                borderColor={canCloseScene ? "color-mix(in srgb, #92513d 75%, var(--border-strong))" : "color-mix(in srgb, #65734b 75%, var(--border-strong))"}
               >
                 <div
                   style={{

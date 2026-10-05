@@ -94,10 +94,45 @@ test("Close Scene emphasis and resource copy preserve scene actions and blockers
         assert.equal(find(tree, props => props.label === "Close Scene"), undefined);
         if (status === "closed") {
           const zone = find(tree, props => props.title === "Next Scene")!;
-          assert.equal(zone.background, undefined);
-          assert.equal(zone.borderColor, undefined);
+          assert.match(String(zone.background), /color-mix.*#65734b/);
+          assert.match(String(zone.borderColor), /color-mix.*#65734b/);
           assert.equal(find(tree, props => props.label === "New Scene")!.disabled, false);
         }
+      });
+    }
+    for (const blocker of ["none", "paused", "disconnected", "pending", "dark-reward-loss", "heal", "reward-discard"]) {
+      await t.test(`Next Scene preserves behavior: ${blocker}`, async () => {
+        hooks.resetHooks();
+        const response = yankeeLiveState("marshal");
+        const meta = response.state.meta!;
+        meta.scene!.status = "closed";
+        if (blocker !== "pending") meta.pending_interaction = null;
+        meta.session_pause = { paused: blocker === "paused", reason: blocker === "paused" ? "marshal_offline" : null };
+        meta.scene!.players = { "yankee-a": { dark_reward_loss_pending: blocker === "dark-reward-loss" } };
+        if (blocker === "heal") {
+          meta.players!["yankee-a"].wounds = 1;
+          meta.players!["yankee-a"].reward_points = 12;
+        }
+        if (blocker === "reward-discard") meta.players!["yankee-a"].reward_points = 30;
+        const requests: unknown[] = [];
+        globalThis.fetch = async (_url, options) => {
+          requests.push(JSON.parse(String(options?.body)));
+          return new Response(JSON.stringify(response));
+        };
+        hooks.beginRender();
+        const tree = Marshal({ resp: response, view: "marshal", currentActorId: "marshal",
+          connectionLost: blocker === "disconnected", run: async (promise: Promise<unknown>) => promise, onBackHome: () => {} });
+        const zone = find(tree, props => props.title === "Next Scene")!;
+        assert.match(String(zone.background), /color-mix.*#65734b/);
+        assert.match(String(zone.borderColor), /color-mix.*#65734b/);
+        const control = find(tree, props => props.label === "New Scene")!;
+        assert.equal(control.disabled, blocker !== "none");
+        const button = renderToStaticMarkup(tree).match(/<button\b[^>]*>New Scene<\/button>/)![0];
+        assert.equal(/disabled=""/.test(button), blocker !== "none");
+        if (blocker !== "none") assert.match(button, /opacity:0\.6/);
+        await (control.onClick as () => Promise<void>)();
+        assert.deepEqual(requests, blocker === "none" ? [{ game_id: response.game_id, action: "gf.scene_new",
+          params: { actor_id: "marshal" }, view: "marshal", viewer_id: "marshal" }] : []);
       });
     }
     hooks.resetHooks();
