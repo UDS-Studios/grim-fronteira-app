@@ -1,0 +1,126 @@
+.tutorial-page {
+  min-height: 100dvh;
+  padding: clamp(10px, 1.5vw, 16px);
+  box-sizing: border-box;
+  background: var(--app-bg);
+  color: var(--text-primary);
+}
+
+.tutorial-panel {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: clamp(10px, 1.5vw, 16px);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface-bg);
+}
+
+.tutorial-header,
+.tutorial-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-header,
+.tutorial-step-navigation {
+  justify-content: space-between;
+}
+
+.tutorial-header h1 {
+  margin: 0;
+  font-family: "LavaArabic", serif;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+}
+
+.tutorial-step-navigation {
+  margin-top: 8px;
+}
+
+.tutorial-panel h2 {
+  margin: 8px 0;
+  font-size: clamp(1.125rem, 2vw, 1.375rem);
+  line-height: 1.25;
+}
+
+.tutorial-role-selection {
+  margin: 24px 0;
+}
+
+.tutorial-page button {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  min-height: 44px;
+}
+
+.tutorial-page .tutorial-button-next {
+  background: #596447;
+  border-color: #414b32;
+  color: #faf3df;
+}
+
+.tutorial-page .tutorial-button-return {
+  background: #85564a;
+  border-color: #684237;
+  color: #faf3df;
+}
+
+.tutorial-page button:not(:disabled):hover {
+  border-color: var(--text-primary);
+  filter: brightness(1.08);
+}
+
+.tutorial-page button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tutorial-slide {
+  margin: 8px 0;
+}
+
+.tutorial-slide img {
+  display: block;
+  width: 70%;
+  height: auto;
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  .tutorial-slide img {
+    width: 100%;
+  }
+}
+
+.tutorial-slide figcaption {
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.tutorial-full-size {
+  display: inline-block;
+  color: var(--text-primary);
+  text-decoration: underline;
+  padding: 4px 0;
+}
+
+.tutorial-page :is(button, a):focus-visible {
+  outline: 3px solid var(--border-strong);
+  outline-offset: 3px;
+}
+
+.tutorial-page .tutorial-role-badge {
+  width: min(200px, 100%);
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tutorial-role-badge img {
+  display: block;
+  width: 100%;
+  height: auto;
+}

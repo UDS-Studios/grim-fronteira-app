@@ -1,0 +1,425 @@
+[
+  {
+    "role": "marshal",
+    "num": 1,
+    "filename": "01-create-game",
+    "title": "Create your game",
+    "caption": "Click New Game (1). You become the Marshal of a new game.",
+    "marks": [
+      {
+        "height": 260,
+        "width": 260,
+        "x": 313,
+        "y": 240.8515625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 2,
+    "filename": "02-share-game-id",
+    "title": "Invite your players",
+    "caption": "Click Copy Game ID (1), then send the copied ID to your friends. Each friend uses it to join from their own browser.",
+    "marks": [
+      {
+        "height": 40,
+        "width": 40,
+        "x": 1182,
+        "y": 115.5703125
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 3,
+    "filename": "03-character-mode",
+    "title": "Choose character assignment",
+    "caption": "Keep CHOICE (1) so players pick their own figure, or select RANDOM (2) to assign figures randomly. This guide uses CHOICE.",
+    "marks": [
+      {
+        "height": 84,
+        "width": 268.25,
+        "x": 63,
+        "y": 289.015625
+      },
+      {
+        "height": 84,
+        "width": 268.25,
+        "x": 341.25,
+        "y": 289.015625
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 1,
+    "filename": "01-join-game",
+    "title": "Join your friends",
+    "caption": "Paste the Game ID shared by the Marshal into the game_id field (1), then click Join Game (2). Do not click New Game to join an existing session.",
+    "marks": [
+      {
+        "height": 33.5,
+        "width": 282,
+        "x": 696,
+        "y": 240.8515625
+      },
+      {
+        "height": 260,
+        "width": 260,
+        "x": 707,
+        "y": 284.3515625
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 2,
+    "filename": "02-choose-figure",
+    "title": "Choose your figure",
+    "caption": "In CHOICE mode, click an available Jack, Queen, or King; the highlighted Queen of Diamonds (1) is this guide\u2019s example. Its suit gives your faction power; its rank sets your starting Scum and Vengeance.",
+    "marks": [
+      {
+        "height": 129.3984375,
+        "width": 90,
+        "x": 450,
+        "y": 170.3203125
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 3,
+    "filename": "03-name-character",
+    "title": "Name your character",
+    "caption": "Click a suggested name, such as Leonor del Paso (1). To write your own instead, scroll to the custom-name field, enter the name, and click Submit.",
+    "marks": [
+      {
+        "height": 43.5,
+        "width": 562.5,
+        "x": 654.5,
+        "y": 527.03125
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 4,
+    "filename": "04-choose-feature",
+    "title": "Give your character a feature",
+    "caption": "Pick a suggested feature, such as a chipped saint medallion (1), or write your own and click Submit. This completes the character\u2019s description.",
+    "marks": [
+      {
+        "height": 43.5,
+        "width": 562.5,
+        "x": 654.5,
+        "y": 421.53125
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 5,
+    "filename": "05-ready-and-wait",
+    "title": "Your character is ready",
+    "caption": "After choosing your name and feature, you are marked ready automatically. The waiting message (1) confirms that you are waiting for the Marshal to start the game. Keep this browser open.",
+    "marks": [
+      {
+        "height": 36,
+        "width": 562.5,
+        "x": 654.5,
+        "y": 553.84375
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 4,
+    "filename": "04-start-session",
+    "title": "Start when everyone is ready",
+    "caption": "Once at least one player has joined and every joined player has chosen a figure, name, and feature, click Start Game (1). Players become ready automatically when their character is complete.",
+    "marks": [
+      {
+        "height": 64,
+        "width": 546.5,
+        "x": 655.5,
+        "y": 357.015625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 5,
+    "filename": "05-choose-story",
+    "title": "Choose the opening story",
+    "caption": "Choose a suggested narrative hook, such as the highlighted Story Hook (1), or prepare your own. Then click Bring the Frontier to life!! (2) to move to the game table.",
+    "marks": [
+      {
+        "height": 74.796875,
+        "width": 930,
+        "x": 167.5,
+        "y": 170.078125
+      },
+      {
+        "height": 80.5,
+        "width": 476.6484375,
+        "x": 394.171875,
+        "y": 590.265625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 6,
+    "filename": "06-select-participants",
+    "title": "Choose who is in the scene",
+    "caption": "Click Leonor del Paso\u2019s player panel (1) and Abner Coldiron\u2019s player panel (2) to include both in this challenge. Selected characters appear in Scene Participants. Leave other players outside the scene.",
+    "marks": [
+      {
+        "height": 181.7777404785156,
+        "width": 265.67401123046875,
+        "x": 998.7185668945312,
+        "y": 108.7597427368164
+      },
+      {
+        "height": 181.7777099609375,
+        "width": 265.67401123046875,
+        "x": 998.7185668945312,
+        "y": 299.9004211425781
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 7,
+    "filename": "07-draw-difficulty",
+    "title": "Set the challenge",
+    "caption": "For this ordinary scene, leave the Dark off and click the deck (1) once to draw the difficulty. Players must match or exceed it without busting.",
+    "marks": [
+      {
+        "height": 166.84359741210938,
+        "width": 262.6311340332031,
+        "x": 17.128889083862305,
+        "y": 114.26049041748048
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 8,
+    "filename": "08-start-scene",
+    "title": "Deal the first hands",
+    "caption": "The difficulty is set. Click Start Scene (1) to deal one card to each participant. For this introductory scene, skip the optional Azzardo.",
+    "marks": [
+      {
+        "height": 30.546676635742188,
+        "width": 81.63882446289062,
+        "x": 366.9836730957031,
+        "y": 252.6311798095703
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 9,
+    "filename": "09-follow-turns",
+    "title": "Follow the player turns",
+    "caption": "The highest initial hand acts first. The Acting now label (1) identifies the current player\u2014in this screenshot, Abner Coldiron. Follow each total while players draw, Stay, and use their resources. Let each player control their own hand.",
+    "marks": [
+      {
+        "height": 13.693328857421877,
+        "width": 51.1689453125,
+        "x": 407.564453125,
+        "y": 391.9893798828125
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 6,
+    "filename": "06-read-your-board",
+    "title": "Read your character board",
+    "caption": "Your character\u2019s figure (1) contributes 10 to scene hands. Scum is on the left and Vengeance on the right. The Rewards area (2) holds earned Rewards below your character board; its points are separate from your hand total.",
+    "marks": [
+      {
+        "height": 143.09490966796875,
+        "width": 102.59634399414062,
+        "x": 469.9079284667969,
+        "y": 323.6936950683594
+      },
+      {
+        "height": 12.14959716796875,
+        "width": 626.3777465820312,
+        "x": 352.46209716796875,
+        "y": 559.724365234375
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 7,
+    "filename": "07-wait-your-turn",
+    "title": "Wait for your turn",
+    "caption": "The status message (1) shows that Abner Coldiron is acting. The deck stays disabled while another participant is acting. Wait until the message changes to Your turn; turns follow the initial hand order.",
+    "marks": [
+      {
+        "height": 43.4674072265625,
+        "width": 279.4400939941406,
+        "x": 41.298126220703125,
+        "y": 236.7588806152344
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 8,
+    "filename": "08-draw-or-stay",
+    "title": "Draw or Stay",
+    "caption": "On your turn, click the deck (1) to draw another card, or click Stay (2) to stop. Match or beat the difficulty without going over 21. Your total already includes your character\u2019s 10 points.",
+    "marks": [
+      {
+        "height": 143.25253295898438,
+        "width": 267.6363525390625,
+        "x": 66.58372497558594,
+        "y": 346.2979736328125
+      },
+      {
+        "height": 25.535354614257812,
+        "width": 39.131317138671875,
+        "x": 447.9978637695313,
+        "y": 155.9242401123047
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 9,
+    "filename": "09-play-vengeance",
+    "title": "Boost your hand with Vengeance",
+    "caption": "Click your Vengeance pile (1) to spend its top card: +1 to your total, or +2 when its suit matches your character. A boost can still take you over 21.",
+    "marks": [
+      {
+        "height": 125.41415405273438,
+        "width": 103.434326171875,
+        "x": 588.9271850585938,
+        "y": 367.7676696777344
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 10,
+    "filename": "10-faction-power",
+    "title": "Optional: use your faction power",
+    "caption": "Criollo example: Law of Lead \u00b7 Convert is already open, and the highlighted Scum card (1) is selected for conversion into Vengeance. Click Confirm conversion (2) to apply it, or Cancel to return to ordinary play. To open this selection, click Law of Lead \u00b7 Convert. Other factions have different powers.",
+    "marks": [
+      {
+        "height": 88.66741943359375,
+        "width": 63.603179931640625,
+        "x": 395.8774719238281,
+        "y": 356.26837158203125
+      },
+      {
+        "height": 26.618255615234375,
+        "width": 117.10763549804688,
+        "x": 393.0714416503906,
+        "y": 502.8051452636719
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 11,
+    "filename": "11-play-scum",
+    "title": "Optional: target another player",
+    "caption": "Click your Scum pile (1), then click an in-scene opponent\u2019s figure (2). Scum targeting is already active in this screenshot. Scum lowers their total by 1, or by 2 when the spent card matches your own character\u2019s suit. Busted players cannot be targeted.",
+    "marks": [
+      {
+        "height": 125.41415405273438,
+        "width": 103.434326171875,
+        "x": 376.24029541015625,
+        "y": 367.7676696777344
+      },
+      {
+        "height": 73.86741638183594,
+        "width": 51.587158203125,
+        "x": 1079.656982421875,
+        "y": 183.7727203369141
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 10,
+    "filename": "10-review-results",
+    "title": "Review results and wait",
+    "caption": "The status message (1) says the scene is resolved and is waiting for acknowledgments from 2 participants. Players may still react before acknowledging. Wait for their acknowledgments; Force Acknowledge is an emergency control.",
+    "marks": [
+      {
+        "height": 65.64384460449219,
+        "width": 309.55181884765625,
+        "x": 638.4878540039062,
+        "y": 164.2488555908203
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 12,
+    "filename": "12-acknowledge",
+    "title": "Confirm the scene result",
+    "caption": "Review your outcome, then click Acknowledge (1) when finished. This screenshot shows a bust and one wound. At two wounds, your character is eliminated.",
+    "marks": [
+      {
+        "height": 26.28355407714844,
+        "width": 88.51983642578125,
+        "x": 492.7150268554687,
+        "y": 159.5930938720703
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 11,
+    "filename": "11-close-scene",
+    "title": "Close the completed scene",
+    "caption": "Once acknowledgments are complete, click Close Scene (1). This deals earned Rewards and clears the played cards. Optional bonus Scum or Vengeance can be assigned before closing.",
+    "marks": [
+      {
+        "height": 30.546669006347656,
+        "width": 262.6311340332031,
+        "x": 17.128889083862305,
+        "y": 114.26049041748048
+      }
+    ]
+  },
+  {
+    "role": "player",
+    "num": 13,
+    "filename": "13-rewards-and-next",
+    "title": "Collect Rewards and continue",
+    "caption": "Here is the successful player\u2019s board: the earned Reward card (1) appears after Close Scene and contributes 5 Reward points in this example. Aim for exactly 21 Reward points. If Heal/Skip or Reward-discard choices appear, complete them before the next scene.",
+    "marks": [
+      {
+        "height": 91.426025390625,
+        "width": 63.20001220703125,
+        "x": 340.85333251953125,
+        "y": 564.6592407226562
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 12,
+    "filename": "12-next-scene",
+    "title": "Prepare the next scene",
+    "caption": "Click New Scene (1) in the Next Scene panel. If it is blocked, wait for required healing choices or Reward discards to finish, then continue with the next challenge.",
+    "marks": [
+      {
+        "height": 30.546669006347656,
+        "width": 262.6311340332031,
+        "x": 17.128889083862305,
+        "y": 114.26049041748048
+      }
+    ]
+  }
+]

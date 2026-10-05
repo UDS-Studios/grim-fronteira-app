@@ -4,11 +4,51 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { getPresenceStatus } from "../src/utils/presence.ts";
 import { acceptResponse } from "../src/utils/responseOrdering.ts";
 import type { GameMeta } from "../src/api/types.ts";
 import { chichimecaLiveResponse } from "./fixtures/chichimecaLiveState.ts";
+
+for (const dev of [true, false]) {
+  test(`Player table Marshal ID and presence in ${dev ? "development" : "production"}`, async t => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "gf-marshal-presence-"));
+    const server = await createServer({ cacheDir, root: fileURLToPath(new URL("..", import.meta.url)),
+      server: { middlewareMode: true, hmr: false, watch: null }, appType: "custom",
+      plugins: [{ name: "marshal-id-mode", enforce: "pre", transform(code, id) {
+        if (id.endsWith("/src/views/PlayerTableView.tsx")) {
+          return code.replaceAll("import.meta.env.DEV", String(dev));
+        }
+      } }] });
+    try {
+      const { default: Player } = await server.ssrLoadModule("/src/views/PlayerTableView.tsx");
+      for (const online of [true, false]) {
+        await t.test(online ? "online" : "offline", () => {
+          const response = structuredClone(chichimecaLiveResponse);
+          const marshalId = "player-marshal-raw-id";
+          response.state.meta!.marshal_id = marshalId;
+          response.state.meta!.presence = { [marshalId]: { online } };
+          response.state.meta!.pending_interaction = null;
+          const html = renderToStaticMarkup(createElement(Player, {
+            resp: response, view: "player", currentActorId: "player-nnu30f", onBackHome: () => {},
+            run: () => { throw Error("presentation must not submit requests"); },
+          }));
+          assert.equal(html.includes(marshalId), dev);
+          const statusLine = html.match(/<div><b>Marshal:<\/b>(.*?)<\/div>/)?.[1];
+          assert.ok(statusLine, "Marshal label remains present");
+          assert.equal(statusLine.includes(marshalId), dev);
+          assert.ok(statusLine.includes(`presence-indicator--${online ? "online" : "offline"}`));
+          assert.ok(statusLine.includes(online ? "Online" : "Offline"));
+        });
+      }
+    } finally {
+      await server.close();
+      await rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+}
 
 test("only explicit backend booleans determine presence; missing and malformed data are unknown", () => {
   assert.equal(getPresenceStatus({ presence: { p1: { online: true } } }, "p1"), "online");

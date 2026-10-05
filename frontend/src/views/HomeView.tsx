@@ -1,4 +1,5 @@
 import { publicAsset } from "../app/assets";
+import "./HomeView.css";
 
 type HomeViewProps = {
   joinGameId: string;
@@ -6,6 +7,7 @@ type HomeViewProps = {
   setJoinGameId: (v: string) => void;
   onNewGame: () => void;
   onJoinGame: () => Promise<void>;
+  onTutorial: () => void;
 };
 
 export default function HomeView({
@@ -14,6 +16,7 @@ export default function HomeView({
   setJoinGameId,
   onNewGame,
   onJoinGame,
+  onTutorial,
 }: HomeViewProps) {
   return (
     <div
@@ -137,6 +140,18 @@ export default function HomeView({
               />
             </button>
           </div>
+        </div>
+        <div className="home-secondary-controls">
+          <a
+            className="home-rules-download"
+            href={publicAsset("assets/Grim-Fronteira-Rules.pdf")}
+            download="Grim-Fronteira-Rules.pdf"
+          >
+            Download Rules
+          </a>
+          <button type="button" className="home-tutorial-button" onClick={onTutorial}>
+            Tutorials
+          </button>
         </div>
       </div>
     </div>

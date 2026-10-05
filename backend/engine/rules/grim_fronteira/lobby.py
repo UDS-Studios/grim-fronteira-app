@@ -373,6 +373,10 @@ def start_game(game: GameState, actor_id: str, seed: int | None = None) -> GameS
         raise ValueError("Game already started.")
     if lobby.get("character_assignment_mode") not in ("choice", "random"):
         raise ValueError("Character assignment mode must be set before starting the game.")
+    joined_players = _non_marshal_players(game)
+    if not joined_players:
+        raise ValueError("Cannot start game: at least one player is required.")
+
     players = dict(lobby.get("players") or {})
     order = list(meta.get("players_order") or [])
     marshal_id = meta.get("marshal_id")
@@ -386,7 +390,7 @@ def start_game(game: GameState, actor_id: str, seed: int | None = None) -> GameS
 
     missing = [
         pid
-        for pid in _non_marshal_players(game)
+        for pid in joined_players
         if not _player_has_character(game, pid)
     ]
     if missing:
