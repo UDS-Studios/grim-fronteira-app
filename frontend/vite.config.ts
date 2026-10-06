@@ -1,9 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const base = process.env.VITE_BASE_PATH || "/grim-fronteira/";
+
 export default defineConfig({
   plugins: [react()],
-  base: "/grim-fronteira/",
+  base,
   server: {
     host: "0.0.0.0",
     proxy: {

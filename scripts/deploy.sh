@@ -55,6 +55,7 @@ VENV_DIR="/opt/grim-fronteira/venv"
 FRONTEND_DIST="/opt/grim-fronteira/frontend-dist"
 SERVICE_NAME="grim-fronteira.service"
 BUILD_PATH="/usr/bin:/bin:/usr/local/bin"
+VITE_BASE_PATH="${VITE_BASE_PATH:-/grim-fronteira/}"
 
 # --------------------------------------------------
 # HELPERS
@@ -69,6 +70,7 @@ export NVM_DIR=\"\$HOME/.nvm\"
 [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"
 nvm use 22 >/dev/null
 cd \"$APP_ROOT/frontend\"
+export VITE_BASE_PATH="$VITE_BASE_PATH"
 npm $*
 "
 }
@@ -121,6 +123,7 @@ echo "Project: $APP_ROOT"
 echo "Deploy user: root"
 echo "Build user: $APP_OWNER"
 echo "Build PATH: $BUILD_PATH"
+echo "Frontend base: $VITE_BASE_PATH"
 
 echo "-- Build toolchain"
 run_as_app_owner "
