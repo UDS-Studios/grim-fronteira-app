@@ -77,6 +77,54 @@ PYTHONPATH=. pytest backend/tests/
 
 ------------------------------------------------------------------------
 
+## Production deployment
+
+Run the existing deployment script from `/opt/grim-fronteira/app` on
+`lupo-apps-01` as the application owner using sudo:
+
+``` bash
+sudo ./scripts/deploy.sh
+# For nginx instead of the default Apache:
+sudo ./scripts/deploy.sh --web-server nginx
+```
+
+The server needs `python3` and `python3-venv`, plus the existing Node 22/NVM
+build setup. The script installs backend requirements, builds and publishes the
+frontend, restarts `grim-fronteira.service`, and reloads the selected web server.
+
+`/opt/grim-fronteira/venv` is disposable deployment state: do not commit or back
+it up. A venv created with Python X.Y must be rebuilt after an OS upgrade changes
+X.Y (for example, Ubuntu 24.04 to 26.04 changed Python 3.12 to 3.14). Its Python
+symlink may report the new version while packages remain under
+`lib/python3.12/site-packages`, causing errors such as `No module named uvicorn`.
+
+The deploy script compares the creation version in `pyvenv.cfg` with the current
+system `python3` major/minor version. A mismatch, missing metadata, or unusable
+interpreter causes it to delete and recreate the venv, upgrade pip, and reinstall
+`requirements.txt`. Matching usable environments are reused and dependencies are
+installed on every deployment. Rebuilding requires access to the package index;
+a failed deployment must be corrected and rerun before service is restored.
+Local `.venv` environments likewise need recreating after a Python X.Y change.
+
+The existing systemd service design stays the same:
+
+``` ini
+WorkingDirectory=/opt/grim-fronteira/app
+Environment="PYTHONPATH=/opt/grim-fronteira/app"
+ExecStart=/opt/grim-fronteira/venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+```
+
+After deployment, check the interpreter, installed server, service, and listener:
+
+``` bash
+/opt/grim-fronteira/venv/bin/python --version
+/opt/grim-fronteira/venv/bin/python -m uvicorn --version
+systemctl status grim-fronteira.service
+ss -lntp | grep ':8000'
+```
+
+------------------------------------------------------------------------
+
 ## Deck Templates
 
 Deck templates live in:

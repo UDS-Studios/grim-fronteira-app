@@ -48,7 +48,7 @@ fi
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
-EXPECTED_HOST="lupoegatta"
+EXPECTED_HOST="lupo-apps-01"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_ROOT="$PROJECT_ROOT"
 VENV_DIR="/opt/grim-fronteira/venv"
@@ -103,11 +103,6 @@ fi
 command -v python3 >/dev/null || { echo "[ERROR] python3 not found"; exit 1; }
 command -v sudo >/dev/null || { echo "[ERROR] sudo not found"; exit 1; }
 
-if [[ ! -x "$VENV_DIR/bin/python" ]]; then
-  echo "[ERROR] Python venv not found at $VENV_DIR"
-  exit 1
-fi
-
 APP_OWNER="${SUDO_USER:-$(stat -c '%U' "$APP_ROOT")}"
 APP_GROUP="$(id -gn "$APP_OWNER")"
 
@@ -139,10 +134,26 @@ echo NPM: \$(npm -v)
 # --------------------------------------------------
 echo "-- Backend dependencies"
 cd "$APP_ROOT"
-source "$VENV_DIR/bin/activate"
+SYSTEM_PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+VENV_PYTHON_VERSION=""
+if [[ -f "$VENV_DIR/pyvenv.cfg" ]]; then
+  VENV_PYTHON_VERSION="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*([0-9]+\.[0-9]+).*/\1/p' "$VENV_DIR/pyvenv.cfg")"
+fi
+
+# The interpreter symlink can follow an OS upgrade while site-packages stays
+# under the old Python version. Inspect creation metadata, not just --version.
+if [[ "$VENV_PYTHON_VERSION" != "$SYSTEM_PYTHON_VERSION" ]] || \
+   ! "$VENV_DIR/bin/python" -c 'import sys; assert sys.prefix != sys.base_prefix' >/dev/null 2>&1; then
+  echo "-- Recreating disposable venv for Python $SYSTEM_PYTHON_VERSION (previous: ${VENV_PYTHON_VERSION:-missing/unknown})"
+  rm -rf -- "$VENV_DIR"
+  python3 -m venv "$VENV_DIR"
+  "$VENV_DIR/bin/python" -m pip install --upgrade pip
+fi
 
 # NOTE: adjust once requirements are cleaned up
-pip install --upgrade -r requirements.txt
+"$VENV_DIR/bin/python" -m pip install --upgrade -r "$APP_ROOT/requirements.txt"
+"$VENV_DIR/bin/python" --version
+"$VENV_DIR/bin/python" -m uvicorn --version
 
 # --------------------------------------------------
 # FRONTEND
