@@ -593,7 +593,10 @@ def test_opossum_kill_is_recorded_when_his_reward_ends_the_run(run, ending):
     assert game.meta["solo"]["ending"] == ending
     assert game.meta["solo"]["outlaw_defeated"]
     assert game.meta["solo"]["opossum_hunter"]
-    assert solo.presentation(game)["special_completion"]["id"] == "opossum_hunter"
+    assert solo.presentation(game)["special_completion"]["id"] == "opossum_finale"
+    assert game.meta["solo"]["opossum_finale"]
+    restored = decode_envelope(json.dumps(encode_envelope(run[0], game, GAMES[run[0]].sessions)), run[0])
+    assert solo.presentation(restored.state)["special_completion"] == solo.presentation(game)["special_completion"]
 
 
 def test_associate_encounters_vary_between_opponents_and_persist_within_fight(run):
@@ -618,3 +621,24 @@ def test_associate_encounters_vary_between_opponents_and_persist_within_fight(ru
         new = solo._ensure_associate(game, replace_opponent=True)
         assert new.meta["solo"]["associate"]["encounter"] != encounter["id"]
     assert len(seen) == 4
+
+
+@pytest.mark.parametrize("ending", ["ascension", "exhaustion"])
+def test_ending_after_associates_keeps_original_special_tier(run, ending):
+    ready(run)
+    game = solo._update(GAMES[run[0]].state, node="associates", outlaw_defeated=True)
+    game = solo.finish(game, ending)
+    assert game.meta["solo"]["opossum_hunter"]
+    assert not game.meta["solo"]["opossum_finale"]
+    assert solo.presentation(game)["special_completion"]["id"] == "opossum_hunter"
+
+
+@pytest.mark.parametrize("result,status", [("failure", "closed"), ("bust", "closed"), ("success", "awaiting_ack")])
+def test_finale_needs_a_final_successful_opossum_duel(run, result, status):
+    ready(run)
+    game = GAMES[run[0]].state
+    scene = {**game.meta["scene"], "status": status,
+        "players": {solo.PLAYER: {"result": result}}}
+    game = solo._update(replace(game, meta={**game.meta, "scene": scene}), node="duel", outlaw_defeated=True)
+    assert solo._special_completion(game, "exhaustion")["id"] == "opossum_hunter"
+    assert solo._special_completion(game, "death") is None

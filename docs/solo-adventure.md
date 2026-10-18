@@ -173,3 +173,10 @@ recorded after the duel is acknowledged, before its Reward is drawn, so a victor
 or empty deck during that Reward draw still qualifies. The invitation to
 multiplayer remains on the result page. No prize, redemption flow or QR code is
 included; those can be agreed separately.
+
+A higher completion tier, **The perfect last shot** (`opossum_finale`), replaces
+the usual special panel when the run ends in Opossum's own successful, finalized
+duel. This covers exact 21 from his Reward and deck exhaustion during its draw.
+Runs ending later against associates retain **A tale worth telling**. This is
+ending recognition only: it neither forces the adventure to end on his death nor
+changes Rewards, wounds, or deck rules. Both tiers survive reloads.

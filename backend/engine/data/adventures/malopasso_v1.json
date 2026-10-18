@@ -328,5 +328,10 @@
     "id": "opossum_hunter",
     "title": "A tale worth telling",
     "text": "You did something special: you brought Opossum down and lived to finish the adventure. Malopasso will remember that. The hunter still stands, and the quarry lies in the dust."
+  },
+  "duel_completion": {
+    "id": "opossum_finale",
+    "title": "The perfect last shot",
+    "text": "Opossum falls, his machete strikes stone, and your tale ends on that final shot. You survived to bring the hunt and the adventure to a close together. That is a finish worthy of a Fronteira legend."
   }
 }

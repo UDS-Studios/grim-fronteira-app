@@ -87,13 +87,19 @@ def guard_action(game: GameState, action: str) -> None:
 
 def _special_completion(game: GameState, ending: str | None) -> dict | None:
     if ending in {"ascension", "exhaustion"} and game.meta["solo"]["outlaw_defeated"]:
+        scene = scenes._scene(game)
+        if (game.meta["solo"]["node"] == "duel"
+                and scene["status"] in {"resolved", "closed"}
+                and scene["players"].get(PLAYER, {}).get("result") == "success"):
+            return adventure()["duel_completion"]
         return adventure()["special_completion"]
     return None
 
 
 def finish(game: GameState, ending: str) -> GameState:
     special = _special_completion(game, ending)
-    game = _update(game, step="ending", ending=ending, opossum_hunter=bool(special))
+    game = _update(game, step="ending", ending=ending, opossum_hunter=bool(special),
+                   opossum_finale=bool(special and special["id"] == "opossum_finale"))
     # No incomplete reaction should survive a terminal state.
     meta = {**game.meta, "phase": "victory", "pending_interaction": None,
             "victory": {"winner": "marshal" if ending == "death" else PLAYER,
