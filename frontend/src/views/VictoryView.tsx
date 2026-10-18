@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { publicAsset } from "../app/assets";
 import CardImg from "../components/CardImg";
 
@@ -7,6 +8,10 @@ type VictoryViewProps = {
   showMarshalPortrait?: boolean;
   reason?: string | null;
   onBackHome: () => void;
+  resultLabel?: string;
+  title?: string;
+  invitation?: string;
+  actions?: ReactNode;
 };
 
 export default function VictoryView({
@@ -15,6 +20,10 @@ export default function VictoryView({
   showMarshalPortrait = false,
   reason = null,
   onBackHome,
+  resultLabel = "VICTORY",
+  title,
+  invitation,
+  actions,
 }: VictoryViewProps) {
   return (
     <div
@@ -51,7 +60,7 @@ export default function VictoryView({
           }}
         >
           <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.7 }}>
-            VICTORY
+            {resultLabel}
           </div>
           {winnerFigureCardId ? (
             <div
@@ -85,16 +94,18 @@ export default function VictoryView({
             </div>
           ) : null}
           <div style={{ fontSize: 36, fontWeight: 900, lineHeight: 1.05 }}>
-            {winnerLabel} Wins
+            {title ?? `${winnerLabel} Wins`}
           </div>
           {reason ? (
             <div style={{ fontSize: 16, opacity: 0.82, maxWidth: 420 }}>
               {reason}
             </div>
           ) : null}
+          {invitation && <p style={{ fontSize: 16, lineHeight: 1.5, maxWidth: 420, margin: 0 }}>{invitation}</p>}
         </div>
 
         <div style={{ display: "flex", justifyContent: "center" }}>
+          {actions ?? (
           <button
             type="button"
             onClick={onBackHome}
@@ -111,6 +122,7 @@ export default function VictoryView({
           >
             HOME
           </button>
+          )}
         </div>
       </div>
     </div>

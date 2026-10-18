@@ -134,14 +134,23 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
       await (find(tree, p => p.children === "Begin the adventure")!.onClick as () => Promise<void>)();
       assert.equal(requests[2].action, "gf.solo_continue");
     });
-    await t.test("terminal invitation stays on the table with gameplay disabled", async () => {
+    await t.test("all solo endings use the normal result page with invitation and actions", async () => {
       reset(); for (const ending of ["death", "ascension", "exhaustion"] as const) {
         const r = response(); r.state.meta!.solo!.ending = ending; r.state.meta!.solo!.step = "ending"; r.state.meta!.phase = "victory";
-        const props = tableProps(r); assert.equal(props.readOnly, true);
-        const story = props.sceneNarrative as ReactNode; assert.match(renderToStaticMarkup(story), /Azzardo and Dark/);
-        (find(story, p => p.children === "Play multiplayer")!.onClick as () => void)();
-        await (find(story, p => p.children === (ending === "death" ? "Retry solo" : "Play solo again"))!.onClick as () => Promise<void>)();
-        assert.equal(find(table(r), p => p.title === "Continue the story above the scene.")!.disabled, true);
+        r.state.meta!.solo!.title = ending === "death" ? "The trail ends here" : ending === "ascension" ? "You take the badge" : "You survived the hunt";
+        const tree = render(r), html = renderToStaticMarkup(tree);
+        assert.ok(!find(tree, p => p.sceneNarrative !== undefined));
+        assert.ok(!html.includes("Scene Participation"));
+        assert.ok(!html.includes("solo-story"));
+        assert.match(html, /End of the tale/);
+        assert.match(html, /Azzardo and Dark/);
+        assert.ok(html.includes(r.state.meta!.solo!.title));
+        const result = find(tree, p => p.resultLabel !== undefined)!;
+        assert.equal(result.showMarshalPortrait, ending === "death");
+        assert.equal(result.winnerFigureCardId, ending === "death" ? null : "KS");
+        const actions = result.actions as ReactNode;
+        (find(actions, p => p.children === "Play multiplayer")!.onClick as () => void)();
+        await (find(actions, p => p.children === (ending === "death" ? "Retry solo" : "Play solo again"))!.onClick as () => Promise<void>)();
       }
       assert.equal(multiplayer, 3); assert.equal(retries, 3); assert.equal(requests.length, 0);
     });

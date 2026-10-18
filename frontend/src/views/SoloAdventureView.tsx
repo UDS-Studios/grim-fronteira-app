@@ -5,6 +5,7 @@ import TableZone from "../components/TableZone";
 import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import PlayerLobbyView from "./PlayerLobbyView";
 import PlayerTableView from "./PlayerTableView";
+import VictoryView from "./VictoryView";
 import { getPlayerFaction } from "../utils/factions";
 import "./SoloAdventureView.css";
 
@@ -76,6 +77,18 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
     try { await onRetry(); } finally { retrying.current = false; setBusy(false); }
   }
 
+  if (terminal) return <main className="solo-adventure solo-adventure--ending">
+    <VictoryView winnerLabel={solo.ending === "death" ? "The Fronteira" : "You"}
+      winnerFigureCardId={solo.ending === "death" ? null : resp.state.zones?.[`players.${playerId}.character`]?.[0]}
+      showMarshalPortrait={solo.ending === "death"}
+      resultLabel={`${solo.adventure_title} · End of the tale`} title={solo.title}
+      reason={solo.text} invitation={solo.invitation} onBackHome={onMultiplayer}
+      actions={<div className="solo-actions">
+        <button type="button" onClick={onMultiplayer} disabled={busy}>Play multiplayer</button>
+        <button type="button" onClick={retry} disabled={disabled}>{solo.ending === "death" ? "Retry solo" : "Play solo again"}</button>
+      </div>} />
+  </main>;
+
   const narrative = <section className="solo-story" aria-label="Adventure story" aria-live="polite">
     <TableZone title={solo.adventure_title}>
       <div className="solo-story-heading">
@@ -85,11 +98,7 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
       <p className="solo-story-text">{solo.text}</p>
       {solo.step === "outcome" && <p className="solo-outcome-summary">Your total: <strong>{player?.hand_value}</strong> · Target: <strong>{scene?.difficulty?.value}</strong>. {solo.outcome === "success" ? "One Reward earned." : solo.outcome === "bust" ? "One wound taken; no Reward earned." : "No wound and no Reward."}</p>}
       {solo.has_gun && !terminal && <span className="solo-story-equipment">Armed with the trader's revolver</span>}
-      {terminal ? <>
-        <p>{solo.invitation}</p>
-        <div className="solo-actions"><button type="button" onClick={onMultiplayer} disabled={busy}>Play multiplayer</button>
-          <button type="button" onClick={retry} disabled={disabled}>{solo.ending === "death" ? "Retry solo" : "Play solo again"}</button></div>
-      </> : solo.step === "intro" ? <button type="button" disabled={disabled} onClick={continueStory}>Play this test</button>
+      {solo.step === "intro" ? <button type="button" disabled={disabled} onClick={continueStory}>Play this test</button>
         : solo.step === "outcome" ? <div className="solo-actions">
           <button type="button" disabled={disabled || solo.needs_heal || solo.needs_discard} onClick={continueStory}>
             {["duel", "associates"].includes(solo.node) && solo.outcome !== "success" ? "Continue the duel" : solo.outcome === "failure" || (solo.outcome === "bust" && ["witnesses", "tracking"].includes(solo.node)) ? "Try another approach" : "Continue the trail"}
