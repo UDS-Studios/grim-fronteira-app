@@ -67,6 +67,7 @@ export type SoloState = {
   outcome: "success" | "failure" | "bust" | null;
   ending: "death" | "ascension" | "exhaustion" | null;
   needs_heal: boolean; needs_discard: boolean;
+  resolved_hand?: string[];
   history: { node: string; outcome: string; attempt: number; scene_number: number }[];
 };
 

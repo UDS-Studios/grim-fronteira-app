@@ -432,3 +432,44 @@ def test_associate_identity_survives_retries_and_changes_only_after_defeat(run, 
     # JSON snapshots preserve the opponent without another flavor draw.
     restored = replace(game, meta=json.loads(json.dumps(game.meta)))
     assert solo.presentation(restored) == solo.presentation(game)
+
+
+@pytest.mark.parametrize("choice,expected", [("keep", "8S"), ("bury", "6C")])
+def test_first_yankee_duel_deals_once_and_keeps_result_cards_visible(run, choice, expected):
+    ready(run, "KH")
+    # Arrive at the first duel after three real scenes, rather than a fresh table.
+    for reward in ["2H", "3H", "4H"]:
+        start_scene(run, "2C", "10H")
+        stack(run, [reward])
+        act(run, "gf.scene_stand")
+        accept(run)
+        act(run, solo.SOLO_CONTINUE)
+    assert GAMES[run[0]].state.meta["solo"]["node"] == "duel"
+    stack(run, ["6D", "8S", "6C"])
+    response = act(run, solo.SOLO_CONTINUE)
+    assert response.state["meta"]["pending_interaction"]["payload"]["inspected_card_id"] == "8S"
+    before = deepcopy(GAMES[run[0]].state)
+    response = act(run, "gf.faction_yankee_choose_top_card", choice=choice)
+    game = GAMES[run[0]].state
+    assert game.zones[f"scene.hand.{solo.PLAYER}"] == [expected]
+    assert len(game.deck.draw_pile) == len(before.deck.draw_pile) - 1
+    assert game.meta["scene"]["players"][solo.PLAYER]["hand_value"] == (18 if choice == "keep" else 16)
+    assert game.meta["scene"]["status"] == "active"
+    assert game.meta["solo"]["step"] == "playing"
+    if choice == "keep":
+        # The screenshot's total: 10 + 8 + 6. It requires another draw.
+        act(run, "gf.scene_draw_card")
+        expected_cards, total = ["8S", "6C"], 24
+    else:
+        stack(run, ["5H"])
+        act(run, "gf.scene_stand")
+        expected_cards, total = ["6C"], 16
+    accept(run)
+    game = GAMES[run[0]].state
+    assert game.meta["scene"]["status"] == "closed"
+    assert not game.zones.get(f"scene.hand.{solo.PLAYER}")
+    assert solo.presentation(game)["resolved_hand"] == expected_cards
+    assert game.meta["solo"]["history"][-1]["cards"] == expected_cards
+    assert game.meta["solo"]["history"][-1]["total"] == total
+    act(run, solo.SOLO_CONTINUE)
+    assert solo.presentation(GAMES[run[0]].state)["resolved_hand"] == []

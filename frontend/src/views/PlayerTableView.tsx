@@ -654,7 +654,12 @@ export default function PlayerTableView({
   }
 
   function getPlayerSceneHand(pid: string): string[] {
-    return zones[`scene.hand.${pid}`] ?? [];
+    const liveHand = zones[`scene.hand.${pid}`];
+    if (liveHand?.length) return liveHand;
+    if (state.meta?.mode === "solo" && scene.status === "closed" && pid === currentActorId) {
+      return state.meta.solo?.resolved_hand ?? [];
+    }
+    return [];
   }
 
   function getPlayerScumCards(pid: string): string[] {

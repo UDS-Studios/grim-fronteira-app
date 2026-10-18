@@ -108,7 +108,7 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
       {faction === "chichimeca" && <p className="solo-warning"><strong>Chichimeca:</strong> your power has no eligible target here. In multiplayer, a wound lets you take Scum from an eligible enemy.</p>}
       {faction === "criollo" && <p><strong>Law of Lead:</strong> use Convert on your board to change one Scum into Vengeance or the reverse, once per scene.</p>}
       {faction === "paisa" && <p><strong>Heart of Shadow:</strong> use Claim Reward on your board, then select three Vengeance cards.</p>}
-      {faction === "yankee" && <p><strong>Order and Profit:</strong> before a duel, the Deck lets you keep or bury the inspected top card.</p>}
+      {faction === "yankee" && <p><strong>Order and Profit:</strong> before a duel, the Deck lets you keep or bury the inspected top card. After your choice, the opening card is dealt automatically. Check your total before drawing again.</p>}
       <details><summary>Rewards and recovery</summary>
         <p>Successful tests grant one Reward. Exactly 21 Reward points wins, even before the final duel. Over 21, select Rewards to discard until you have 20 or fewer.</p>
         <p>With one wound and more than 11 Reward points, use HEAL to spend cards worth at least 11, or SKIP to keep your Rewards.</p>

@@ -73,6 +73,22 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
       assert.equal(board.onClickScum, undefined); assert.equal(typeof board.onClickVengeance, "function");
       assert.equal(find(tree, p => p.title === "Draw a card")!.disabled, false);
     });
+    await t.test("closed solo results retain cards without carrying them into a new scene or multiplayer", () => {
+      reset(); const r = response();
+      r.state.meta!.scene!.status = "closed";
+      r.state.meta!.solo!.step = "outcome";
+      r.state.meta!.solo!.outcome = "bust";
+      r.state.meta!.solo!.resolved_hand = ["8S", "6C"];
+      r.state.meta!.scene!.players!.solo_player.hand_value = 24;
+      delete r.state.zones!["scene.hand.solo_player"];
+      const hand = () => find(table(r), p => p.playedCards !== undefined)!.playedCards;
+      assert.deepEqual(hand(), ["8S", "6C"]);
+      r.state.meta!.scene!.status = "setup";
+      assert.deepEqual(hand(), []);
+      r.state.meta!.scene!.status = "closed";
+      delete r.state.meta!.mode;
+      assert.deepEqual(hand(), []);
+    });
     await t.test("shared Deck keeps revision and duplicate guards", async () => {
       reset(); let resolve: (r: Response) => void = () => {};
       globalThis.fetch = async (_url, opts) => { requests.push(JSON.parse(String(opts?.body))); return new Promise<Response>(done => { resolve = done; }); };

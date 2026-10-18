@@ -119,7 +119,7 @@ def continue_adventure(game: GameState) -> GameState:
         new_associate = node == "associates" and solo["outcome"] == "success"
         attempt = solo["attempt"] + 1 if node == solo["node"] and not new_associate else 0
         game = scenes.scene_new(game, actor_id=MARSHAL)
-        game = _update(game, node=node, attempt=attempt, outcome=None, step="intro")
+        game = _update(game, node=node, attempt=attempt, outcome=None, step="intro", resolved_hand=[])
         # Leave the next passage visible before dealing its scene.
         return _ensure_associate(game, replace_opponent=new_associate)
     elif solo["step"] != "intro":
@@ -158,6 +158,8 @@ def settle(game: GameState) -> GameState:
             return finish(game, "death")
         scene = scenes._scene(game)
     if scene["status"] == "resolved":
+        # Closing moves cards to discard; retain a display-only result record.
+        game = _update(game, resolved_hand=list(game.zones.get(f"scene.hand.{PLAYER}", [])))
         game = scenes.scene_close(game, actor_id=MARSHAL)
         scene = scenes._scene(game)
     if scene["status"] == "closed" and game.meta["solo"]["step"] == "playing":
@@ -165,7 +167,9 @@ def settle(game: GameState) -> GameState:
         solo = game.meta["solo"]
         node = solo["node"]
         entry = {"node": node, "outcome": result, "attempt": solo["attempt"],
-                 "scene_number": solo["scene_number"]}
+                 "scene_number": solo["scene_number"],
+                 "cards": list(solo.get("resolved_hand", [])),
+                 "total": scene["players"][PLAYER]["hand_value"]}
         game = _update(game, step="outcome", outcome=result,
                        history=[*solo["history"], entry],
                        has_gun=solo["has_gun"] or (node == "gun" and result in {"success", "bust"}),
