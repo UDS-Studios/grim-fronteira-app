@@ -82,7 +82,7 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
       winnerFigureCardId={solo.ending === "death" ? null : resp.state.zones?.[`players.${playerId}.character`]?.[0]}
       showMarshalPortrait={solo.ending === "death"}
       resultLabel={`${solo.adventure_title} · End of the tale`} title={solo.title}
-      reason={solo.text} invitation={solo.invitation} onBackHome={onBackHome}
+      reason={solo.text} invitation={solo.invitation} achievement={solo.special_completion} onBackHome={onBackHome}
       actions={<div className="solo-actions">
         <button type="button" onClick={onBackHome} disabled={busy}>Home</button>
         <button type="button" onClick={retry} disabled={disabled}>{solo.ending === "death" ? "Retry solo" : "Play solo again"}</button>

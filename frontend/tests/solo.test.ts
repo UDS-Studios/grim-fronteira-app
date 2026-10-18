@@ -154,9 +154,22 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
       }
       assert.equal(multiplayer, 3); assert.equal(retries, 3); assert.equal(requests.length, 0);
     });
+    await t.test("special completion appears on the result page only when the server awards it", () => {
+      reset(); const r = response();
+      r.state.meta!.solo!.ending = "exhaustion"; r.state.meta!.solo!.step = "ending";
+      r.state.meta!.solo!.special_completion = { id: "opossum_hunter", title: "A tale worth telling", text: "You brought Opossum down and survived." };
+      let html = renderToStaticMarkup(render(r));
+      assert.match(html, /Special adventure completion/);
+      assert.match(html, /A tale worth telling/);
+      assert.match(html, /You brought Opossum down and survived/);
+      assert.ok(!html.includes("QR") && !html.includes("prize"));
+      r.state.meta!.solo!.special_completion = null;
+      html = renderToStaticMarkup(render(r));
+      assert.ok(!html.includes("Special adventure completion"));
+    });
     await t.test("trail wounds advance while failures invite another approach", () => {
       reset();
-      for (const node of ["witnesses", "hideout", "captive", "farmer", "canal", "lookout", "tracking"]) {
+      for (const node of ["witnesses", "hideout", "captive", "farmer", "fire", "canal", "rubble", "lookout", "tracking", "cart"]) {
         const r = response(); r.state.meta!.solo!.node = node; r.state.meta!.solo!.step = "outcome";
         r.state.meta!.solo!.outcome = "bust";
         assert.ok(find(tableProps(r).sceneNarrative as ReactNode, p => p.children === "Continue the trail"), node);

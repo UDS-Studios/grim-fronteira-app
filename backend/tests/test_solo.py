@@ -100,23 +100,32 @@ def test_supported_characters_and_starting_baggage(run, card):
     ("gun", "bust", "witnesses", True),
     ("witnesses", "success", "hideout", False), ("witnesses", "failure", "witnesses", False),
     ("witnesses", "bust", "hideout", False),
-    ("tracking", "success", "duel", False), ("tracking", "failure", "tracking", False),
-    ("tracking", "bust", "duel", False),
+    ("tracking", "success", "cart", False), ("tracking", "failure", "tracking", False),
+    ("tracking", "bust", "cart", False),
     ("hideout", "success", "captive", False),
     ("hideout", "failure", "hideout", False),
     ("hideout", "bust", "captive", False),
     ("captive", "success", "farmer", False),
     ("captive", "failure", "captive", False),
     ("captive", "bust", "farmer", False),
-    ("farmer", "success", "canal", False),
+    ("farmer", "success", "fire", False),
     ("farmer", "failure", "farmer", False),
-    ("farmer", "bust", "canal", False),
-    ("canal", "success", "lookout", False),
+    ("farmer", "bust", "fire", False),
+    ("canal", "success", "rubble", False),
     ("canal", "failure", "canal", False),
-    ("canal", "bust", "lookout", False),
+    ("canal", "bust", "rubble", False),
     ("lookout", "success", "tracking", False),
     ("lookout", "failure", "lookout", False),
     ("lookout", "bust", "tracking", False),
+    ("fire", "success", "canal", False),
+    ("fire", "failure", "fire", False),
+    ("fire", "bust", "canal", False),
+    ("rubble", "success", "lookout", False),
+    ("rubble", "failure", "rubble", False),
+    ("rubble", "bust", "lookout", False),
+    ("cart", "success", "duel", False),
+    ("cart", "failure", "cart", False),
+    ("cart", "bust", "duel", False),
     ("duel", "success", "associates", False), ("duel", "failure", "duel", False),
     ("duel", "bust", "duel", False),
     ("associates", "success", "associates", False), ("associates", "failure", "associates", False),
@@ -453,7 +462,7 @@ def test_associate_identity_survives_retries_and_changes_only_after_defeat(run, 
 def test_first_yankee_duel_deals_once_and_keeps_result_cards_visible(run, choice, expected):
     ready(run, "KH")
     # Arrive at the first duel through the complete extended trail.
-    for reward in ["2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H"]:
+    for reward in ["2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H", "10C", "JD", "QC"]:
         start_scene(run, "3C", "10H")
         stack(run, [reward])
         act(run, "gf.scene_stand")
@@ -496,7 +505,7 @@ def test_first_yankee_duel_deals_once_and_keeps_result_cards_visible(run, choice
     assert solo.presentation(GAMES[run[0]].state)["resolved_hand"] == []
 
 
-@pytest.mark.parametrize("node", ["hideout", "captive", "farmer", "canal", "lookout", "tracking"])
+@pytest.mark.parametrize("node", ["hideout", "captive", "farmer", "fire", "canal", "rubble", "lookout", "tracking", "cart"])
 def test_extended_trail_second_wound_ends_run_before_advancing(run, node):
     ready(run)
     game = GAMES[run[0]].state
@@ -514,7 +523,7 @@ def test_extended_trail_second_wound_ends_run_before_advancing(run, node):
 
 
 def test_extended_route_order_and_stable_saved_passages(run):
-    expected = ["gun", "witnesses", "hideout", "captive", "farmer", "canal", "lookout", "tracking", "duel", "associates"]
+    expected = ["gun", "witnesses", "hideout", "captive", "farmer", "fire", "canal", "rubble", "lookout", "tracking", "cart", "duel", "associates"]
     story = solo.adventure()
     node, route = "gun", []
     while node not in route:
@@ -523,7 +532,7 @@ def test_extended_route_order_and_stable_saved_passages(run):
     assert route == expected
     ready(run)
     # Persist each new node and its retry position using the real snapshot codec.
-    for node in expected[2:8]:
+    for node in expected[2:-2]:
         game = solo._update(GAMES[run[0]].state, node=node, attempt=1)
         before = solo.presentation(game)
         envelope = encode_envelope(run[0], game, GAMES[run[0]].sessions)
@@ -549,3 +558,63 @@ def test_solo_matching_vengeance_at_20_caps_at_21_without_wound(run, after_stand
     game = GAMES[run[0]].state
     assert game.meta["solo"]["outcome"] == "success"
     assert game.meta["players"][solo.PLAYER]["wounds"] == 0
+
+
+@pytest.mark.parametrize("ending", ["ascension", "exhaustion", "death"])
+@pytest.mark.parametrize("defeated", [False, True])
+def test_special_completion_requires_survival_and_opossums_death(run, ending, defeated):
+    game = solo._update(GAMES[run[0]].state, outlaw_defeated=defeated)
+    game = solo.finish(game, ending)
+    expected = defeated and ending != "death"
+    assert game.meta["solo"]["opossum_hunter"] is expected
+    assert bool(solo.presentation(game)["special_completion"]) is expected
+    if expected:
+        assert solo.presentation(game)["special_completion"]["id"] == "opossum_hunter"
+        assert "brought Opossum down" in game.meta["victory"]["reason"]
+    restored = decode_envelope(json.dumps(encode_envelope(run[0], game, GAMES[run[0]].sessions)), run[0])
+    assert solo.presentation(restored.state)["special_completion"] == solo.presentation(game)["special_completion"]
+
+
+@pytest.mark.parametrize("ending", ["ascension", "exhaustion"])
+def test_opossum_kill_is_recorded_when_his_reward_ends_the_run(run, ending):
+    ready(run)
+    GAMES[run[0]].state = solo._update(GAMES[run[0]].state, node="duel")
+    start_scene(run, "2C", "10H")
+    if ending == "ascension":
+        add_rewards(run, ["AS"])
+        stack(run, ["10C"])
+    else:
+        game = GAMES[run[0]].state
+        GAMES[run[0]].state = replace(game, deck=replace(game.deck,
+            draw_pile=[], discard_pile=[*game.deck.discard_pile, *game.deck.draw_pile]))
+    act(run, "gf.scene_stand")
+    accept(run)
+    game = GAMES[run[0]].state
+    assert game.meta["solo"]["ending"] == ending
+    assert game.meta["solo"]["outlaw_defeated"]
+    assert game.meta["solo"]["opossum_hunter"]
+    assert solo.presentation(game)["special_completion"]["id"] == "opossum_hunter"
+
+
+def test_associate_encounters_vary_between_opponents_and_persist_within_fight(run):
+    ready(run)
+    game = solo._update(GAMES[run[0]].state, node="associates", outlaw_defeated=True)
+    seen = set()
+    # Exercise every authored variant rather than relying on random coverage.
+    for encounter in solo.adventure()["associate_encounters"]:
+        game = solo._ensure_associate(game, replace_opponent=True)
+        opponent = {**game.meta["solo"]["associate"], "encounter": encounter["id"]}
+        game = solo._update(game, associate=opponent)
+        for outcome in [None, "failure", "bust", "success"]:
+            for attempt in range(3):
+                saved = solo._update(game, attempt=attempt, outcome=outcome,
+                    step="intro" if outcome is None else "outcome")
+                view = solo.presentation(saved)
+                assert view["title"] == encounter["title"]
+                assert opponent["feature"] in view["text"]
+                assert (encounter["passages"][attempt] if outcome is None else encounter["outcomes"][outcome]) in view["text"]
+                assert solo.presentation(saved) == view
+        seen.add(solo.presentation(game)["title"])
+        new = solo._ensure_associate(game, replace_opponent=True)
+        assert new.meta["solo"]["associate"]["encounter"] != encounter["id"]
+    assert len(seen) == 4

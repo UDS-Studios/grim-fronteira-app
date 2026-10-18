@@ -15,10 +15,13 @@ fresh test, using the ongoing deck.
 3. Get past the trapped door.
 4. Reassure Inés, the freed Criollo captive, and learn about Elias Drywell.
 5. Question Drywell, a Yankee farmer owed money by Opossum.
-6. Cross the broken bridge over the dry irrigation canal.
-7. Get past a lookout holding two enormous mastiffs.
-8. Follow tracks through the abandoned tannery to Opossum's alley.
-9. Duel Opossum; associates follow only after his defeat if the run continues.
+6. Rescue a farmhand from Drywell's burning storehouse.
+7. Cross the broken bridge over the dry irrigation canal.
+8. Free a scavenger trapped beneath a collapsed house.
+9. Get past a lookout holding two enormous mastiffs.
+10. Follow tracks through the abandoned tannery.
+11. Evade Opossum's loaded handcart and corner him in the alley.
+12. Duel Opossum; associates follow only after his defeat if the run continues.
 
 Each investigation/obstacle scene advances on success or a surviving wound;
 failure retries that task with another authored passage. A second wound ends the
@@ -150,3 +153,23 @@ success defeats the current associate and introduces the next one. Each new
 associate receives a random ethnicity, gender, and feature from the player
 character flavor data. This description is persisted across retries and reloads;
 it grants no faction power and consumes no playing cards.
+
+## Associate encounters and special completion
+
+Each new associate receives a persisted encounter variant as well as their
+ethnicity, gender and feature. Variants cover a debt collector in the arcade,
+a rifle shooter on a balcony, a knife wielder by a water trough, and a rider
+at the gate. Each has its own introduction, retry passages and three outcomes.
+The next opponent gets a different variant from the preceding opponent;
+failed or wounded exchanges preserve the current opponent and setting.
+Older snapshots without a variant use a stable fallback derived from opponent
+number, without drawing random content during reads.
+
+The result page displays **A tale worth telling** when the run ends by exact-21
+ascension or deck exhaustion and Opossum is dead. The server records
+`opossum_hunter` on the ending and projects the authored `special_completion`
+message. Death and endings before Opossum's defeat do not qualify. His defeat is
+recorded after the duel is acknowledged, before its Reward is drawn, so a victory
+or empty deck during that Reward draw still qualifies. The invitation to
+multiplayer remains on the result page. No prize, redemption flow or QR code is
+included; those can be agreed separately.

@@ -53,8 +53,11 @@ def _ensure_associate(game: GameState, *, replace_opponent: bool = False) -> Gam
     card = ("Q" if gender == "woman" else "J") + choice("DCHS")
     profile = build_character_profile(card, "solo_associate")
     number = solo.get("associate_number", 0) + 1
+    encounters = adventure()["associate_encounters"]
+    previous = (solo.get("associate") or {}).get("encounter")
+    encounter = choice([e["id"] for e in encounters if e["id"] != previous])
     return _update(game, associate_number=number, associate={
-        "number": number, "ethnicity": figure_to_character(card)["faction"],
+        "number": number, "encounter": encounter, "ethnicity": figure_to_character(card)["faction"],
         "gender": gender, "feature": profile["feature"],
     })
 
@@ -82,13 +85,20 @@ def guard_action(game: GameState, action: str) -> None:
         raise ValueError("Character creation is complete.")
 
 
+def _special_completion(game: GameState, ending: str | None) -> dict | None:
+    if ending in {"ascension", "exhaustion"} and game.meta["solo"]["outlaw_defeated"]:
+        return adventure()["special_completion"]
+    return None
+
+
 def finish(game: GameState, ending: str) -> GameState:
-    game = _update(game, step="ending", ending=ending)
+    special = _special_completion(game, ending)
+    game = _update(game, step="ending", ending=ending, opossum_hunter=bool(special))
     # No incomplete reaction should survive a terminal state.
     meta = {**game.meta, "phase": "victory", "pending_interaction": None,
             "victory": {"winner": "marshal" if ending == "death" else PLAYER,
                         "winner_label": "The Fronteira" if ending == "death" else "You",
-                        "reason": adventure()["endings"][ending]["text"]}}
+                        "reason": adventure()["endings"][ending]["text"] + (" " + special["text"] if special else "")}}
     return replace(game, meta=meta)
 
 
@@ -144,6 +154,12 @@ def settle(game: GameState) -> GameState:
         return game
     if scenes._player_is_dead(game, PLAYER):
         return finish(game, "death")
+    # Acknowledged success defeats Opossum before the Reward draw. Exhaustion
+    # during that draw must not lose the kill, nor should an early victory invent it.
+    scene = scenes._scene(game)
+    if (game.meta["solo"]["node"] == "duel" and scene["status"] in {"resolved", "closed"}
+            and scene["players"].get(PLAYER, {}).get("result") == "success"):
+        game = _update(game, outlaw_defeated=True)
     if game.meta.get("phase") == "victory":
         ending = "exhaustion" if "exhaust" in game.meta.get("victory", {}).get("reason", "").lower() else "ascension"
         return finish(game, ending)
@@ -184,9 +200,15 @@ def presentation(game: GameState) -> dict:
     solo = game.meta["solo"]
     story = adventure()
     node = story["nodes"][solo["node"]]
+    if solo["node"] == "associates" and solo.get("associate"):
+        opponent = solo["associate"]
+        variants = story["associate_encounters"]
+        node = next((e for e in variants if e["id"] == opponent.get("encounter")),
+                    variants[(opponent.get("number", 1) - 1) % len(variants)])
     data = {**solo, "title": node["title"], "adventure_title": story["title"],
             "text": node["passages"][solo["attempt"] % len(node["passages"])],
-            "invitation": story["invitation"], "needs_heal": False, "needs_discard": False}
+            "invitation": story["invitation"], "needs_heal": False, "needs_discard": False,
+            "special_completion": _special_completion(game, solo["ending"])}
     if solo["outcome"]:
         data["text"] = node["outcomes"][solo["outcome"]]
     if solo["node"] == "associates" and solo.get("associate"):

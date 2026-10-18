@@ -89,13 +89,32 @@
         "The farmer spits into the dust. 'Everybody wants something.' Explain what he stands to gain if you find Opossum."
       ],
       "outcomes": {
-        "success": "Drywell taps the ledger. 'Old tannery. Malopasso. Bring him trouble, and perhaps he'll remember what he owes.' He points you toward the dry canal crossing into the abandoned city.",
+        "success": "Drywell taps the ledger. 'Old tannery. Malopasso. Bring him trouble, and perhaps he'll remember what he owes.' Before you can leave, smoke curls beneath the storehouse door. Someone inside starts shouting.",
         "failure": "Drywell denies everything and tells you to leave. His eyes drift toward Malopasso. Step back and try another approach.",
-        "bust": "Drywell fires before you can finish. The shot wounds you, and you dive behind a wall. 'Tell your friend at the old Malopasso tannery I'm done paying!' he shouts. You leave by the dry canal, carrying his message in your flesh."
+        "bust": "Drywell fires before you can finish. The shot wounds you, and you dive behind a wall. 'Tell your friend at the old Malopasso tannery I'm done paying!' he shouts. Then he lowers the gun: smoke is rising from his storehouse, and someone is trapped inside."
+      },
+      "next": {
+        "success": "fire",
+        "failure": "farmer",
+        "bust": "fire"
+      }
+    },
+    "fire": {
+      "title": "The burning ledger",
+      "mode": "standard",
+      "passages": [
+        "Flames lick the storehouse door. A figure runs toward Malopasso, leaving an oil tin in the dust: Opossum's people have come to settle Drywell's accounts. A farmhand coughs behind the barred window. Get them out.",
+        "Smoke drives you from the doorway. The farmhand pounds on the window frame. Look for a way to open it from outside.",
+        "The front entrance is lost in smoke, but a low loading hatch stands beside the wall. Find a safer way to reach the trapped farmhand."
+      ],
+      "outcomes": {
+        "success": "You force the window and pull the farmhand into the open. 'The canal bridge,' they gasp. 'Quickest way into Malopasso. Go before they warn him.' Behind you, Drywell watches his accounts turn to ash.",
+        "failure": "The heat forces you back before you can reach them. The farmhand is still calling. Find another entrance and try again.",
+        "bust": "You get the farmhand through the hatch, but a falling beam catches you on the way out. Wounded, you stagger clear. 'Take the canal bridge into Malopasso,' they tell you between coughs. Opossum has left enough fire behind him."
       },
       "next": {
         "success": "canal",
-        "failure": "farmer",
+        "failure": "fire",
         "bust": "canal"
       }
     },
@@ -108,13 +127,32 @@
         "A narrow support beam reaches the far bank. It offers little room for doubt. Choose your footing and try again."
       ],
       "outcomes": {
-        "success": "You reach the far bank as the bridge creaks its objections. Ahead, Malopasso's empty windows catch the low sun. The tannery district lies beyond a narrow street.",
+        "success": "You reach the far bank as the bridge creaks its objections. Ahead, Malopasso's empty windows catch the low sun. Then a voice calls from beneath a collapsed house: 'Don't walk away. Please.'",
         "failure": "The bridge shifts before you commit your weight. You retreat to solid ground. Search for another way across.",
-        "bust": "A plank gives way. You catch the far edge and haul yourself onto the bank, wounded by the broken timber. Malopasso lies ahead; the bridge can keep its missing pieces."
+        "bust": "A plank gives way. You catch the far edge and haul yourself onto the bank, wounded by broken timber. Before you can move on, a voice calls from a collapsed house beside the road. Someone else is having a worse afternoon."
+      },
+      "next": {
+        "success": "rubble",
+        "failure": "canal",
+        "bust": "rubble"
+      }
+    },
+    "rubble": {
+      "title": "A voice beneath the stones",
+      "mode": "standard",
+      "passages": [
+        "A scavenger lies pinned beneath a timber in the collapsed house. A bag of salvaged hinges rests just beyond their fingers. 'I know these streets,' they say. 'Get me out and I'll get you through them.' Free them.",
+        "The timber will not lift cleanly. Loose stones slide from the wall above it. Look for something you can use as a lever.",
+        "The scavenger points toward an iron bar under the broken stairs. Find a way to shift the weight without bringing the rest of the house down."
+      ],
+      "outcomes": {
+        "success": "You lever the timber aside. The scavenger crawls free and leads you through a sheltered lane toward the tannery district. 'Mind the lookout,' they whisper. 'Those two mastiffs aren't ornaments.'",
+        "failure": "The rubble shifts, but the timber stays put. The scavenger clenches their teeth. Set it down safely and try a different angle.",
+        "bust": "The timber slips as you lift it, crushing your hand against the stone. The scavenger scrambles clear and helps bind the wound. They show you a sheltered approach to the tannery lookout. 'Two mastiffs,' they warn. 'Let the handler do the talking.'"
       },
       "next": {
         "success": "lookout",
-        "failure": "canal",
+        "failure": "rubble",
         "bust": "lookout"
       }
     },
@@ -146,13 +184,32 @@
         "A shutter bangs above the empty vats. One trail leads to a bricked-up doorway; another runs beneath a hanging sheet of hide. Find the route Opossum used."
       ],
       "outcomes": {
-        "success": "You follow the prints to the rear exit. Beyond it, Opossum waits in a narrow alley, rusty machete at his side. Your hand settles on the revolver.",
+        "success": "The footprints lead to the rear passage. Beyond it, Opossum looks up from a loaded handcart. Your eyes meet. He kicks away the wheel chock, and the cart starts rolling toward you.",
         "failure": "The tracks lead into a room with no other exit. Opossum doubled back. Return to the vats and search another part of the tannery.",
-        "bust": "Rotten flooring collapses beneath you. You climb out wounded, scattering dust across fresh bootprints beside the rear exit. Following them brings you face to face with Opossum in the alley. His machete is already in his hand."
+        "bust": "Rotten flooring collapses beneath you. You climb out wounded beside the rear passage. Opossum hears the crash and turns. He kicks a loaded handcart down the slope toward you. Apparently the floor was only the first objection."
+      },
+      "next": {
+        "success": "cart",
+        "failure": "tracking",
+        "bust": "cart"
+      }
+    },
+    "cart": {
+      "title": "The last warning",
+      "mode": "standard",
+      "passages": [
+        "A handcart loaded with tanning stones gathers speed down the sloping passage. Opossum runs for the alley behind it. Get out of its path and cut off his escape.",
+        "You shelter in a doorway as the cart smashes into the passage wall. Opossum is beyond the wreckage. Find a way around before he slips away.",
+        "Broken wheels and loose stones block the rear passage. A drying rack offers a route above the wreckage. Reach the alley and corner Opossum."
+      ],
+      "outcomes": {
+        "success": "You slip past the wreckage and reach the alley ahead of him. Opossum stops short and draws his rusty machete. The low sun drags long shadows along the walls. No more running.",
+        "failure": "The cart blocks the passage, and you cannot get past safely. From the alley comes the scrape of Opossum's boots. Find another way around.",
+        "bust": "The cart clips you and hurls you against the wall. You drag yourself through a broken side door, wounded, and stumble into the alley. Opossum is there, hemmed in by the walls. He raises his machete."
       },
       "next": {
         "success": "duel",
-        "failure": "tracking",
+        "failure": "cart",
         "bust": "duel"
       }
     },
@@ -208,5 +265,68 @@
       "title": "You survived the hunt",
       "text": "The deck has run out. You survived this stretch of the Fronteira. This is a survival ending, not an exact-21 ascension. Try a fresh deck for another tale."
     }
+  },
+  "associate_encounters": [
+    {
+      "id": "ledger",
+      "title": "An unpaid account",
+      "passages": [
+        "Opossum's bookkeeper steps from the ruined arcade, revolver drawn. 'He owed me. Now you owe me.' Some accounts refuse to close. Play your hand.",
+        "The bookkeeper crouches behind a stone column and fires. Apparently your offer to settle matters has been declined.",
+        "A shot tears through a hanging shop sign. The bookkeeper circles the arcade, still determined to collect. Keep fighting."
+      ],
+      "outcomes": {
+        "success": "The bookkeeper falls behind the column. That account is closed. Elsewhere in the ruins, someone has heard the argument.",
+        "failure": "Your shot strikes the column. The bookkeeper ducks back into cover, alive and still collecting. The fight continues.",
+        "bust": "The bookkeeper's shot catches you. You crawl behind the arcade wall, wounded. The same debt is still being disputed."
+      }
+    },
+    {
+      "id": "rooftop",
+      "title": "A bad view from above",
+      "passages": [
+        "A rifle barrel slides over the edge of a ruined balcony. One of Opossum's associates has found a better view of the square than you have. Find an opening before they use it.",
+        "The rifle cracks from the balcony. You move between the dry fountain and a fallen cart, looking for a clear shot at the same attacker.",
+        "Dust puffs from the wall beside you. Above, the rifle barrel shifts to follow. Keep fighting from cover."
+      ],
+      "outcomes": {
+        "success": "Your shot finds the balcony. The rifle clatters down into the empty square, and its owner does not follow it. For a moment, you can breathe.",
+        "failure": "Stone chips fly from the balcony rail. The rifle disappears, then finds you again. The same shooter is still up there.",
+        "bust": "A rifle shot catches you between cover. You stumble behind the fountain, wounded. The shooter on the balcony is still watching."
+      }
+    },
+    {
+      "id": "knife",
+      "title": "Steel at the water trough",
+      "passages": [
+        "An associate rises from behind an empty water trough, a long knife held low. 'That machete belonged to a friend.' They close the distance. Keep them away from your throat.",
+        "The knife scrapes the trough as your opponent follows you around it. Find room to raise the revolver.",
+        "Your opponent feints left, then darts toward your gun hand. The trough stands between you, for now. Play your hand."
+      ],
+      "outcomes": {
+        "success": "Your shot stops the knife wielder beside the trough. Their blade lands in the dust. Somewhere beyond the square, boots scrape stone.",
+        "failure": "Your shot goes wide. The knife wielder pulls back behind the trough, waiting for another opening. The fight continues.",
+        "bust": "The knife catches your arm. You wrench free and retreat around the trough, wounded. Your opponent follows, blade still raised."
+      }
+    },
+    {
+      "id": "gate",
+      "title": "The road out is closed",
+      "passages": [
+        "A rider waits beneath Malopasso's broken gate, pistol levelled at your chest. 'Opossum was paying for my horse. Guess who's paying now.' Survive the challenger blocking your way out.",
+        "The rider dismounts and takes cover behind the gatepost. You trade shots through the drifting dust.",
+        "A bullet punches the old gate beside you. The same rider shifts behind the masonry, searching for a better angle. Keep fighting."
+      ],
+      "outcomes": {
+        "success": "The rider falls beside the gatepost. The horse bolts into the open road. You are still standing, though Malopasso has more company to offer.",
+        "failure": "Your shot strikes the gatepost. The rider stays behind it, very much alive. You still have to finish this fight.",
+        "bust": "The rider's pistol catches you as you cross the gateway. You fall into cover, wounded. The same challenger still blocks the road."
+      }
+    }
+  ],
+  "special_completion": {
+    "id": "opossum_hunter",
+    "title": "A tale worth telling",
+    "text": "You did something special: you brought Opossum down and lived to finish the adventure. Malopasso will remember that. The hunter still stands, and the quarry lies in the dust."
   }
 }

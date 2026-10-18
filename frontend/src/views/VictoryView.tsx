@@ -11,6 +11,7 @@ type VictoryViewProps = {
   resultLabel?: string;
   title?: string;
   invitation?: string;
+  achievement?: { title: string; text: string } | null;
   actions?: ReactNode;
 };
 
@@ -23,6 +24,7 @@ export default function VictoryView({
   resultLabel = "VICTORY",
   title,
   invitation,
+  achievement,
   actions,
 }: VictoryViewProps) {
   return (
@@ -101,6 +103,13 @@ export default function VictoryView({
               {reason}
             </div>
           ) : null}
+          {achievement && <section aria-label="Special adventure completion" style={{
+            border: "1px solid var(--border-strong)", borderRadius: 12, padding: 16,
+            background: "var(--surface-strong)", maxWidth: 420,
+          }}>
+            <h2 style={{ fontFamily: "LavaArabic, serif", fontSize: 28, margin: "0 0 8px" }}>{achievement.title}</h2>
+            <p style={{ fontSize: 16, lineHeight: 1.5, margin: 0 }}>{achievement.text}</p>
+          </section>}
           {invitation && <p style={{ fontSize: 16, lineHeight: 1.5, maxWidth: 420, margin: 0 }}>{invitation}</p>}
         </div>
 
