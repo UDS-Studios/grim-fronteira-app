@@ -2,7 +2,8 @@
 
 The solo adventure teaches the existing app's basic rules through a short,
 authored hunt. It uses no LLM. Choose a character, bargain for a gun, question
-witnesses, track an outlaw through Malopasso, and duel. If the run continues,
+witnesses, track Opossum through the abandoned city of Malopasso, and face his
+machete in an alley duel. If the run continues,
 associates challenge the player one at a time. Every result selects a written
 passage; ordinary failures retry the current task with another passage and a
 fresh test, using the ongoing deck.

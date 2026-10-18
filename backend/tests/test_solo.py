@@ -356,7 +356,7 @@ def test_wounded_outlaw_duel_continues_until_the_outlaw_is_killed(run):
     game = GAMES[run[0]].state
     assert game.meta["solo"]["node"] == "duel"
     assert game.meta["solo"]["attempt"] == 1
-    assert "reloads" in solo.presentation(game)["text"]
+    assert solo.presentation(game)["text"] != solo.adventure()["nodes"]["duel"]["passages"][0]
     start_scene(run, "4C", "9H")
     stack(run, ["5D"])
     act(run, "gf.scene_stand")
