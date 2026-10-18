@@ -64,10 +64,22 @@ number, possession/defeat flags, outcome/history and terminal result. Presentati
 is derived from those saved values, so reloads do not select different passages.
 Player responses retain the existing hidden-deck projection.
 
-`SoloAdventureView` supplies character selection, story passages, contextual
-rules, card controls, resources/faction decisions, healing/overflow, a compact
-history and the final multiplayer/retry actions. It reuses card assets and API
-session handling. Home offers a new solo run and resume of the latest solo run.
+`SoloAdventureView` composes the existing `PlayerLobbyView` and
+`PlayerTableView`, so character selection, suggestions/custom names and features,
+portrait, player board, Deck, Discard, scene lane, faction medallions, resources,
+healing and Reward controls are the same ones used in multiplayer. The authored
+Marshal's story sits above the player's scene; teaching notes occupy the space
+normally used by other players. Terminal invitations and continue/retry actions
+stay in the story box, with gameplay disabled after an ending. The same viewport
+fitting and scrolling behavior as the multiplayer Table is retained.
+
+Both shared views accept an optional action transport. Solo provides its
+revision-safe transport and single-flight guard; ordinary multiplayer uses the
+existing transport unchanged. Solo character selection remains available while
+multiplayer registration is closed, with a Chichimeca warning before claiming.
+The solo ready stage offers Begin the adventure instead of waiting for a human
+Marshal. Its status text never reports the internal Marshal as offline, and
+skipped Azzardo is shown without a face-down placeholder. Home offers a new solo run and resume of the latest solo run.
 The existing multiplayer table and tutorials retain their own routes.
 
 ## Local validation
@@ -84,8 +96,11 @@ The solo backend suite exercises every story edge, all factions with three
 simple draw policies, card conservation, death, early exact-21 victory,
 exhaustion, overflow, healing, failed saves, revision conflicts, forbidden
 requests, and disk/reconnect recovery during a Yankee inspection. Solo frontend
-interaction tests cover selection warnings, request identity/revision, duplicate
-click suppression, terminal calls to action, and post-scene choices.
+interaction tests exercise the actual shared Lobby/Table callbacks: figure and
+name/feature selection, Chichimeca warning, Deck and Vengeance actions, request
+identity/revision, duplicate-click suppression, terminal calls to action and
+post-scene choices. Multiplayer closed-registration and waiting behavior is
+checked separately.
 
 When changing content, preserve existing version semantics for saved runs;
 introduce a new definition/version and migration strategy before removing a
