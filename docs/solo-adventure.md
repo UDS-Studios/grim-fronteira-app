@@ -120,3 +120,9 @@ Azzardo and Dark, and retry. Refresh mid-hand and close/reopen the browser to
 resume. Check a narrow mobile viewport as well as desktop. The graph allows
 retries and additional associates, so actual run duration depends on play and
 cards rather than a fixed promised number of minutes.
+
+Associates stay in the fight after a failed exchange or a nonfatal wound. Only
+success defeats the current associate and introduces the next one. Each new
+associate receives a random ethnicity, gender, and feature from the player
+character flavor data. This description is persisted across retries and reloads;
+it grants no faction power and consumes no playing cards.

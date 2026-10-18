@@ -396,3 +396,39 @@ def test_old_save_cannot_start_another_associate_while_outlaw_is_alive(run, step
     response = act(run, solo.SOLO_CONTINUE)
     assert response.state["meta"]["solo"]["node"] == "duel"
     assert not response.state["meta"]["solo"]["outlaw_defeated"]
+
+
+@pytest.mark.parametrize("result", ["failure", "bust", "success"])
+def test_associate_identity_survives_retries_and_changes_only_after_defeat(run, result):
+    ready(run)
+    game = GAMES[run[0]].state
+    GAMES[run[0]].state = solo._update(game, node="associates", outlaw_defeated=True)
+    start_scene(run, "AS" if result == "failure" else "2C", "2H" if result == "failure" else "10H")
+    opponent = deepcopy(GAMES[run[0]].state.meta["solo"]["associate"])
+    assert opponent["ethnicity"] in {"Criollo", "Paisà", "Yankee", "Chichimeca"}
+    assert opponent["gender"] in {"man", "woman"}
+    from backend.engine.helpers.character_creation import _FLAVOR
+    assert opponent["feature"] in _FLAVOR["features"]
+    game = GAMES[run[0]].state
+    before = deepcopy(game)
+    assert solo.presentation(game) == solo.presentation(game)
+    assert game == before
+    if result == "bust":
+        stack(run, ["3D"])
+        act(run, "gf.scene_draw_card")
+    else:
+        act(run, "gf.scene_stand")
+    accept(run)
+    act(run, solo.SOLO_CONTINUE)
+    game = GAMES[run[0]].state
+    current = game.meta["solo"]["associate"]
+    if result == "success":
+        assert current["number"] == opponent["number"] + 1
+        assert game.meta["solo"]["attempt"] == 0
+    else:
+        assert current == opponent
+        assert game.meta["solo"]["attempt"] == 1
+    assert current["feature"] in solo.presentation(game)["text"]
+    # JSON snapshots preserve the opponent without another flavor draw.
+    restored = replace(game, meta=json.loads(json.dumps(game.meta)))
+    assert solo.presentation(restored) == solo.presentation(game)

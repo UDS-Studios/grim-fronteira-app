@@ -7,6 +7,10 @@ from dataclasses import replace
 from functools import lru_cache
 import json
 from pathlib import Path
+from random import choice
+
+from backend.engine.helpers.character_creation import build_character_profile
+from backend.engine.helpers.characters import figure_to_character
 
 from backend.engine.state.game_state import GameState
 from backend.engine.state.pending_interaction import get_pending_interaction
@@ -38,6 +42,21 @@ def is_solo(game: GameState) -> bool:
 
 def _update(game: GameState, **fields) -> GameState:
     return replace(game, meta={**game.meta, "solo": {**game.meta["solo"], **fields}})
+
+
+def _ensure_associate(game: GameState, *, replace_opponent: bool = False) -> GameState:
+    """Create flavor once per opponent, independently of the playing deck."""
+    solo = game.meta["solo"]
+    if solo["node"] != "associates" or (solo.get("associate") and not replace_opponent):
+        return game
+    gender = choice(["man", "woman"])
+    card = ("Q" if gender == "woman" else "J") + choice("DCHS")
+    profile = build_character_profile(card, "solo_associate")
+    number = solo.get("associate_number", 0) + 1
+    return _update(game, associate_number=number, associate={
+        "number": number, "ethnicity": figure_to_character(card)["faction"],
+        "gender": gender, "feature": profile["feature"],
+    })
 
 
 def initialize_solo(game: GameState) -> GameState:
@@ -97,16 +116,18 @@ def continue_adventure(game: GameState) -> GameState:
         # Only a defeated outlaw unlocks associates, including in older saves.
         if node == "associates" and not solo["outlaw_defeated"]:
             node = "duel"
-        attempt = solo["attempt"] + 1 if node == solo["node"] else 0
+        new_associate = node == "associates" and solo["outcome"] == "success"
+        attempt = solo["attempt"] + 1 if node == solo["node"] and not new_associate else 0
         game = scenes.scene_new(game, actor_id=MARSHAL)
         game = _update(game, node=node, attempt=attempt, outcome=None, step="intro")
         # Leave the next passage visible before dealing its scene.
-        return game
+        return _ensure_associate(game, replace_opponent=new_associate)
     elif solo["step"] != "intro":
         raise ValueError("Finish the current test first.")
 
     if game.meta["solo"]["node"] == "associates" and not game.meta["solo"]["outlaw_defeated"]:
         game = _update(game, node="duel", attempt=0, outcome=None)
+    game = _ensure_associate(game)
     node = adventure()["nodes"][game.meta["solo"]["node"]]
     game = _update(game, step="playing", scene_number=game.meta["solo"]["scene_number"] + 1)
     game = scenes.scene_set_participants(game, actor_id=MARSHAL, participant_ids=[PLAYER])
@@ -164,6 +185,10 @@ def presentation(game: GameState) -> dict:
             "invitation": story["invitation"], "needs_heal": False, "needs_discard": False}
     if solo["outcome"]:
         data["text"] = node["outcomes"][solo["outcome"]]
+    if solo["node"] == "associates" and solo.get("associate"):
+        opponent = solo["associate"]
+        description = f"Your opponent: a {opponent['ethnicity']} {opponent['gender']} with {opponent['feature']}."
+        data["text"] = f"{description} {data['text']}"
     if solo["ending"]:
         data.update(story["endings"][solo["ending"]])
     elif game.meta.get("phase") == "table":

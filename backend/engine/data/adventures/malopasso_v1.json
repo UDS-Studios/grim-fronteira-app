@@ -28,8 +28,8 @@
     },
     "associates": {
       "title": "The company Opossum kept", "mode": "duel",
-      "passages": ["One of Opossum's associates steps into the square in a torn red coat. Their gun is already drawn. Survive this challenger.", "From behind the dry fountain, another of Opossum's associates calls your name. There is no friendly way past.", "Boots scrape the deserted street. Another challenger has followed the sound of gunfire through Malopasso. Ready your hand."],
-      "outcomes": {"success": "The challenger falls. For a moment the square is quiet, but more footsteps echo between the empty buildings.", "failure": "You force the challenger back without settling the fight. Another figure takes their place.", "bust": "You stagger out of the exchange wounded. Another associate is already approaching."},
+      "passages": ["One of Opossum's associates steps into the square. Their gun is already drawn. Survive this challenger.", "Your opponent ducks behind the dry fountain. Their next shot chips the stone beside you. The same fight is far from settled.", "Boots scrape the deserted street as your opponent circles for a better angle. Keep your eye on them and ready your hand."],
+      "outcomes": {"success": "The challenger falls. For a moment the square is quiet, but more footsteps echo between the empty buildings.", "failure": "Your shot goes wide. The challenger takes cover, still alive and still aiming at you. The fight continues.", "bust": "The challenger catches you with a shot. You stagger into cover, wounded. Your opponent is still there. The fight continues."},
       "next": {"success": "associates", "failure": "associates", "bust": "associates"}
     }
   },
