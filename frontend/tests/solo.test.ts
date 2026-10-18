@@ -57,7 +57,7 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
     const reset = () => { hooks.resetHooks(); tableHooks.resetHooks(); lobbyHooks.resetHooks(); requests = [];
       globalThis.fetch = async (_url, opts) => { requests.push(JSON.parse(String(opts?.body))); return new Response(JSON.stringify(response())); }; };
     const render = (resp = response(), connectionLost = false) => { hooks.beginRender(); return Solo({ resp, playerId: "solo_player", connectionLost,
-      run: async (p: Promise<ActionResponse>) => p, onMultiplayer: () => multiplayer++, onRetry: async () => { retries++; } }); };
+      run: async (p: Promise<ActionResponse>) => p, onBackHome: () => multiplayer++, onRetry: async () => { retries++; } }); };
     const tableProps = (r = response(), lost = false) => find(render(r, lost), p => p.sceneNarrative !== undefined)!;
     const table = (r = response(), lost = false) => { const p = tableProps(r, lost); tableHooks.beginRender(); return Table(p); };
     const lobby = (r = lobbyResponse(), lost = false) => { const p = find(render(r, lost), p => p.currentActorId === "solo_player" && p.onAction !== undefined)!;
@@ -149,7 +149,7 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
         assert.equal(result.showMarshalPortrait, ending === "death");
         assert.equal(result.winnerFigureCardId, ending === "death" ? null : "KS");
         const actions = result.actions as ReactNode;
-        (find(actions, p => p.children === "Play multiplayer")!.onClick as () => void)();
+        (find(actions, p => p.children === "Home")!.onClick as () => void)();
         await (find(actions, p => p.children === (ending === "death" ? "Retry solo" : "Play solo again"))!.onClick as () => Promise<void>)();
       }
       assert.equal(multiplayer, 3); assert.equal(retries, 3); assert.equal(requests.length, 0);

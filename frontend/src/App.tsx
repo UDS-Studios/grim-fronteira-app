@@ -56,7 +56,10 @@ export default function App() {
     resetToHome();
   }
 
-  function resetToHome() {
+  function resetToHome(completedSoloId?: string) {
+    if (completedSoloId && globalThis.localStorage?.getItem("gf_last_solo") === completedSoloId) {
+      globalThis.localStorage.removeItem("gf_last_solo");
+    }
     responseEpoch.current++;
     setJoinError(null);
     setConnectionNotice(null);
@@ -314,7 +317,7 @@ export default function App() {
     return <div style={{ padding: "0 16px", background: "var(--app-bg)", minHeight: "100dvh" }}>
       {persistenceNotice && <p role="alert">{persistenceNotice}</p>}
       <SoloAdventureView key={resp.game_id} resp={resp} playerId={currentActorId}
-        connectionLost={Boolean(connectionNotice)} run={run} onMultiplayer={resetToHome} onRetry={startSolo} />
+        connectionLost={Boolean(connectionNotice)} run={run} onBackHome={() => resetToHome(meta.solo?.ending ? resp.game_id : undefined)} onRetry={startSolo} />
     </div>;
   }
 

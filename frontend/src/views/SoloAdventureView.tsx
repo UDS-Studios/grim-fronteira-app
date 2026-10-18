@@ -14,12 +14,12 @@ type Props = {
   playerId: string;
   connectionLost: boolean;
   run: (request: Promise<ActionResponse>) => Promise<ActionResponse>;
-  onMultiplayer: () => void;
+  onBackHome: () => void;
   onRetry: () => Promise<void>;
 };
 
 /** The adventure adds a Marshal's voice to the real player lobby and table. */
-export default function SoloAdventureView({ resp, playerId, connectionLost, run, onMultiplayer, onRetry }: Props) {
+export default function SoloAdventureView({ resp, playerId, connectionLost, run, onBackHome, onRetry }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const requestFlight = useRef<Promise<ActionResponse> | null>(null);
@@ -82,9 +82,9 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
       winnerFigureCardId={solo.ending === "death" ? null : resp.state.zones?.[`players.${playerId}.character`]?.[0]}
       showMarshalPortrait={solo.ending === "death"}
       resultLabel={`${solo.adventure_title} · End of the tale`} title={solo.title}
-      reason={solo.text} invitation={solo.invitation} onBackHome={onMultiplayer}
+      reason={solo.text} invitation={solo.invitation} onBackHome={onBackHome}
       actions={<div className="solo-actions">
-        <button type="button" onClick={onMultiplayer} disabled={busy}>Play multiplayer</button>
+        <button type="button" onClick={onBackHome} disabled={busy}>Home</button>
         <button type="button" onClick={retry} disabled={disabled}>{solo.ending === "death" ? "Retry solo" : "Play solo again"}</button>
       </div>} />
   </main>;
@@ -132,13 +132,13 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
     {error && <p role="alert" className="solo-error">{error}</p>}
     {connectionLost && <p role="alert">Waiting for the server. Your last saved adventure is shown.</p>}
     {isLobby ? <>
-      <div className="solo-lobby-toolbar"><span>{solo.adventure_title} · Learn by playing</span><button type="button" disabled={busy} onClick={onMultiplayer}>Home</button></div>
+      <div className="solo-lobby-toolbar"><span>{solo.adventure_title} · Learn by playing</span><button type="button" disabled={busy} onClick={onBackHome}>Home</button></div>
       <div className="solo-lobby-scroll"><PlayerLobbyView resp={resp} view="player" currentActorId={playerId}
         connectionLost={disabled} run={handleResponse} onAction={submit} /></div>
     </> : <ResponsiveScaleBox baseWidth={1800} fit="viewport">
       <PlayerTableView resp={resp} view="player" currentActorId={playerId} connectionLost={connectionLost}
         readOnly={busy || terminal || solo.step === "intro"} run={handleResponse} onAction={submit}
-        onBackHome={onMultiplayer} sceneNarrative={narrative} learningNotes={notes} />
+        onBackHome={onBackHome} sceneNarrative={narrative} learningNotes={notes} />
     </ResponsiveScaleBox>}
   </main>;
 }

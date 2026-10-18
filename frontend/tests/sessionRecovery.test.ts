@@ -305,6 +305,42 @@ test("App recovery requires explicit takeover and preserves seat, projection and
       assert.equal(find(render(), type => type === Home)!.joinError, null);
       hooks.resetHooks();
     });
+    for (const ending of [null, "death", "ascension", "exhaustion"] as const) {
+      await t.test(`solo Home clears only completed resume pointers: ${ending}`, async () => {
+        const tab = new Map<string, string>(), persistent = new Map<string, string>();
+        for (const [key, values] of [["sessionStorage", tab], ["localStorage", persistent]] as const) {
+          Object.defineProperty(globalThis, key, { configurable: true, value: {
+            getItem: (key: string) => values.get(key) ?? null,
+            setItem: (key: string, value: string) => values.set(key, value),
+            removeItem: (key: string) => values.delete(key),
+          } });
+        }
+        Object.defineProperty(globalThis, "window", { configurable: true, value: {
+          setInterval: () => 1, clearInterval: () => {},
+        } });
+        const gameId = "11111111-1111-4111-8111-999999999999";
+        sessions.storeIssuedSession(gameId, { player_id: "solo_player", role: "player", active_session: "active", reconnect_token: "reconnect" });
+        sessions.setLastGame(gameId);
+        persistent.set("gf_last_solo", gameId);
+        globalThis.fetch = async () => new Response(JSON.stringify({ game_id: gameId, revision: 7, error: null, result: {}, events: [],
+          state: { meta: { mode: "solo", phase: ending ? "victory" : "table", solo: { ending } }, zones: {} } }));
+        hooks.resetHooks();
+        const render = () => { hooks.beginRender(); return App(); };
+        render(); hooks.flushEffects(); await tick();
+        const solo = find(render(), (_type, props) => typeof props.onRetry === "function" && typeof props.onBackHome === "function")!;
+        assert.ok(solo);
+        (solo.onBackHome as () => void)();
+        const home = find(render(), type => type === Home)!;
+        assert.ok(home);
+        assert.equal(typeof home.onResumeSolo, ending ? "undefined" : "function");
+        assert.equal(persistent.get("gf_last_solo"), ending ? undefined : gameId);
+        assert.equal(sessions.getLastGame(), "");
+        hooks.resetHooks();
+        assert.ok(find(render(), type => type === Home), "reload stays on Home");
+        assert.equal(typeof find(render(), type => type === Home)!.onResumeSolo, ending ? "undefined" : "function");
+        hooks.resetHooks();
+      });
+    }
   } finally {
     globalThis.fetch = oldFetch;
     for (const [key, descriptor] of saved) {
