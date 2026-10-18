@@ -146,7 +146,11 @@ export default function HomeView({
           </div>
         </div>
         {onSolo && <div style={{ textAlign: "center" }}>
-          <button type="button" onClick={onSolo}>Learn by playing · Solo adventure</button>
+          <button type="button" className="home-solo-button" onClick={onSolo}
+            title="Learn by playing · Solo adventure">
+            <img src={publicAsset("ui/solo-adventure.png")} alt="Learn by playing · Solo adventure"
+              width={2172} height={724} />
+          </button>
           <p>A short frontier story to learn the cards. No Marshal needed.</p>
           {onResumeSolo && <button type="button" onClick={onResumeSolo}>Resume solo adventure</button>}
         </div>}
