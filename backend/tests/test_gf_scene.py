@@ -1965,3 +1965,32 @@ def test_final_post_resolution_bonus_marks_exhaustion_until_close():
     assert game.meta["phase"] == "table"
     game = scene_close(game, actor_id="host1")
     assert game.meta["phase"] == "victory"
+
+
+def test_vengeance_caps_matching_and_other_suits_in_all_scene_modes():
+    from dataclasses import replace
+    from copy import deepcopy
+    for mode, subtype in [("standard", None), ("duel", "npc"), ("duel", "pvp")]:
+        for status in ["active", "awaiting_ack"]:
+            for total in [19, 20, 21]:
+                for card, bonus in [("5S", 2), ("5H", 1)]:
+                    game = _ready_table_game()
+                    game = _with_draw_order(game, ["AS", "10H", "2C"])
+                    game = scene_set_participants(game, actor_id="host1", participant_ids=["p1"] if subtype == "npc" else ["p1", "p2"])
+                    game = scene_set_mode(game, actor_id="host1", mode=mode, duel_subtype=subtype)
+                    if subtype != "pvp":
+                        game, _ = scene_roll_difficulty(game, actor_id="host1")
+                    game = scene_start(game, actor_id="host1")
+                    game = _replace_zone_cards(game, "players.p1.vengeance", [card])
+                    scene = deepcopy(game.meta["scene"])
+                    scene["status"] = status
+                    scene["players"]["p1"].update(hand_value=total, standing=status == "awaiting_ack", busted=False)
+                    game = replace(game, meta={**game.meta, "scene": scene})
+                    game, result = scene_play_vengeance(game, player_id="p1")
+                    state = game.meta["scene"]["players"]["p1"]
+                    assert state["hand_value"] == min(21, total + bonus)
+                    assert state["modifier_total"] == min(bonus, 21 - total)
+                    assert result["modifier"] == min(bonus, 21 - total)
+                    assert not state["busted"]
+                    assert game.meta.get("players", {}).get("p1", {}).get("wounds", 0) == 0
+                    assert game.zones["scene.mod.vengeance.p1"] == [card]

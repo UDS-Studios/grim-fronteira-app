@@ -35,7 +35,8 @@ Start a new solo adventure to experience the complete trail.
 
 Solo uses the current app rules, including character cards contributing 10 to
 hands, difficulty 10 + one card, Joker difficulty 20, flexible hand Aces,
-Vengeance, faction powers where applicable, Rewards, overflow discards and the
+Vengeance (+1, or +2 with matching suit, capped at a hand total of 21 in both
+solo and multiplayer), faction powers where applicable, Rewards, overflow discards and the
 existing healing choice. Two wounds end the run. Exact-21 Reward victory can
 happen before the final duel. The gun is a story flag, not a numerical bonus.
 The starter website describes some rules differently; this mode does not mix

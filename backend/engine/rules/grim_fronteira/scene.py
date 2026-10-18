@@ -632,6 +632,8 @@ def scene_play_vengeance(game: GameState, *, player_id: str) -> tuple[GameState,
 
     vengeance_card_id = vengeance_cards[-1]
     modifier = 2 if _card_suit(vengeance_card_id) == _card_suit(pstate.get("figure_card_id")) else 1
+    # Vengeance improves a live hand but never pushes it over 21.
+    modifier = min(modifier, max(0, 21 - int(pstate.get("hand_value") or 0)))
 
     game = _move_zone_top_card_to_zone(game, vengeance_zone, f"{SCENE_VENGEANCE_MOD_PREFIX}{player_id}")
     scene = _scene(game)

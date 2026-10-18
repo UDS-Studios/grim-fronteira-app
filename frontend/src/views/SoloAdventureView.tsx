@@ -112,7 +112,7 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
     <div className="solo-notes">
       <p>Play as you would at a human Marshal's table. Click the <strong>Deck</strong> to draw; use <strong>STAY</strong> to keep your total. Match or beat the difficulty without going over 21.</p>
       <p>Your character contributes 10. Aces count as 1 or 11; Jokers count as 0 and grant a resource. A bust gives one wound. Two wounds end your run.</p>
-      <p>Click your <strong>Vengeance</strong> stack to add +1, or +2 with your suit. Before acknowledging a result, you can still play Vengeance; it can also make you bust.</p>
+      <p>Click your <strong>Vengeance</strong> stack to add +1, or +2 with your suit. The bonus stops at 21 and cannot make you bust. You can still play Vengeance before acknowledging a result.</p>
       <p><strong>Scum</strong> targets other players in multiplayer. There is no eligible target in this solo story.</p>
       {faction === "chichimeca" && <p className="solo-warning"><strong>Chichimeca:</strong> your power has no eligible target here. In multiplayer, a wound lets you take Scum from an eligible enemy.</p>}
       {faction === "criollo" && <p><strong>Law of Lead:</strong> use Convert on your board to change one Scum into Vengeance or the reverse, once per scene.</p>}

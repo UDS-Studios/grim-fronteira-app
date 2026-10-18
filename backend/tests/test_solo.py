@@ -529,3 +529,23 @@ def test_extended_route_order_and_stable_saved_passages(run):
         envelope = encode_envelope(run[0], game, GAMES[run[0]].sessions)
         restored = decode_envelope(json.dumps(envelope), run[0])
         assert solo.presentation(restored.state) == before
+
+
+@pytest.mark.parametrize("after_standing", [False, True])
+def test_solo_matching_vengeance_at_20_caps_at_21_without_wound(run, after_standing):
+    from backend.tests.test_gf_scene import _replace_zone_cards
+    ready(run, "KD")
+    start_scene(run, "AS", "10H")
+    game = GAMES[run[0]].state
+    GAMES[run[0]].state = _replace_zone_cards(game, "players.solo_player.vengeance", ["5D"])
+    if after_standing:
+        act(run, "gf.scene_stand")
+    response = act(run, "gf.scene_play_vengeance")
+    assert response.state["meta"]["scene"]["players"][solo.PLAYER]["hand_value"] == 21
+    assert response.state["meta"]["players"][solo.PLAYER]["wounds"] == 0
+    if not after_standing:
+        act(run, "gf.scene_stand")
+    accept(run)
+    game = GAMES[run[0]].state
+    assert game.meta["solo"]["outcome"] == "success"
+    assert game.meta["players"][solo.PLAYER]["wounds"] == 0
