@@ -1,41 +1,212 @@
 {
-  "id": "malopasso", "version": 1, "title": "The Road to Malopasso",
+  "id": "malopasso",
+  "version": 1,
+  "title": "The Road to Malopasso",
   "invitation": "You've had a taste of the basics. Grim Fronteira is even more fun with other players: turn Scum against your rivals, use your faction's full power, and try Azzardo and Dark mode. Gather your posse and play multiplayer!",
   "nodes": {
     "gun": {
-      "title": "A gun before sundown", "mode": "standard",
-      "passages": ["Opossum took everything except your name. A Creole fighter with a rusty machete and a face that looks like a bad mistake, he is a poor man to follow unarmed. Behind a dusty counter, a trader rests one hand on an old revolver. Convince them to sell it.", "The trader has heard your offer. This time, explain why leaving you unarmed would be bad for business.", "The trader turns the revolver beneath the lamplight. Make one more offer before the shutters close."],
-      "outcomes": {"success": "The trader takes your money and slides the revolver across the counter. You leave armed, with questions to ask.", "failure": "The trader shakes their head. The gun stays on the counter. Find another way to persuade them.", "bust": "A hand reaches for the trigger. You wrestle the gun away, but the struggle leaves you bleeding. You have your weapon, and your first scar."},
-      "next": {"success": "witnesses", "failure": "gun", "bust": "witnesses"}
+      "title": "A gun before sundown",
+      "mode": "standard",
+      "passages": [
+        "Opossum took everything except your name. A Creole fighter with a rusty machete and a face that looks like a bad mistake, he is a poor man to follow unarmed. Behind a dusty counter, a trader rests one hand on an old revolver. Convince them to sell it.",
+        "The trader has heard your offer. This time, explain why leaving you unarmed would be bad for business.",
+        "The trader turns the revolver beneath the lamplight. Make one more offer before the shutters close."
+      ],
+      "outcomes": {
+        "success": "The trader takes your money and slides the revolver across the counter. You leave armed, with questions to ask.",
+        "failure": "The trader shakes their head. The gun stays on the counter. Find another way to persuade them.",
+        "bust": "A hand reaches for the trigger. You wrestle the gun away, but the struggle leaves you bleeding. You have your weapon, and your first scar."
+      },
+      "next": {
+        "success": "witnesses",
+        "failure": "gun",
+        "bust": "witnesses"
+      }
     },
     "witnesses": {
-      "title": "Loose tongues", "mode": "standard",
-      "passages": ["At the water queue, faces turn away when you mention Opossum. Apparently a machete leaves a lasting impression. Someone here knows where he went. Ask the right questions.", "A mule driver waits outside the cantina. Perhaps a different witness will have fewer reasons to keep quiet.", "An old woman watches the northern road. Ask what she saw, and listen before you speak again."],
-      "outcomes": {"success": "A witness finally speaks: Opossum is hiding in Malopasso, the abandoned city up the northern road. Nobody lives there anymore. Nobody respectable, anyway.", "failure": "A shrug, a lie, a closing door. You learn nothing useful. Try somebody else.", "bust": "Someone calls you Opossum's accomplice. The crowd surges. You escape through a broken fence, wounded and still without an answer."},
-      "next": {"success": "tracking", "failure": "witnesses", "bust": "witnesses"}
+      "title": "Loose tongues",
+      "mode": "standard",
+      "passages": [
+        "At the water queue, faces turn away when you mention Opossum. Apparently a machete leaves a lasting impression. Someone here knows where he went. Ask the right questions.",
+        "A mule driver waits outside the cantina. Perhaps a different witness will have fewer reasons to keep quiet.",
+        "An old woman watches the northern road. Ask what she saw, and listen before you speak again."
+      ],
+      "outcomes": {
+        "success": "A mule driver finally speaks: Opossum used the old customs house outside Malopasso as a hideout. He left in a hurry. Whatever he forgot might tell you where he went.",
+        "failure": "A shrug, a lie, a closing door. You learn nothing useful. Try somebody else.",
+        "bust": "Someone calls you Opossum's accomplice. The crowd surges, and you escape through a broken fence with a wound. Behind you, the mule driver shouts, 'Try his old customs-house hideout! And stay away from us!' A painful way to get directions."
+      },
+      "next": {
+        "success": "hideout",
+        "failure": "witnesses",
+        "bust": "hideout"
+      }
+    },
+    "hideout": {
+      "title": "An invitation with teeth",
+      "mode": "standard",
+      "passages": [
+        "The old customs house stands beyond the last working well. Its front door is shut, but a wire glints beneath the latch. Opossum apparently dislikes unannounced visitors. Get past his trap and enter the hideout.",
+        "Through a split in the wood, you spot a spring-loaded blade behind the latch. Work out how to release the door without releasing the blade.",
+        "The side entrance is bricked up. Back at the front door, the wire waits patiently. Find a safer way to deal with it."
+      ],
+      "outcomes": {
+        "success": "You pin the spring and lift the latch. The blade stays where it belongs. From inside the customs house comes the scrape of a chair, then a frightened voice.",
+        "failure": "The wire tightens. You stop before the blade springs, but the door remains shut. Step back and try another approach.",
+        "bust": "The blade snaps across your arm as you force the latch. You kick the door open, bleeding. Inside, someone pulls a chair into the shadows."
+      },
+      "next": {
+        "success": "captive",
+        "failure": "hideout",
+        "bust": "captive"
+      }
+    },
+    "captive": {
+      "title": "A knife and a name",
+      "mode": "standard",
+      "passages": [
+        "A young Criollo woman sits bound to a chair, a torn red scarf around her neck. 'Did Opossum send you?' she asks. You cut her bonds, but keep your distance. Convince her she can trust you.",
+        "She backs toward the empty hearth, clutching her freed wrists. Tell her why you are following Opossum, and give her room to believe it.",
+        "Her eyes flick between you and the doorway. Lower your voice. You need her story, and she needs a reason to feel safe."
+      ],
+      "outcomes": {
+        "success": "She gives her name: Inés. Opossum kidnapped her, and she overheard him arguing about a debt to Elias Drywell, a Yankee farmer. 'Drywell knows where he went.' You leave her free, with water and a clear road back to the settlement, and head for the farm.",
+        "failure": "She shakes her head and retreats behind the chair. Whatever she knows stays with her for now. Try reassuring her another way.",
+        "bust": "She snatches a knife from the table and stabs you before bolting through the door. 'You're all the same! You, Opossum, Elias Drywell!' she shouts. You bind the wound. Drywell's name is painted on the farm sign you passed outside the settlement. Time to ask him some questions."
+      },
+      "next": {
+        "success": "farmer",
+        "failure": "captive",
+        "bust": "farmer"
+      }
+    },
+    "farmer": {
+      "title": "The farmer keeps accounts",
+      "mode": "standard",
+      "passages": [
+        "Elias Drywell watches you approach his dusty farm, one hand resting on a long gun. His ledger is open on a barrel. Ask about Opossum, and convince him that giving you directions is better than adding another enemy to his accounts.",
+        "Drywell shuts the ledger. 'Never heard the name.' His finger stays between two pages. Find a better way to ask about the debt.",
+        "The farmer spits into the dust. 'Everybody wants something.' Explain what he stands to gain if you find Opossum."
+      ],
+      "outcomes": {
+        "success": "Drywell taps the ledger. 'Old tannery. Malopasso. Bring him trouble, and perhaps he'll remember what he owes.' He points you toward the dry canal crossing into the abandoned city.",
+        "failure": "Drywell denies everything and tells you to leave. His eyes drift toward Malopasso. Step back and try another approach.",
+        "bust": "Drywell fires before you can finish. The shot wounds you, and you dive behind a wall. 'Tell your friend at the old Malopasso tannery I'm done paying!' he shouts. You leave by the dry canal, carrying his message in your flesh."
+      },
+      "next": {
+        "success": "canal",
+        "failure": "farmer",
+        "bust": "canal"
+      }
+    },
+    "canal": {
+      "title": "Water under a broken bridge",
+      "mode": "standard",
+      "passages": [
+        "A dry irrigation canal cuts across the road to Malopasso. The bridge still stands, which is more than can be said for several of its planks. Cross before the sun sinks behind the city walls.",
+        "One plank crumbles beneath your testing boot. The canal bed below is a jumble of broken stone. Find a sounder crossing.",
+        "A narrow support beam reaches the far bank. It offers little room for doubt. Choose your footing and try again."
+      ],
+      "outcomes": {
+        "success": "You reach the far bank as the bridge creaks its objections. Ahead, Malopasso's empty windows catch the low sun. The tannery district lies beyond a narrow street.",
+        "failure": "The bridge shifts before you commit your weight. You retreat to solid ground. Search for another way across.",
+        "bust": "A plank gives way. You catch the far edge and haul yourself onto the bank, wounded by the broken timber. Malopasso lies ahead; the bridge can keep its missing pieces."
+      },
+      "next": {
+        "success": "lookout",
+        "failure": "canal",
+        "bust": "lookout"
+      }
+    },
+    "lookout": {
+      "title": "A toll paid in teeth",
+      "mode": "standard",
+      "passages": [
+        "At the entrance to the tannery district, a lookout holds two enormous mastiffs on fraying leads. 'Opossum pays me to keep this street quiet. Give me a reason to disappoint him.' Convince the handler to let you pass.",
+        "The mastiffs lean into their leads, watching your hands. Their handler waits for a better offer. Try a different argument from beyond their reach.",
+        "One dog growls; the other saves its breath. The lookout has not moved. Find the words that will open this street."
+      ],
+      "outcomes": {
+        "success": "The lookout considers your argument, then draws the mastiffs aside. You pass under three suspicious gazes and slip through the tannery gate.",
+        "failure": "The dogs block your approach, growling. You retreat beyond their reach. The handler still listens, so try another approach.",
+        "bust": "A lead slips. One mastiff sinks its teeth into you before you scramble through a broken gate. You slam it behind you, wounded but inside the tannery district."
+      },
+      "next": {
+        "success": "tracking",
+        "failure": "lookout",
+        "bust": "tracking"
+      }
     },
     "tracking": {
-      "title": "The Malopasso trail", "mode": "standard",
-      "passages": ["Malopasso's gates hang open. Wind combs dust through streets whose owners are long gone. Fresh bootprints cross the dry fountain square. Follow Opossum's tracks.", "The trail breaks on the cobbles. Search beneath the ruined arcade for a fresh scrape or a footprint in the dust.", "A shutter bangs somewhere in the deserted market. Tracks cross and double back between empty stalls. Find the trace that belongs to Opossum."],
-      "outcomes": {"success": "A boot scrapes stone beyond the square. There he is: Opossum, rusty machete at his side, watching you from a narrow alley. Your hand settles on the revolver.", "failure": "The tracks disappear beneath fallen masonry. Opossum is still somewhere in these empty streets. Search another stretch of the abandoned city.", "bust": "A coyote bursts from a collapsed shop and tears into you before you drive it off. Malopasso has tenants after all. Wounded, you return to Opossum's unfinished trail."},
-      "next": {"success": "duel", "failure": "tracking", "bust": "tracking"}
+      "title": "The abandoned tannery",
+      "mode": "standard",
+      "passages": [
+        "The tannery smells of dry leather and old rot. Fresh bootprints cut through the dust between empty vats. Follow Opossum's trail to the rear of the building.",
+        "The footprints disappear beneath fallen shelves. Search the drying room for a fresh scrape or a disturbed patch of dust.",
+        "A shutter bangs above the empty vats. One trail leads to a bricked-up doorway; another runs beneath a hanging sheet of hide. Find the route Opossum used."
+      ],
+      "outcomes": {
+        "success": "You follow the prints to the rear exit. Beyond it, Opossum waits in a narrow alley, rusty machete at his side. Your hand settles on the revolver.",
+        "failure": "The tracks lead into a room with no other exit. Opossum doubled back. Return to the vats and search another part of the tannery.",
+        "bust": "Rotten flooring collapses beneath you. You climb out wounded, scattering dust across fresh bootprints beside the rear exit. Following them brings you face to face with Opossum in the alley. His machete is already in his hand."
+      },
+      "next": {
+        "success": "duel",
+        "failure": "tracking",
+        "bust": "duel"
+      }
     },
     "duel": {
-      "title": "No more running", "mode": "duel",
-      "passages": ["The low sun drags long shadows along the alley walls. Opossum lifts his rusty machete. His face looks like a bad mistake; his intentions look worse. You raise the revolver before he can close the gap. Play your hand.", "Opossum slips behind a broken cart, then rushes you with the machete. The alley leaves little room for polite disagreement. Find your opening and keep fighting.", "Steel scrapes the wall as Opossum closes in. Dust hangs in the low sunlight. You steady the revolver for another shot. This alley is too narrow for both your futures."],
-      "outcomes": {"success": "Your shot ends Opossum's story. His machete clangs against the stones, and he drops dead in the alley dust. You barely have time to breathe: one of his associates heard the gunfire and steps out beneath the ruined arcade.", "failure": "Your shot chips the wall. Opossum pulls back his machete, very much alive and in no mood to discuss it. The duel continues.", "bust": "Opossum's machete catches you before you can pull away. You stagger behind the broken cart, bleeding. He is still coming. The duel continues."},
-      "next": {"success": "associates", "failure": "duel", "bust": "duel"}
+      "title": "No more running",
+      "mode": "duel",
+      "passages": [
+        "The low sun drags long shadows along the alley walls. Opossum lifts his rusty machete. His face looks like a bad mistake; his intentions look worse. You raise the revolver before he can close the gap. Play your hand.",
+        "Opossum slips behind a broken cart, then rushes you with the machete. The alley leaves little room for polite disagreement. Find your opening and keep fighting.",
+        "Steel scrapes the wall as Opossum closes in. Dust hangs in the low sunlight. You steady the revolver for another shot. This alley is too narrow for both your futures."
+      ],
+      "outcomes": {
+        "success": "Your shot ends Opossum's story. His machete clangs against the stones, and he drops dead in the alley dust. You barely have time to breathe: one of his associates heard the gunfire and steps out beneath the ruined arcade.",
+        "failure": "Your shot chips the wall. Opossum pulls back his machete, very much alive and in no mood to discuss it. The duel continues.",
+        "bust": "Opossum's machete catches you before you can pull away. You stagger behind the broken cart, bleeding. He is still coming. The duel continues."
+      },
+      "next": {
+        "success": "associates",
+        "failure": "duel",
+        "bust": "duel"
+      }
     },
     "associates": {
-      "title": "The company Opossum kept", "mode": "duel",
-      "passages": ["One of Opossum's associates steps into the square. Their gun is already drawn. Survive this challenger.", "Your opponent ducks behind the dry fountain. Their next shot chips the stone beside you. The same fight is far from settled.", "Boots scrape the deserted street as your opponent circles for a better angle. Keep your eye on them and ready your hand."],
-      "outcomes": {"success": "The challenger falls. For a moment the square is quiet, but more footsteps echo between the empty buildings.", "failure": "Your shot goes wide. The challenger takes cover, still alive and still aiming at you. The fight continues.", "bust": "The challenger catches you with a shot. You stagger into cover, wounded. Your opponent is still there. The fight continues."},
-      "next": {"success": "associates", "failure": "associates", "bust": "associates"}
+      "title": "The company Opossum kept",
+      "mode": "duel",
+      "passages": [
+        "One of Opossum's associates steps into the square. Their gun is already drawn. Survive this challenger.",
+        "Your opponent ducks behind the dry fountain. Their next shot chips the stone beside you. The same fight is far from settled.",
+        "Boots scrape the deserted street as your opponent circles for a better angle. Keep your eye on them and ready your hand."
+      ],
+      "outcomes": {
+        "success": "The challenger falls. For a moment the square is quiet, but more footsteps echo between the empty buildings.",
+        "failure": "Your shot goes wide. The challenger takes cover, still alive and still aiming at you. The fight continues.",
+        "bust": "The challenger catches you with a shot. You stagger into cover, wounded. Your opponent is still there. The fight continues."
+      },
+      "next": {
+        "success": "associates",
+        "failure": "associates",
+        "bust": "associates"
+      }
     }
   },
   "endings": {
-    "death": {"title": "The trail ends here", "text": "Two wounds. Your trail ends here. Try again with a fresh deck and put what you learned to work."},
-    "ascension": {"title": "You take the badge", "text": "Exactly 21 Reward points. Your name becomes a frontier legend, and this tale ends here — even if the hunt was unfinished. The sun over Malopasso doesn't shine for heroes. Only for whoever's still standing."},
-    "exhaustion": {"title": "You survived the hunt", "text": "The deck has run out. You survived this stretch of the Fronteira. This is a survival ending, not an exact-21 ascension. Try a fresh deck for another tale."}
+    "death": {
+      "title": "The trail ends here",
+      "text": "Two wounds. Your trail ends here. Try again with a fresh deck and put what you learned to work."
+    },
+    "ascension": {
+      "title": "You take the badge",
+      "text": "Exactly 21 Reward points. Your name becomes a frontier legend, and this tale ends here — even if the hunt was unfinished. The sun over Malopasso doesn't shine for heroes. Only for whoever's still standing."
+    },
+    "exhaustion": {
+      "title": "You survived the hunt",
+      "text": "The deck has run out. You survived this stretch of the Fronteira. This is a survival ending, not an exact-21 ascension. Try a fresh deck for another tale."
+    }
   }
 }

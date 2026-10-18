@@ -2,11 +2,34 @@
 
 The solo adventure teaches the existing app's basic rules through a short,
 authored hunt. It uses no LLM. Choose a character, bargain for a gun, question
-witnesses, track Opossum through the abandoned city of Malopasso, and face his
-machete in an alley duel. If the run continues,
+witnesses, investigate his former hideout, and follow a chain of clues into the
+abandoned city of Malopasso before facing his machete in an alley duel. If the run continues,
 associates challenge the player one at a time. Every result selects a written
 passage; ordinary failures retry the current task with another passage and a
 fresh test, using the ongoing deck.
+
+## Extended trail
+
+1. Buy a gun from the trader.
+2. Question witnesses about Opossum's former customs-house hideout.
+3. Get past the trapped door.
+4. Reassure Inés, the freed Criollo captive, and learn about Elias Drywell.
+5. Question Drywell, a Yankee farmer owed money by Opossum.
+6. Cross the broken bridge over the dry irrigation canal.
+7. Get past a lookout holding two enormous mastiffs.
+8. Follow tracks through the abandoned tannery to Opossum's alley.
+9. Duel Opossum; associates follow only after his defeat if the run continues.
+
+Each investigation/obstacle scene advances on success or a surviving wound;
+failure retries that task with another authored passage. A second wound ends the
+run immediately. Opossum and associates keep fighting after failed or wounded
+exchanges. The added obstacles use standard tests, including the mastiff lookout;
+there are no extra combat, dog, trap, or damage rules. Rewards and exact-21 victory
+remain unchanged, so the story can still end before reaching Opossum.
+
+Existing saves remain valid: they keep their current node and resume from there.
+A run already at the tannery or duel does not go back to the new earlier scenes.
+Start a new solo adventure to experience the complete trail.
 
 ## Rules profile
 

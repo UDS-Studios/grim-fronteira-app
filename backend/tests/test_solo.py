@@ -98,10 +98,25 @@ def test_supported_characters_and_starting_baggage(run, card):
 @pytest.mark.parametrize("node,result,next_node,gun", [
     ("gun", "success", "witnesses", True), ("gun", "failure", "gun", False),
     ("gun", "bust", "witnesses", True),
-    ("witnesses", "success", "tracking", False), ("witnesses", "failure", "witnesses", False),
-    ("witnesses", "bust", "witnesses", False),
+    ("witnesses", "success", "hideout", False), ("witnesses", "failure", "witnesses", False),
+    ("witnesses", "bust", "hideout", False),
     ("tracking", "success", "duel", False), ("tracking", "failure", "tracking", False),
-    ("tracking", "bust", "tracking", False),
+    ("tracking", "bust", "duel", False),
+    ("hideout", "success", "captive", False),
+    ("hideout", "failure", "hideout", False),
+    ("hideout", "bust", "captive", False),
+    ("captive", "success", "farmer", False),
+    ("captive", "failure", "captive", False),
+    ("captive", "bust", "farmer", False),
+    ("farmer", "success", "canal", False),
+    ("farmer", "failure", "farmer", False),
+    ("farmer", "bust", "canal", False),
+    ("canal", "success", "lookout", False),
+    ("canal", "failure", "canal", False),
+    ("canal", "bust", "lookout", False),
+    ("lookout", "success", "tracking", False),
+    ("lookout", "failure", "lookout", False),
+    ("lookout", "bust", "tracking", False),
     ("duel", "success", "associates", False), ("duel", "failure", "duel", False),
     ("duel", "bust", "duel", False),
     ("associates", "success", "associates", False), ("associates", "failure", "associates", False),
@@ -437,12 +452,14 @@ def test_associate_identity_survives_retries_and_changes_only_after_defeat(run, 
 @pytest.mark.parametrize("choice,expected", [("keep", "8S"), ("bury", "6C")])
 def test_first_yankee_duel_deals_once_and_keeps_result_cards_visible(run, choice, expected):
     ready(run, "KH")
-    # Arrive at the first duel after three real scenes, rather than a fresh table.
-    for reward in ["2H", "3H", "4H"]:
-        start_scene(run, "2C", "10H")
+    # Arrive at the first duel through the complete extended trail.
+    for reward in ["2H", "3H", "4H", "5H", "6H", "7H", "8H", "9H"]:
+        start_scene(run, "3C", "10H")
         stack(run, [reward])
         act(run, "gf.scene_stand")
         accept(run)
+        while solo.presentation(GAMES[run[0]].state)["needs_discard"]:
+            act(run, "gf.scene_discard_reward", reward_card_id=GAMES[run[0]].state.zones[f"players.{solo.PLAYER}.rewards"][0])
         act(run, solo.SOLO_CONTINUE)
     assert GAMES[run[0]].state.meta["solo"]["node"] == "duel"
     stack(run, ["6D", "8S", "6C"])
@@ -471,5 +488,44 @@ def test_first_yankee_duel_deals_once_and_keeps_result_cards_visible(run, choice
     assert solo.presentation(game)["resolved_hand"] == expected_cards
     assert game.meta["solo"]["history"][-1]["cards"] == expected_cards
     assert game.meta["solo"]["history"][-1]["total"] == total
+    while solo.presentation(GAMES[run[0]].state)["needs_discard"]:
+        act(run, "gf.scene_discard_reward", reward_card_id=GAMES[run[0]].state.zones[f"players.{solo.PLAYER}.rewards"][0])
+    if solo.presentation(GAMES[run[0]].state)["needs_heal"]:
+        act(run, "gf.scene_skip_heal")
     act(run, solo.SOLO_CONTINUE)
     assert solo.presentation(GAMES[run[0]].state)["resolved_hand"] == []
+
+
+@pytest.mark.parametrize("node", ["hideout", "captive", "farmer", "canal", "lookout", "tracking"])
+def test_extended_trail_second_wound_ends_run_before_advancing(run, node):
+    ready(run)
+    game = GAMES[run[0]].state
+    players = {**game.meta["players"], solo.PLAYER: {**game.meta["players"][solo.PLAYER], "wounds": 1}}
+    GAMES[run[0]].state = solo._update(replace(game, meta={**game.meta, "players": players}), node=node)
+    start_scene(run, "2C", "10H")
+    stack(run, ["3D"])
+    act(run, "gf.scene_draw_card")
+    accept(run)
+    game = GAMES[run[0]].state
+    assert game.meta["solo"]["ending"] == "death"
+    assert game.meta["solo"]["node"] == node
+    with pytest.raises(ValueError, match="ended"):
+        act(run, solo.SOLO_CONTINUE)
+
+
+def test_extended_route_order_and_stable_saved_passages(run):
+    expected = ["gun", "witnesses", "hideout", "captive", "farmer", "canal", "lookout", "tracking", "duel", "associates"]
+    story = solo.adventure()
+    node, route = "gun", []
+    while node not in route:
+        route.append(node)
+        node = story["nodes"][node]["next"]["success"]
+    assert route == expected
+    ready(run)
+    # Persist each new node and its retry position using the real snapshot codec.
+    for node in expected[2:8]:
+        game = solo._update(GAMES[run[0]].state, node=node, attempt=1)
+        before = solo.presentation(game)
+        envelope = encode_envelope(run[0], game, GAMES[run[0]].sessions)
+        restored = decode_envelope(json.dumps(envelope), run[0])
+        assert solo.presentation(restored.state) == before

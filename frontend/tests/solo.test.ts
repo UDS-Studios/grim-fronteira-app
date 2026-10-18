@@ -154,6 +154,17 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
       }
       assert.equal(multiplayer, 3); assert.equal(retries, 3); assert.equal(requests.length, 0);
     });
+    await t.test("trail wounds advance while failures invite another approach", () => {
+      reset();
+      for (const node of ["witnesses", "hideout", "captive", "farmer", "canal", "lookout", "tracking"]) {
+        const r = response(); r.state.meta!.solo!.node = node; r.state.meta!.solo!.step = "outcome";
+        r.state.meta!.solo!.outcome = "bust";
+        assert.ok(find(tableProps(r).sceneNarrative as ReactNode, p => p.children === "Continue the trail"), node);
+        assert.ok(!find(tableProps(r).sceneNarrative as ReactNode, p => p.children === "Try another approach"), node);
+        r.state.meta!.solo!.outcome = "failure";
+        assert.ok(find(tableProps(r).sceneNarrative as ReactNode, p => p.children === "Try another approach"), node);
+      }
+    });
     await t.test("obligations gate story continuation; disconnect disables shared controls", () => {
       reset(); const r = response(); r.state.meta!.solo!.step = "outcome"; r.state.meta!.solo!.outcome = "success";
       for (const obligation of ["needs_heal", "needs_discard"] as const) {
