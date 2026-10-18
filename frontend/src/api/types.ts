@@ -28,6 +28,7 @@ export type SceneDarkState = {
 };
 
 export type ScenePlayerState = {
+  hand_value?: number;
   dark_reward_loss_pending?: boolean;
   reward_cards_gained?: number;
   wounds_gained?: number;
@@ -58,7 +59,20 @@ export type SeatPresence = {
   online: boolean;
 };
 
+export type SoloState = {
+  adventure_id: string; version: number; adventure_title: string;
+  node: string; step: "intro" | "playing" | "outcome" | "ending";
+  attempt: number; scene_number: number; title: string; text: string;
+  has_gun: boolean; outlaw_defeated: boolean; invitation: string;
+  outcome: "success" | "failure" | "bust" | null;
+  ending: "death" | "ascension" | "exhaustion" | null;
+  needs_heal: boolean; needs_discard: boolean;
+  history: { node: string; outcome: string; attempt: number; scene_number: number }[];
+};
+
 export type GameMeta = {
+  mode?: "solo";
+  solo?: SoloState;
   session_pause?: SessionPause;
   presence?: Record<string, SeatPresence>;
   phase?: string;
@@ -126,6 +140,7 @@ export type NewGameRequest = {
 };
 
 export type ActionRequest = {
+  expected_revision?: number;
   game_id: string;
   action: string;
   params: Record<string, unknown>;

@@ -1,6 +1,6 @@
-const baseUrl = import.meta.env.BASE_URL;
+const baseUrl = (import.meta.env?.BASE_URL ?? "/");
 
-export const API_BASE = import.meta.env.DEV
+export const API_BASE = import.meta.env?.DEV
   ? ""
   : baseUrl === "/"
     ? ""

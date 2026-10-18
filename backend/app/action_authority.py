@@ -39,6 +39,7 @@ _DEBUG_OWNER = ActionAuthority(AuthorityKind.DEBUG_ONLY, "actor_id", player_id_f
 
 # Explicit HTTP action registry. Internal engine continuations are not requests.
 ACTION_AUTHORITIES: Mapping[str, ActionAuthority] = MappingProxyType({
+    "gf.solo_continue": _PLAYER,
     "gf.get_state": ActionAuthority(AuthorityKind.PUBLIC_READ),
     "gf.setup_players": ActionAuthority(AuthorityKind.LEGACY_DEBUG_ONLY, reference_fields=("player_ids",)),
     "gf.debug_stack_top_card": ActionAuthority(AuthorityKind.DEBUG_ONLY),

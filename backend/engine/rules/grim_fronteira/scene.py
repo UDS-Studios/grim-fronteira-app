@@ -2108,6 +2108,9 @@ def _draw_to_zone(game: GameState, zone_name: str) -> tuple[GameState, CardID]:
     if game.deck is None:
         raise ValueError("GameState has no deck.")
 
+    if not game.deck.draw_pile and game.meta.get("mode") == "solo":
+        from .solo import SoloDeckExhausted
+        raise SoloDeckExhausted(game)
     new_deck = play(game.deck)
     game = GameState(deck=new_deck, zones=game.zones, meta=game.meta)
     card_id = game.deck.in_play[-1]
@@ -2194,7 +2197,7 @@ def _discard_scene_play_zones(game: GameState) -> GameState:
     game = _discard_zone_if_present(game, SCENE_DIFFICULTY_ZONE)
     game = _discard_zone_if_present(game, SCENE_AZZARDO_ZONE)
     game = _discard_pvp_duel_play_zones(game)
-    if any(card_id in {"RJ", "BJ"} for card_id in list((game.deck.discard_pile if game.deck else []))):
+    if game.meta.get("mode") != "solo" and any(card_id in {"RJ", "BJ"} for card_id in list((game.deck.discard_pile if game.deck else []))):
         game = _reshuffle_discard_into_draw(game)
     return game
 

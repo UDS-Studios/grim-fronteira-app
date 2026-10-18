@@ -14,6 +14,8 @@ class GamePausedError(RuntimeError):
 
 
 def pause_state(game: GameState, sessions: Mapping[str, SeatSessionRecord], at: float | None = None) -> dict[str, Any]:
+    if game.meta.get("mode") == "solo":
+        return {"paused": False, "reason": None}
     at = presence.now() if at is None else at
     marshal = sessions.get(game.meta.get("marshal_id"))
     paused = game.meta.get("phase") != "lobby" and (marshal is None or not presence.is_seat_online(marshal, at))

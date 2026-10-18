@@ -17,6 +17,12 @@ function storeResponse(response: ActionResponse, resetRecovery = true): ActionRe
   return response;
 }
 
+export async function newSoloGame() {
+  const response = storeResponse(await api("/api/gf/solo", "POST", {}));
+  if (!response.error) globalThis.localStorage?.setItem("gf_last_solo", response.game_id);
+  return response;
+}
+
 export async function newGame(req: NewGameRequest) {
   return storeResponse(await api("/api/gf/new", "POST", req));
 }
