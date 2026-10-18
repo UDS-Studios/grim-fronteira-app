@@ -46,7 +46,7 @@
   height: auto;
 }
 
-.home-solo-button:hover { filter: brightness(1.08); }
+.home-solo-button:hover { opacity: .94; }
 .home-solo-button:focus-visible {
   outline: 3px solid var(--border-strong);
   outline-offset: 3px;
