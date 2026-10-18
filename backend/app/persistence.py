@@ -136,7 +136,15 @@ def _validate_topology(state: GameState, sessions: object) -> None:
     _require(isinstance(marshal, str) and bool(marshal.strip()), "topology")
     _require(isinstance(order, list) and all(isinstance(p, str) and p.strip() for p in order), "topology")
     _require(len(order) == len(set(order)) and marshal in order, "topology")
-    _require(isinstance(sessions, dict) and set(sessions) == set(order), "topology")
+    expected_seats = set(order)
+    if meta.get("mode") == "solo":
+        from backend.engine.rules.grim_fronteira.solo import validate_solo, MARSHAL
+        try:
+            validate_solo(state)
+        except ValueError:
+            raise InvalidSnapshot("solo") from None
+        expected_seats.remove(MARSHAL)
+    _require(isinstance(sessions, dict) and set(sessions) == expected_seats, "topology")
     player_metadata = meta.get("players", {})
     _require(isinstance(player_metadata, dict) and set(player_metadata) <= set(order), "topology")
     setup_seats = meta.get("setup.players", [])

@@ -118,6 +118,7 @@ type PlayerLobbyViewProps = {
   currentActorId: string;
   connectionLost?: boolean;
   run: RunAction;
+  onAction?: (request: ActionRequest) => Promise<ActionResponse>;
 };
 
 type LobbyPlayerState = {
@@ -145,14 +146,16 @@ export default function PlayerLobbyView({
   currentActorId,
   run,
   connectionLost = false,
+  onAction = gfAction,
 }: PlayerLobbyViewProps) {
+  const [soloFigure, setSoloFigure] = useState<string | null>(null);
   const [customName, setCustomName] = useState("");
   const [customFeature, setCustomFeature] = useState("");
   const isWaitingMessageVisible = useBlink(700);
 
   async function submitAction(request: ActionRequest) {
     if (connectionLost) return;
-    return run(gfAction(request));
+    return run(onAction(request));
   }
 
   const state = resp.state ?? {};
@@ -165,7 +168,8 @@ export default function PlayerLobbyView({
   const availableFigures: string[] = zones["lobby.figure_pool.available"] ?? [];
 
   const assignmentMode = lobby.character_assignment_mode ?? "choice";
-  const registrationOpen = !!lobby.registration_open;
+  const isSolo = meta.mode === "solo";
+  const registrationOpen = !!lobby.registration_open || isSolo;
   const currentPlayerId = currentActorId;
 
   const pstate: LobbyPlayerState =
@@ -299,13 +303,21 @@ export default function PlayerLobbyView({
     );
   }
 
+  function renderSeatInfo() {
+    return isSolo ? <div><b>Marshal:</b> The Road to Malopasso · solo learning adventure</div> :
+      <div><b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>;
+  }
+
+  function claimFigure(cardId: string) {
+    return submitAction({ game_id: resp.game_id, action: "gf.claim_character",
+      params: { player_id: currentPlayerId, card_id: cardId }, ...getViewRequest(view, currentActorId) });
+  }
+
   function renderInfoContent() {
     if (stage === "waiting_for_figure") {
       return (
         <div style={{ display: "grid", gap: 10 }}>
-          <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
-          </div>
+          {renderSeatInfo()}
 
           <div style={{ marginTop: 12, opacity: 0.8 }}>
             {assignmentMode === "random"
@@ -319,9 +331,7 @@ export default function PlayerLobbyView({
     if (stage === "waiting_for_name") {
       return (
         <div style={{ display: "grid", gap: 12 }}>
-          <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
-          </div>
+          {renderSeatInfo()}
 
           {renderAnimatedSentence()}
 
@@ -373,9 +383,7 @@ export default function PlayerLobbyView({
     if (stage === "waiting_for_feature") {
       return (
         <div style={{ display: "grid", gap: 12 }}>
-          <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
-          </div>
+          {renderSeatInfo()}
           {renderAnimatedSentence()}
 
           <div style={{ fontWeight: 700 }}>Pick one of these features:</div>
@@ -426,15 +434,19 @@ export default function PlayerLobbyView({
     if (stage === "ready") {
       return (
         <div style={{ display: "grid", gap: 12 }}>
-          <div>
-            <b>Player ID:</b> {currentPlayerId} — <b>Marshal:</b> {marshalId || "-"} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} />
-          </div>
+          {renderSeatInfo()}
 
           {renderAnimatedSentence()}
 
           {renderCharacterRules()}
 
-          <div
+          {isSolo ? <div style={{ marginTop: 24 }}>
+            <p>Your character is ready. Read the Marshal's scene, then play your hand. Two wounds end the run.</p>
+            <button type="button" disabled={connectionLost} onClick={() => submitAction({
+              game_id: resp.game_id, action: "gf.solo_continue", params: { player_id: currentPlayerId },
+              ...getViewRequest(view, currentActorId),
+            })}>Begin the adventure</button>
+          </div> : <div
             style={{
               marginTop: 40,
               opacity: 0.85,
@@ -444,7 +456,7 @@ export default function PlayerLobbyView({
             }}
           >
             Waiting for the Marshal to start the game.
-          </div>
+          </div>}
         </div>
       );
     }
@@ -538,12 +550,8 @@ export default function PlayerLobbyView({
                 type="button"
                 disabled={connectionLost || !canPickFigure}
                 onClick={() => {
-                  submitAction({
-                    game_id: resp.game_id,
-                    action: "gf.claim_character",
-                    params: { player_id: currentPlayerId, card_id: c },
-                    ...getViewRequest(view, currentActorId),
-                  });
+                  if (isSolo && c.endsWith("S")) setSoloFigure(c);
+                  else { setSoloFigure(null); void claimFigure(c); }
                 }}
                 style={{
                   border: "1px solid transparent",
@@ -564,6 +572,15 @@ export default function PlayerLobbyView({
             ))
           )}
         </div>
+        {isSolo && stage === "waiting_for_figure" && <p className="solo-lobby-hint">For a first run, a King starts with Vengeance you can play on your own tests. Scum targets other players in multiplayer.</p>}
+        {isSolo && soloFigure && stage === "waiting_for_figure" && <div role="note" className="solo-warning">
+          <strong>Solo limitation · Chichimeca</strong>
+          <p>This power needs another player to target, so it cannot be used in this adventure. You can still play, but you will be at a disadvantage. Try multiplayer to use the faction's full power.</p>
+          <div className="solo-actions">
+            <button type="button" disabled={connectionLost} onClick={() => claimFigure(soloFigure)}>Play Chichimeca</button>
+            <button type="button" disabled={connectionLost} onClick={() => setSoloFigure(null)}>Choose another faction</button>
+          </div>
+        </div>}
       </Section>
 
       <div

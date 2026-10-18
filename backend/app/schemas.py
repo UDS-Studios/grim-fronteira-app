@@ -30,6 +30,10 @@ class NewGameRequest(ViewRequest):
     creator_id: str = "marshal"
 
 
+class NewSoloRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 class ReconnectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     game_id: str
@@ -38,9 +42,11 @@ class ReconnectRequest(BaseModel):
 
 
 class ActionRequest(ViewRequest):
+    expected_revision: int | None = Field(default=None, ge=0)
     game_id: str
     action: Literal[
         "gf.get_state",
+        "gf.solo_continue",
         "gf.setup_players",  # legacy/debug only
         "gf.debug_stack_top_card",
         "gf.debug_begin_pending_interaction",

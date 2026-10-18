@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.schemas import NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
+from backend.app.schemas import NewSoloRequest, NewGameRequest, ReconnectRequest, ActionRequest, ActionResponse, ErrorPayload
 from backend.app import store
 from backend.app.store import GAMES, StoredGame, commit_stored_game_candidate, publish_stored_game
 from backend.app.persistence import FileRepository, PersistenceUnavailable, GameUnavailable, SessionTopologyInvalid
@@ -90,6 +90,8 @@ from backend.engine.rules.grim_fronteira.lobby import (
     start_game,
     begin_table,
 )
+
+from backend.engine.rules.grim_fronteira import solo
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -286,6 +288,8 @@ def _bump_revision(game: GameState) -> GameState:
 @app.post("/api/gf/new", response_model=ActionResponse)
 def new_game(req: NewGameRequest) -> ActionResponse:
     enforce_debug_api_policy(view=req.view)
+    if req.meta and ("mode" in req.meta or "solo" in req.meta):
+        raise ValueError("Use the solo creation endpoint for solo adventures.")
     deck = load_deck(req.template_path)
 
     if req.seed is not None:
@@ -314,6 +318,24 @@ def new_game(req: NewGameRequest) -> ActionResponse:
     )
     publish_stored_game(game_id, stored_game)
     return response
+
+@app.post("/api/gf/solo", response_model=ActionResponse)
+def new_solo(req: NewSoloRequest) -> ActionResponse:
+    from pathlib import Path
+    deck = load_deck(str(Path(__file__).resolve().parents[2] / "data/templates/standard_54.json"))
+    game = solo.initialize_solo(GameState(deck=shuffle_deck(deck), zones={}, meta={"game": "grim_fronteira"}))
+    game = _bump_revision(enrich_meta_for_ui(game))
+    validate_game_state(game)
+    game_id = str(uuid4())
+    stored_game = StoredGame(state=game)
+    session = issue_seat_credentials(game, stored_game.sessions, solo.PLAYER)
+    projected = game_state_to_dict(game, view="player", viewer_id=solo.PLAYER)
+    response = ActionResponse(game_id=game_id, revision=game.meta["revision"],
+        state=enrich_pause(enrich_presence(projected, stored_game.sessions), game, stored_game.sessions),
+        events=[], result={"created": True, "session": session}, error=None)
+    publish_stored_game(game_id, stored_game)
+    return response
+
 
 @app.post("/api/gf/reconnect", response_model=ActionResponse)
 def reconnect(req: ReconnectRequest) -> ActionResponse:
@@ -401,6 +423,24 @@ def action(req: ActionRequest, x_gf_session: Annotated[str | None, Header(alias=
 
 
 def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
+    if solo.is_solo(g.state) and req.action != "gf.get_state":
+        solo.guard_action(g.state, req.action)
+        if req.expected_revision != g.state.meta.get("revision"):
+            raise HTTPException(status_code=409, detail="The adventure changed. Refresh before trying again.")
+    try:
+        return _apply_action(req, g)
+    except solo.SoloDeckExhausted as exc:
+        game = _bump_revision(enrich_meta_for_ui(solo.finish(exc.game, "exhaustion")))
+        validate_game_state(game)
+        projected = game_state_to_dict(game, view=req.view, viewer_id=req.viewer_id)
+        response = ActionResponse(game_id=req.game_id, revision=game.meta["revision"],
+            state=enrich_pause(enrich_presence(projected, g.sessions), game, g.sessions),
+            events=[], result={"ok": True, "action": req.action}, error=None)
+        commit_stored_game_candidate(req.game_id, g, game)
+        return response
+
+
+def _apply_action(req: ActionRequest, g: StoredGame) -> ActionResponse:
     game = g.state
 
     enforce_gameplay_pause(game, g.sessions, req.action, req.view)
@@ -412,6 +452,11 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
 
     if req.action == "gf.get_state":
         # no-op
+        result = {"ok": True, "action": req.action}
+
+    elif req.action == solo.SOLO_CONTINUE:
+        game = solo.continue_adventure(game)
+        mutated = True
         result = {"ok": True, "action": req.action}
 
     elif req.action == DEBUG_BEGIN:
@@ -1028,8 +1073,9 @@ def _action_transition(req: ActionRequest, g: StoredGame) -> ActionResponse:
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action '{req.action}'")
 
-    # bump revision only on mutations
+    # Story and mechanical settlement share the same persisted candidate.
     if mutated:
+        game = solo.settle(game)
         game = _bump_revision(game)
 
     # Synthetic pending actions and their continuations never advance scene flow.

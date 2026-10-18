@@ -69,6 +69,10 @@ def game_state_to_dict(game: GameState, *, view: str = "debug", viewer_id: str |
             dark["marshal_total"] = _dark_marshal_total(game)
         scene["dark"] = dark
 
+    if game.meta.get("mode") == "solo":
+        from backend.engine.rules.grim_fronteira.solo import presentation
+        meta["solo"] = presentation(game)
+
     if view == "debug":
         return data
 

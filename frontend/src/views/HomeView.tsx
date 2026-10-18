@@ -8,6 +8,8 @@ type HomeViewProps = {
   onNewGame: () => void;
   onJoinGame: () => Promise<void>;
   onTutorial: () => void;
+  onSolo?: () => void;
+  onResumeSolo?: () => void;
 };
 
 export default function HomeView({
@@ -17,6 +19,8 @@ export default function HomeView({
   onNewGame,
   onJoinGame,
   onTutorial,
+  onSolo,
+  onResumeSolo,
 }: HomeViewProps) {
   return (
     <div
@@ -141,6 +145,15 @@ export default function HomeView({
             </button>
           </div>
         </div>
+        {onSolo && <div style={{ textAlign: "center" }}>
+          <button type="button" className="home-solo-button" onClick={onSolo}
+            title="Learn by playing · Solo adventure">
+            <img src={publicAsset("ui/solo-adventure.png")} alt="Learn by playing · Solo adventure"
+              width={2172} height={724} />
+          </button>
+          <p>A short frontier story to learn the cards. No Marshal needed.</p>
+          {onResumeSolo && <button type="button" onClick={onResumeSolo}>Resume solo adventure</button>}
+        </div>}
         <div className="home-secondary-controls">
           <a
             className="home-rules-download"

@@ -30,3 +30,24 @@
   outline: 3px solid var(--border-strong);
   outline-offset: 3px;
 }
+
+.home-solo-button {
+  width: min(480px, 100%);
+  padding: 0;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.home-solo-button img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.home-solo-button:hover { opacity: .94; }
+.home-solo-button:focus-visible {
+  outline: 3px solid var(--border-strong);
+  outline-offset: 3px;
+}

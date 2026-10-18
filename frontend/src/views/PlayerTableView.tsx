@@ -23,7 +23,7 @@ import TableZone from "../components/TableZone";
 import { publicAsset } from "../app/assets";
 import { getGame, gfAction } from "../api/gf";
 import { getPendingInteraction, getPendingInteractionIdentity, isPendingInteractionActor, isPendingInteractionActionAllowed } from "../utils/pendingInteractions";
-import type { ActionResponse, View } from "../api/types";
+import type { ActionRequest, ActionResponse, View } from "../api/types";
 import { isCriolloAvailable, isCriolloSelectionOwned, type CriolloSelection } from "./player_table/criollo";
 import PTVPlayerBoard from "./player_table/PTV-PlayerBoard";
 import PTVOtherPlayers from "./player_table/PTV-OtherPlayers";
@@ -41,6 +41,10 @@ type PlayerTableViewProps = {
   connectionLost?: boolean;
   run: (p: Promise<ActionResponse>) => Promise<ActionResponse>;
   onBackHome: () => void;
+  onAction?: (request: ActionRequest) => Promise<ActionResponse>;
+  sceneNarrative?: React.ReactNode;
+  learningNotes?: React.ReactNode;
+  readOnly?: boolean;
 };
 
 type LobbyPlayerState = {
@@ -524,6 +528,10 @@ export default function PlayerTableView({
   run,
   connectionLost = false,
   onBackHome,
+  onAction = gfAction,
+  sceneNarrative,
+  learningNotes,
+  readOnly = false,
 }: PlayerTableViewProps) {
   const [paisaSelecting, setPaisaSelecting] = useState(false);
   const [paisaSelection, setPaisaSelection] = useState<string[]>([]);
@@ -537,8 +545,8 @@ export default function PlayerTableView({
   const [selectedRewardCardKeys, setSelectedRewardCardKeys] = useState<string[]>([]);
   const [sceneActionPending, setSceneActionPending] = useState(false);
   const rewardActionInFlight = useRef(false);
-  const interactionBlocked = isGameplayPaused(resp.state.meta) || connectionLost;
-  const blockedExplanation = isGameplayPaused(resp.state.meta) ? PAUSE_EXPLANATION : "Connection lost";
+  const interactionBlocked = isGameplayPaused(resp.state.meta) || connectionLost || readOnly;
+  const blockedExplanation = isGameplayPaused(resp.state.meta) ? PAUSE_EXPLANATION : connectionLost ? "Connection lost" : "Continue the story above the scene.";
   const state = resp.state ?? {};
   const pendingInteraction = getPendingInteraction(state);
   const hasPendingInteraction = pendingInteraction !== null;
@@ -554,7 +562,7 @@ export default function PlayerTableView({
     if (!request) return;
     setSceneActionPending(true);
     try {
-      await run(gfAction(request));
+      await run(onAction(request));
     } finally {
       setSceneActionPending(false);
     }
@@ -583,7 +591,7 @@ export default function PlayerTableView({
     if (!chichimecaActionAllowed || !selectedChichimecaTarget || sceneActionPending) return;
     setSceneActionPending(true);
     try {
-      await run(gfAction({
+      await run(onAction({
         game_id: resp.game_id,
         action: CHICHIMECA_CHOOSE_TARGET_ACTION,
         params: { player_id: currentActorId, target_player_id: selectedChichimecaTarget },
@@ -609,6 +617,7 @@ export default function PlayerTableView({
     setSelectedRewardCardKeys([]);
   }, [pendingIdentity]);
   const meta = state.meta ?? {};
+  const isSolo = meta.mode === "solo";
   const deck = state.deck ?? {};
   const zones = state.zones ?? {};
 
@@ -645,7 +654,12 @@ export default function PlayerTableView({
   }
 
   function getPlayerSceneHand(pid: string): string[] {
-    return zones[`scene.hand.${pid}`] ?? [];
+    const liveHand = zones[`scene.hand.${pid}`];
+    if (liveHand?.length) return liveHand;
+    if (state.meta?.mode === "solo" && scene.status === "closed" && pid === currentActorId) {
+      return state.meta.solo?.resolved_hand ?? [];
+    }
+    return [];
   }
 
   function getPlayerScumCards(pid: string): string[] {
@@ -867,7 +881,7 @@ export default function PlayerTableView({
       ? "-"
       : scene.azzardo?.revealed && effectiveDifficultyValue != null
         ? `${effectiveDifficultyValue}`
-        : azzardoStatus !== "unavailable"
+        : !isSolo && azzardoStatus !== "unavailable"
           ? `${scene.difficulty.value} + ?`
           : `${scene.difficulty.value}`;
 
@@ -880,6 +894,16 @@ export default function PlayerTableView({
     difficultyCardId.trim().toUpperCase().charAt(0) === "A";
 
   function getSceneInstruction(): string {
+    if (isSolo) {
+      if (meta.solo?.ending) return "This tale has ended. Retry solo or bring your posse to multiplayer.";
+      if (meta.solo?.step === "intro") return "Read the Marshal's scene above, then play this test.";
+      if (scene.status === "closed") {
+        if (currentPlayerNeedsHealOrSkip) return "Heal or skip healing before continuing the trail.";
+        if (currentPlayerNeedsDiscardRewards) return "Discard Rewards until you have 20 or fewer points.";
+        return "Scene closed. Continue the trail using the story box above.";
+      }
+      if (scene.status === "awaiting_ack") return "You may still play Vengeance before acknowledging this result.";
+    }
     if (meta.scene && isDarkScene(meta.scene) && scene.status !== "closed") {
       return getDarkPlayerStatus(meta.scene, currentActorId, isCurrentViewerActive, hasPendingInteraction);
     }
@@ -977,7 +1001,7 @@ export default function PlayerTableView({
     setSceneActionPending(true);
     try {
       await run(
-        gfAction({
+        onAction({
           game_id: resp.game_id,
           action: "gf.scene_draw_card",
           params: {
@@ -999,7 +1023,7 @@ export default function PlayerTableView({
     setSceneActionPending(true);
     try {
       await run(
-        gfAction({
+        onAction({
           game_id: resp.game_id,
           action: "gf.scene_stand",
           params: {
@@ -1021,7 +1045,7 @@ export default function PlayerTableView({
     setSceneActionPending(true);
     try {
       await run(
-        gfAction({
+        onAction({
           game_id: resp.game_id,
           action: "gf.scene_acknowledge_resolution",
           params: {
@@ -1042,7 +1066,7 @@ export default function PlayerTableView({
     rewardActionInFlight.current = true;
     setSceneActionPending(true);
     try {
-      const response = await run(gfAction({ game_id: resp.game_id, action,
+      const response = await run(onAction({ game_id: resp.game_id, action,
         params: { player_id: currentActorId, ...params }, ...getViewRequest(view, currentActorId) }));
       if (!response.error) {
         setRewardSelectionMode(null);
@@ -1145,7 +1169,7 @@ export default function PlayerTableView({
     if (!paisaActive || !canConfirmPaisa || sceneActionPending) return;
     setSceneActionPending(true);
     try {
-      await run(gfAction({
+      await run(onAction({
         game_id: resp.game_id,
         action: "gf.faction_paisa_claim_reward",
         params: { player_id: currentActorId, vengeance_card_ids: validPaisaSelection },
@@ -1195,7 +1219,7 @@ export default function PlayerTableView({
     if (!criolloActive || !validCriolloSelection || sceneActionPending) return;
     setSceneActionPending(true);
     try {
-      await run(gfAction({
+      await run(onAction({
         game_id: resp.game_id,
         action: "gf.faction_criollo_convert_resource",
         params: {
@@ -1212,6 +1236,7 @@ export default function PlayerTableView({
   }
 
   const canPlayScum =
+    !isSolo &&
     !hasPendingInteraction &&
     ((scene.status === "active" &&
       !sceneResolved &&
@@ -1310,7 +1335,7 @@ export default function PlayerTableView({
     setSelectedScumTargetId(null);
 
     await run(
-      gfAction({
+      onAction({
         game_id: resp.game_id,
         action: "gf.scene_play_vengeance",
         params: {
@@ -1328,7 +1353,7 @@ export default function PlayerTableView({
     setSelectedScumTargetId(targetPlayerId);
 
     await run(
-      gfAction({
+      onAction({
         game_id: resp.game_id,
         action: "gf.scene_play_scum",
         params: {
@@ -1434,7 +1459,7 @@ export default function PlayerTableView({
           <div><b>game_id:</b> {resp.game_id}</div>
           <div><b>revision:</b> {resp.revision}</div>
           </>}
-          <div><b>Marshal:</b> {import.meta.env.DEV && (marshalId || "-")} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></div>
+          <div><b>Marshal:</b> {isSolo ? "The Road to Malopasso" : <>{import.meta.env.DEV && (marshalId || "-")} <PresenceIndicator status={getPresenceStatus(meta, marshalId)} /></>}</div>
           {!isDarkScene(meta.scene) && <div><b>difficulty:</b> {scene.difficulty?.value ?? "-"}</div>}
           <div><b>dark mode:</b> {scene.dark_mode ? "ON" : "off"}</div>
           <div><b>participants:</b> {participantIds.length}</div>
@@ -1526,7 +1551,7 @@ export default function PlayerTableView({
                       <div style={{ opacity: 0.6 }}>— no card —</div>
                     )}
 
-                    {azzardoStatus !== "unavailable" ? (
+                    {!isSolo && azzardoStatus !== "unavailable" ? (
                       azzardoCardId ? (
                         <CardImg
                           cardId={azzardoCardId}
@@ -1681,6 +1706,7 @@ export default function PlayerTableView({
             overflow: "visible",
           }}
         >
+          {sceneNarrative}
           <div
             style={{
               minHeight: 0,
@@ -1989,7 +2015,7 @@ export default function PlayerTableView({
                   width: 360,
                 }}
               >
-                <PTVOtherPlayers
+                {isSolo && learningNotes ? learningNotes : <PTVOtherPlayers
                   players={otherPlayers}
                   wholePanelTargeting={chichimecaActive}
                   targetActionLabel={chichimecaActive ? "Children of the Earth" : undefined}
@@ -2005,7 +2031,7 @@ export default function PlayerTableView({
                   }
                   selectedTargetPlayerId={chichimecaActive ? selectedChichimecaTarget : hasPendingInteraction ? null : selectedScumTargetId}
                   onSelectSceneTarget={chichimecaActive ? handleSelectChichimecaTarget : interactionBlocked ? undefined : handleSelectScumTarget}
-                />
+                />}
               </div>
             </div>
           </div>

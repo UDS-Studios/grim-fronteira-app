@@ -1,7 +1,8 @@
+import SoloAdventureView from "./views/SoloAdventureView";
 import SessionPauseBanner from "./components/SessionPauseBanner";
 import { acceptResponse } from "./utils/responseOrdering";
 import { useEffect, useRef, useState } from "react";
-import { newGame, getGame, gfAction, reconnectGame, takeoverGame } from "./api/gf";
+import { newSoloGame, newGame, getGame, gfAction, reconnectGame, takeoverGame } from "./api/gf";
 import type { ActionResponse } from "./api/types";
 import { getFreshPlayerId } from "./utils/identity";
 import { getSessionView, type InspectionView } from "./utils/sessionView";
@@ -48,13 +49,17 @@ export default function App() {
   const takeoverInFlight = useRef(false);
   // Invalidate responses from the gameplay screen after recovery or navigation.
   const responseEpoch = useRef(0);
+  const soloCreationInFlight = useRef(false);
 
   function backHome() {
     clearActiveSession(unavailable?.gameId || recovery?.gameId || gameId);
     resetToHome();
   }
 
-  function resetToHome() {
+  function resetToHome(completedSoloId?: string) {
+    if (completedSoloId && globalThis.localStorage?.getItem("gf_last_solo") === completedSoloId) {
+      globalThis.localStorage.removeItem("gf_last_solo");
+    }
     responseEpoch.current++;
     setJoinError(null);
     setConnectionNotice(null);
@@ -302,6 +307,20 @@ export default function App() {
   const useScrollableGameContent = phase === "lobby";
   const useFixedGameViewport = phase === "lobby" || isTable;
 
+  async function startSolo() {
+    if (soloCreationInFlight.current) return;
+    soloCreationInFlight.current = true;
+    try { await run(newSoloGame()); } finally { soloCreationInFlight.current = false; }
+  }
+
+  if (screen === "game" && resp && meta.mode === "solo" && meta.solo) {
+    return <div style={{ padding: "0 16px", background: "var(--app-bg)", minHeight: "100dvh" }}>
+      {persistenceNotice && <p role="alert">{persistenceNotice}</p>}
+      <SoloAdventureView key={resp.game_id} resp={resp} playerId={currentActorId}
+        connectionLost={Boolean(connectionNotice)} run={run} onBackHome={() => resetToHome(meta.solo?.ending ? resp.game_id : undefined)} onRetry={startSolo} />
+    </div>;
+  }
+
   if (tutorialOpen) {
     return <TutorialView onBackHome={() => setTutorialOpen(false)} />;
   }
@@ -332,6 +351,12 @@ export default function App() {
           }}
         >
           <HomeView
+            onSolo={() => { void startSolo(); }}
+            onResumeSolo={globalThis.localStorage?.getItem("gf_last_solo") ? () => {
+              const saved = globalThis.localStorage.getItem("gf_last_solo")!;
+              const session = loadSession(saved);
+              void run(getActiveSession(saved) && session ? getGame(saved, "player", session.player_id) : reconnectGame(saved), saved);
+            } : undefined}
             onTutorial={() => setTutorialOpen(true)}
             joinGameId={joinGameId}
             joinError={joinError}

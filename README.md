@@ -207,6 +207,17 @@ PYTHONPATH=. uvicorn backend.app.main:app --reload
 npm run dev
 ```
 
+## Solo learning adventure
+
+Choose **Learn by playing · Solo adventure** on Home to follow an authored hunt
+through Malopasso, with a fresh shuffled deck and no human Marshal. Two wounds
+end the run. Every ending invites the player into multiplayer for the full
+experience, including Azzardo and Dark. Reloading resumes the saved adventure;
+Home also offers **Resume solo adventure**.
+
+See [Solo adventure implementation and validation](docs/solo-adventure.md) for
+rules, intentional faction limitations, backend/API design and testing.
+
 ## Backend durability
 
 The API persists complete games and seat recovery-token hashes before acknowledging

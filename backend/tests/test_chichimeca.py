@@ -456,7 +456,7 @@ def test_real_bust_without_targets_continues_and_later_scum_does_not_retrigger()
 
 
 @pytest.mark.parametrize("status", ["active", "awaiting_ack"])
-def test_vengeance_bust_commits_and_interrupts_immediately(status):
+def test_vengeance_at_21_does_not_wound_or_trigger_chichimeca(status):
     game = ready_to_bust_game()
     scene = deepcopy(game.meta["scene"])
     scene["status"] = status
@@ -465,11 +465,10 @@ def test_vengeance_bust_commits_and_interrupts_immediately(status):
     deck = replace(game.deck, draw_pile=[c for c in game.deck.draw_pile if c != "4S"])
     install(replace(game, zones=zones, deck=deck, meta={**game.meta, "scene": scene}))
     dispatch("gf.scene_play_vengeance", player_id="p1")
-    assert current().meta["players"]["p1"]["wounds"] == 1
-    assert current().meta["scene"]["players"]["p1"]["busted"]
-    assert current().meta["pending_interaction"]["actor_id"] == "p1"
-    choose()
-    assert current().meta["players"]["p1"]["wounds"] == 1
+    assert current().meta["players"]["p1"]["wounds"] == 0
+    assert current().meta["scene"]["players"]["p1"]["hand_value"] == 21
+    assert not current().meta["scene"]["players"]["p1"]["busted"]
+    assert current().meta["pending_interaction"] is None
 
 
 def test_non_bust_duel_wound_is_committed_at_final_acknowledgement():
