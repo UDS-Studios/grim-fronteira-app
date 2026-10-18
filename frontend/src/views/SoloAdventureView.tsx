@@ -92,7 +92,7 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
       </> : solo.step === "intro" ? <button type="button" disabled={disabled} onClick={continueStory}>Play this test</button>
         : solo.step === "outcome" ? <div className="solo-actions">
           <button type="button" disabled={disabled || solo.needs_heal || solo.needs_discard} onClick={continueStory}>
-            {solo.outcome === "failure" || (solo.outcome === "bust" && ["witnesses", "tracking"].includes(solo.node)) ? "Try another approach" : "Continue the trail"}
+            {solo.node === "duel" && solo.outcome !== "success" ? "Continue the duel" : solo.outcome === "failure" || (solo.outcome === "bust" && ["witnesses", "tracking"].includes(solo.node)) ? "Try another approach" : "Continue the trail"}
           </button>
           {(solo.needs_heal || solo.needs_discard) && <span>Finish the Reward choices on your player board first.</span>}
         </div> : null}

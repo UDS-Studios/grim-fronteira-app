@@ -22,9 +22,9 @@
     },
     "duel": {
       "title": "No more running", "mode": "duel",
-      "passages": ["The outlaw rises beside the fire. Neither of you reaches for a greeting. Across the camp, the distance between two guns feels very small. Play your hand."],
-      "outcomes": {"success": "Your shot ends the outlaw's story. But their associates heard the gunfire, and one is already coming over the ridge.", "failure": "Your shot strikes stone. The outlaw disappears into the gully while an associate steps forward to cover their retreat.", "bust": "The exchange leaves you bleeding. The outlaw slips away, and an associate comes down the ridge to finish the job."},
-      "next": {"success": "associates", "failure": "associates", "bust": "associates"}
+      "passages": ["The outlaw rises beside the fire. Neither of you reaches for a greeting. Across the camp, the distance between two guns feels very small. Play your hand.", "The outlaw ducks behind the broken cart and reloads. You have not finished this. Find your opening and keep fighting.", "Dust hangs between you and the outlaw. Neither gun is quiet for long. Steady your hand for the next exchange."],
+      "outcomes": {"success": "Your shot ends the outlaw's story. But their associates heard the gunfire, and one is already coming over the ridge.", "failure": "Your shot strikes stone. The outlaw is still alive, taking cover beside the fire. The duel continues.", "bust": "The outlaw catches you with a shot. You pull back into cover, wounded, but the fight is not over. The duel continues."},
+      "next": {"success": "associates", "failure": "duel", "bust": "duel"}
     },
     "associates": {
       "title": "The company they kept", "mode": "duel",

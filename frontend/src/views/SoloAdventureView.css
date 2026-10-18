@@ -3,12 +3,12 @@
 .solo-adventure--lobby { max-width: 1500px; margin: 0 auto; }
 .solo-lobby-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; font-size: .9rem; }
 .solo-lobby-scroll { flex: 1; min-height: 0; overflow: auto; }
-.solo-story h2 { font-family: LavaArabic, Georgia, serif; font-size: 2rem; letter-spacing: .03em; margin: 0; line-height: 1.2; }
+.solo-story h2 { font-family: LavaArabic, Georgia, serif; font-size: 2rem; color: var(--accent-danger); letter-spacing: .03em; margin: 0; line-height: 1.2; }
 .solo-story h2:focus { outline: none; }
 .solo-story-heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
 .solo-story-heading > span, .solo-story-equipment { font-size: .85rem; opacity: .8; }
 .solo-story p { margin: 0; }
-.solo-story-text { font-family: Georgia, serif; font-size: 1.15rem; line-height: 1.5; }
+.solo-story-text { font-family: LavaArabic, Georgia, serif; font-size: 1.4rem; font-weight: 400; letter-spacing: .02em; line-height: 1.45; }
 .solo-outcome-summary { font-size: .9rem; }
 .solo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .solo-actions button { min-height: 40px; }

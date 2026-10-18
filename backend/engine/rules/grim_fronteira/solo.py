@@ -94,6 +94,9 @@ def continue_adventure(game: GameState) -> GameState:
         if scenes._has_pending_post_scene_requirements(game):
             raise ValueError("Finish healing and Reward choices before continuing.")
         node = adventure()["nodes"][solo["node"]]["next"][solo["outcome"]]
+        # Only a defeated outlaw unlocks associates, including in older saves.
+        if node == "associates" and not solo["outlaw_defeated"]:
+            node = "duel"
         attempt = solo["attempt"] + 1 if node == solo["node"] else 0
         game = scenes.scene_new(game, actor_id=MARSHAL)
         game = _update(game, node=node, attempt=attempt, outcome=None, step="intro")
@@ -102,6 +105,8 @@ def continue_adventure(game: GameState) -> GameState:
     elif solo["step"] != "intro":
         raise ValueError("Finish the current test first.")
 
+    if game.meta["solo"]["node"] == "associates" and not game.meta["solo"]["outlaw_defeated"]:
+        game = _update(game, node="duel", attempt=0, outcome=None)
     node = adventure()["nodes"][game.meta["solo"]["node"]]
     game = _update(game, step="playing", scene_number=game.meta["solo"]["scene_number"] + 1)
     game = scenes.scene_set_participants(game, actor_id=MARSHAL, participant_ids=[PLAYER])

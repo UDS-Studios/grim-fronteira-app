@@ -31,8 +31,10 @@ Solo-specific restrictions are intentional:
   hand, Joker bonus or Reward draw. It never invents a card or leaves a retry
   that repeatedly fails on an empty pile.
 
-Winning the outlaw duel marks them defeated. Failure/bust lets them escape.
-Either result leads to associates if the run is still active. Death or victory
+Winning the outlaw duel kills the outlaw and unlocks associates if the run is
+still active. Failure or a nonlethal wound keeps the same outlaw duel going with
+a fresh exchange and new narration. Associates never start while the outlaw is
+alive; older saved runs are routed back to the outlaw before another encounter. Death or victory
 always takes precedence over another scene. Retrying from an ending creates a
 new run and fresh shuffle; reloading resumes the existing run.
 

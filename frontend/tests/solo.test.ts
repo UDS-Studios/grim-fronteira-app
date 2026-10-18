@@ -139,6 +139,17 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
       assert.equal(find(table(response(), true), p => p.title === "Connection lost")!.disabled, true);
       assert.equal(find(lobby(lobbyResponse(), true), p => p.title === "Claim KD")!.disabled, true);
     });
+    await t.test("a wounded outlaw keeps a Continue the duel action", async () => {
+      reset(); const r = response(); r.state.meta!.solo!.node = "duel";
+      r.state.meta!.solo!.step = "outcome"; r.state.meta!.solo!.outcome = "bust";
+      const story = tableProps(r).sceneNarrative as ReactNode;
+      assert.equal(find(story, p => p.children === "Continue the trail"), undefined);
+      const button = find(story, p => p.children === "Continue the duel")!;
+      assert.equal(button.disabled, false);
+      await (button.onClick as () => Promise<void>)();
+      assert.equal(requests[0].action, "gf.solo_continue");
+      assert.equal(requests[0].expected_revision, 7);
+    });
     await t.test("multiplayer Saloon keeps registration and waiting behavior", () => {
       reset(); const r = lobbyResponse(); delete r.state.meta!.mode; delete r.state.meta!.solo;
       const p = { resp: r, view: "player", currentActorId: "solo_player", run: async (p: Promise<ActionResponse>) => p };

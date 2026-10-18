@@ -102,15 +102,15 @@ def test_supported_characters_and_starting_baggage(run, card):
     ("witnesses", "bust", "witnesses", False),
     ("tracking", "success", "duel", False), ("tracking", "failure", "tracking", False),
     ("tracking", "bust", "tracking", False),
-    ("duel", "success", "associates", False), ("duel", "failure", "associates", False),
-    ("duel", "bust", "associates", False),
+    ("duel", "success", "associates", False), ("duel", "failure", "duel", False),
+    ("duel", "bust", "duel", False),
     ("associates", "success", "associates", False), ("associates", "failure", "associates", False),
     ("associates", "bust", "associates", False),
 ])
 def test_every_story_edge(run, node, result, next_node, gun):
     ready(run)
     game = GAMES[run[0]].state
-    GAMES[run[0]].state = solo._update(game, node=node)
+    GAMES[run[0]].state = solo._update(game, node=node, outlaw_defeated=node == "associates")
     start_scene(run, "2C" if result != "failure" else "AS", "10H" if result != "failure" else "2H")
     if result == "bust":
         stack(run, ["3D"])
@@ -121,7 +121,7 @@ def test_every_story_edge(run, node, result, next_node, gun):
     game = GAMES[run[0]].state
     assert game.meta["solo"]["outcome"] == result
     assert game.meta["solo"]["has_gun"] is gun
-    assert game.meta["solo"]["outlaw_defeated"] == (node == "duel" and result == "success")
+    assert game.meta["solo"]["outlaw_defeated"] == (node == "associates" or (node == "duel" and result == "success"))
     assert game.meta.get("players", {}).get(solo.PLAYER, {}).get("wounds", 0) == (1 if result == "bust" else 0)
     rewards = len(game.zones.get(f"players.{solo.PLAYER}.rewards", []))
     assert rewards == (1 if result == "success" else 0)
@@ -340,3 +340,59 @@ def test_solo_creation_rejects_client_rules_or_seed():
     status, body = http_request("/api/gf/solo", method="POST", body={"seed": 1, "mode": "debug"})
     assert status == 422
     assert body["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_wounded_outlaw_duel_continues_until_the_outlaw_is_killed(run):
+    ready(run)
+    GAMES[run[0]].state = solo._update(GAMES[run[0]].state, node="duel")
+    start_scene(run)
+    stack(run, ["3D"])
+    act(run, "gf.scene_draw_card")
+    game = GAMES[run[0]].state
+    assert game.meta["solo"]["outcome"] == "bust"
+    assert not game.meta["solo"]["outlaw_defeated"]
+    assert game.meta["players"][solo.PLAYER]["wounds"] == 1
+    act(run, solo.SOLO_CONTINUE)
+    game = GAMES[run[0]].state
+    assert game.meta["solo"]["node"] == "duel"
+    assert game.meta["solo"]["attempt"] == 1
+    assert "reloads" in solo.presentation(game)["text"]
+    start_scene(run, "4C", "9H")
+    stack(run, ["5D"])
+    act(run, "gf.scene_stand")
+    accept(run)
+    assert GAMES[run[0]].state.meta["solo"]["outlaw_defeated"]
+    assert GAMES[run[0]].state.meta["players"][solo.PLAYER]["wounds"] == 1
+    response = act(run, solo.SOLO_CONTINUE)
+    assert response.state["meta"]["solo"]["node"] == "associates"
+
+
+def test_lethal_outlaw_wound_ends_run_without_starting_associates(run):
+    ready(run)
+    GAMES[run[0]].state = solo._update(GAMES[run[0]].state, node="duel")
+    start_scene(run)
+    stack(run, ["3D"])
+    act(run, "gf.scene_draw_card")
+    act(run, solo.SOLO_CONTINUE)
+    start_scene(run, "4C", "10D")
+    stack(run, ["4D"])
+    response = act(run, "gf.scene_draw_card")
+    assert response.state["meta"]["solo"]["ending"] == "death"
+    assert response.state["meta"]["solo"]["node"] == "duel"
+    assert not response.state["meta"]["solo"]["outlaw_defeated"]
+
+
+@pytest.mark.parametrize("step", ["intro", "outcome"])
+def test_old_save_cannot_start_another_associate_while_outlaw_is_alive(run, step):
+    ready(run)
+    if step == "outcome":
+        start_scene(run)
+        act(run, "gf.scene_stand")
+        accept(run)
+    else:
+        begin(run)
+    game = GAMES[run[0]].state
+    GAMES[run[0]].state = solo._update(game, node="associates", step=step, outlaw_defeated=False)
+    response = act(run, solo.SOLO_CONTINUE)
+    assert response.state["meta"]["solo"]["node"] == "duel"
+    assert not response.state["meta"]["solo"]["outlaw_defeated"]
