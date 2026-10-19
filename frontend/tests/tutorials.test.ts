@@ -55,7 +55,7 @@ test("Home tutorials preserve session state, source slide order, captions and na
       assert.deepEqual(stores.map(store => [...store]), before);
     });
 
-    for (const [role, total] of [["marshal", 12], ["player", 13]] as const) {
+    for (const [role, total] of [["marshal", 16], ["player", 13]] as const) {
       await t.test(`${role}: all ${total} slides, boundaries and role reset`, async () => {
         hooks.resetHooks();
         let homeReturns = 0;

@@ -1,8 +1,8 @@
 # Grim Fronteira graphical tutorials
 
-Steps 1 and 2: local review artifacts only. No app source changes, commits, or deployment.
+The tutorials are integrated into Home → Tutorials. Authoring assets and metadata live here.
 
-- [Marshal tutorial](marshal-tutorial/README.md): 12 numbered PNGs.
+- [Marshal tutorial](marshal-tutorial/README.md): 16 numbered PNGs.
 - [Player tutorial](player-tutorial/README.md): 13 numbered PNGs.
 
 Each tutorial contains `images/` for integration, `originals/` for real browser screenshots, and `annotations/` for editable self-contained SVGs and step metadata. PNG filenames sort into reading order. Images contain screenshots, highlights, arrows, and numbered markers only. Titles and instructions appear as HTML text in the app and in the README files, not embedded in the PNGs or SVGs.
@@ -17,7 +17,7 @@ The guides demonstrate creation, sharing the Game ID, joining, figure/name/featu
 
 The actual sample scene includes one success and one bust. The final Player image intentionally switches to the successful player to show the earned Reward. The Law of Lead panel is an optional example; the selected conversion was cancelled before ordinary play resumed.
 
-Detailed Dark, Azzardo, healing, excess-Reward selection, and other faction-power sequences are outside this introductory capture set. The guides mention required post-scene choices, but do not pretend to show controls absent from the sample scene.
+Marshal pages 13–16 now cover Azzardo and Dark using the current interface: optional setup and undo, automatic Azzardo reveal, Dark activation, hidden-hand draws, forced last-card discard, reveal timing, Rewards and penalties. These four pages were captured on 19 October 2026 from the real TableRouterView with engine-generated isolated sample states. Healing, excess-Reward selection, and other faction-power sequences remain outside this capture set. The guides mention required post-scene choices, but do not pretend to show controls absent from the sample scene.
 
 ## Review and regeneration
 
@@ -30,3 +30,7 @@ For caption-only changes, run `python3 render_annotations.py --metadata-only` to
 Player step 3 has one marker on the suggested name. The custom-name field is below the captured viewport and has no marker; the capture metadata excludes that old off-screen rectangle.
 
 For app integration, use the two `images/` folders and README/step metadata. The originals, editing sources, and review sheets are authoring assets, not required web-app assets.
+
+To regenerate only new Marshal images without changing existing screenshots, use
+`python3 render_annotations.py --role marshal --from-step 13`. Then copy those
+PNGs into `frontend/public/assets/tutorials/marshal/` and keep `tutorials.ts` in sync.
