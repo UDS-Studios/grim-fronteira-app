@@ -35,16 +35,16 @@ test("solo typewriter timing, skip, polling, reload, reduced motion and cleanup"
       if (id.endsWith("/src/components/SoloNarration.tsx")) return code.replace('from "react";', 'from "/tests/fixtures/appHooks.ts?narration";');
     } }] });
   const saved = new Map(["window", "sessionStorage"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
-  const timers = new Map<number, () => void>();
+  const timers = new Map<number, { callback: () => void; at: number }>();
   const stored = new Map<string, string>();
   const changes = new Set<() => void>();
-  let nextTimer = 0, reduced = false;
+  let nextTimer = 0, now = 0, reduced = false;
   const media = { get matches() { return reduced; }, addEventListener: (_: string, cb: () => void) => changes.add(cb),
     removeEventListener: (_: string, cb: () => void) => changes.delete(cb) };
   try {
     Object.defineProperty(globalThis, "window", { configurable: true, value: { matchMedia: () => media,
-      setInterval: (cb: () => void, delay: number) => { assert.equal(delay, 12); timers.set(++nextTimer, cb); return nextTimer; },
-      clearInterval: (id: number) => timers.delete(id) } });
+      setTimeout: (cb: () => void, delay: number) => { timers.set(++nextTimer, { callback: cb, at: now + delay }); return nextTimer; },
+      clearTimeout: (id: number) => timers.delete(id) } });
     Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: {
       getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value),
     } });
@@ -54,7 +54,18 @@ test("solo typewriter timing, skip, polling, reload, reduced motion and cleanup"
     const render = (gameId: string, passageId = "intro", content = text) => {
       hooks.beginRender(); const tree = Narration({ gameId, passageId, text: content }); hooks.flushEffects(); return tree;
     };
-    const tick = (n: number) => { for (let i = 0; i < n; i++) for (const cb of [...timers.values()]) cb(); };
+    const next = () => [...timers.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+    const tick = (n: number) => {
+      for (let i = 0; i < n; i++) {
+        const pending = next(); if (!pending) break;
+        const [id, timer] = pending; timers.delete(id); now = timer.at; timer.callback();
+      }
+    };
+    const advance = (ms: number) => {
+      const until = now + ms;
+      while (next() && next()[1].at <= until) tick(1);
+      now = until;
+    };
     const visible = (tree: ReactNode) => (find(tree, "solo-narration-typed")!.children as unknown[])[0];
 
     await t.test("polling does not restart; click and keyboard-native button reveal all", () => {
@@ -69,6 +80,24 @@ test("solo typewriter timing, skip, polling, reload, reduced motion and cleanup"
       (button.onClick as () => void)(); tree = render("poll");
       assert.equal(visible(tree), text); assert.equal(timers.size, 0);
       assert.equal(find(tree, "solo-narration-reveal"), undefined);
+    });
+    await t.test("commas pause briefly and periods longer; skip cancels a pending pause", () => {
+      hooks.resetHooks(); const content = "Go, now. Run.";
+      render("punctuation", "intro", content);
+      advance(11); assert.equal(visible(render("punctuation", "intro", content)), "");
+      advance(1); assert.equal(visible(render("punctuation", "intro", content)), "G");
+      tick(2); assert.equal(visible(render("punctuation", "intro", content)), "Go,");
+      advance(139); assert.equal(visible(render("punctuation", "intro", content)), "Go,");
+      advance(1); assert.equal(visible(render("punctuation", "intro", content)), "Go, ");
+      tick(4); assert.equal(visible(render("punctuation", "intro", content)), "Go, now.");
+      advance(279); let tree = render("punctuation", "intro", content);
+      assert.equal(visible(tree), "Go, now.");
+      advance(1); assert.equal(visible(render("punctuation", "intro", content)), "Go, now. ");
+      hooks.resetHooks(); render("skip-pause", "intro", content); tick(3);
+      tree = render("skip-pause", "intro", content);
+      (find(tree, "solo-narration-reveal")!.onClick as () => void)();
+      assert.equal(visible(render("skip-pause", "intro", content)), content);
+      assert.equal(timers.size, 0);
     });
     await t.test("reload midway shows the whole passage; next passage animates", () => {
       hooks.resetHooks(); render("reload"); tick(2);

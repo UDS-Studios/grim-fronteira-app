@@ -105,7 +105,8 @@ special completion (when earned), Home and replay actions. The same viewport
 fitting and scrolling behavior as the multiplayer Table is retained.
 
 Scene descriptions and outcomes use the Saloon's character-by-character reveal
-style at a brisk 12 ms per character. Titles and controls remain immediately
+style at a brisk 12 ms per character, with a 140 ms pause after commas and
+a 280 ms pause after periods. Titles and controls remain immediately
 available. Click the narration, or focus its reveal button and press Enter/Space,
 to show it all. The full paragraph's space is reserved to avoid table movement;
 screen readers receive the complete text once, rather than character updates.

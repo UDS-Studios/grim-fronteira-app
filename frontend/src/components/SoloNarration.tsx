@@ -37,16 +37,21 @@ export default function SoloNarration({ gameId, passageId, text }: Props) {
     reveal();
     media?.addEventListener("change", reveal);
     let count = 0;
-    const timer = window.setInterval(() => {
+    let timer: number;
+    const revealNext = () => {
       count++;
       setVisibleChars(count);
       if (count >= text.length) {
-        window.clearInterval(timer);
         setFinished(true);
+        return;
       }
-    }, 12);
+      const character = text[count - 1];
+      const delay = character === "," ? 140 : character === "." ? 280 : 12;
+      timer = window.setTimeout(revealNext, delay);
+    };
+    timer = window.setTimeout(revealNext, 12);
     return () => {
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
       media?.removeEventListener("change", reveal);
     };
   }, [gameId, passageId, text, finished]);
