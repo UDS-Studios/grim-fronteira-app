@@ -22,7 +22,7 @@ function remember(gameId: string, passageId: string) {
 
 type Props = { gameId: string; passageId: string; text: string };
 
-/** The Saloon's character-by-character reveal, with a brisker narration pace. */
+/** The Saloon's character-by-character reveal, paced for reading. */
 export default function SoloNarration({ gameId, passageId, text }: Props) {
   const [finished, setFinished] = useState(() => typeof window === "undefined" ||
     window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true ||
@@ -46,10 +46,10 @@ export default function SoloNarration({ gameId, passageId, text }: Props) {
         return;
       }
       const character = text[count - 1];
-      const delay = character === "," ? 140 : character === "." ? 280 : 12;
+      const delay = character === "," ? 290 : character === "." ? 580 : 25;
       timer = window.setTimeout(revealNext, delay);
     };
-    timer = window.setTimeout(revealNext, 12);
+    timer = window.setTimeout(revealNext, 25);
     return () => {
       window.clearTimeout(timer);
       media?.removeEventListener("change", reveal);
