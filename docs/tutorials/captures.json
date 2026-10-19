@@ -76,7 +76,7 @@
     "num": 2,
     "filename": "02-choose-figure",
     "title": "Choose your figure",
-    "caption": "In CHOICE mode, click an available Jack, Queen, or King; the highlighted Queen of Diamonds (1) is this guide\u2019s example. Its suit gives your faction power; its rank sets your starting Scum and Vengeance.",
+    "caption": "In CHOICE mode, click an available Jack, Queen, or King; the highlighted Queen of Diamonds (1) is this guide’s example. Its suit gives your faction power; its rank sets your starting Scum and Vengeance.",
     "marks": [
       {
         "height": 129.3984375,
@@ -106,7 +106,7 @@
     "num": 4,
     "filename": "04-choose-feature",
     "title": "Give your character a feature",
-    "caption": "Pick a suggested feature, such as a chipped saint medallion (1), or write your own and click Submit. This completes the character\u2019s description.",
+    "caption": "Pick a suggested feature, such as a chipped saint medallion (1), or write your own and click Submit. This completes the character’s description.",
     "marks": [
       {
         "height": 43.5,
@@ -172,7 +172,7 @@
     "num": 6,
     "filename": "06-select-participants",
     "title": "Choose who is in the scene",
-    "caption": "Click Leonor del Paso\u2019s player panel (1) and Abner Coldiron\u2019s player panel (2) to include both in this challenge. Selected characters appear in Scene Participants. Leave other players outside the scene.",
+    "caption": "Click Leonor del Paso’s player panel (1) and Abner Coldiron’s player panel (2) to include both in this challenge. Selected characters appear in Scene Participants. Leave other players outside the scene.",
     "marks": [
       {
         "height": 181.7777404785156,
@@ -223,7 +223,7 @@
     "num": 9,
     "filename": "09-follow-turns",
     "title": "Follow the player turns",
-    "caption": "The highest initial hand acts first. The Acting now label (1) identifies the current player\u2014in this screenshot, Abner Coldiron. Follow each total while players draw, Stay, and use their resources. Let each player control their own hand.",
+    "caption": "The highest initial hand acts first. The Acting now label (1) identifies the current player—in this screenshot, Abner Coldiron. Follow each total while players draw, Stay, and use their resources. Let each player control their own hand.",
     "marks": [
       {
         "height": 13.693328857421877,
@@ -238,7 +238,7 @@
     "num": 6,
     "filename": "06-read-your-board",
     "title": "Read your character board",
-    "caption": "Your character\u2019s figure (1) contributes 10 to scene hands. Scum is on the left and Vengeance on the right. The Rewards area (2) holds earned Rewards below your character board; its points are separate from your hand total.",
+    "caption": "Your character’s figure (1) contributes 10 to scene hands. Scum is on the left and Vengeance on the right. The Rewards area (2) holds earned Rewards below your character board; its points are separate from your hand total.",
     "marks": [
       {
         "height": 143.09490966796875,
@@ -274,7 +274,7 @@
     "num": 8,
     "filename": "08-draw-or-stay",
     "title": "Draw or Stay",
-    "caption": "On your turn, click the deck (1) to draw another card, or click Stay (2) to stop. Match or beat the difficulty without going over 21. Your total already includes your character\u2019s 10 points.",
+    "caption": "On your turn, click the deck (1) to draw another card, or click Stay (2) to stop. Match or beat the difficulty without going over 21. Your total already includes your character’s 10 points.",
     "marks": [
       {
         "height": 143.25253295898438,
@@ -310,7 +310,7 @@
     "num": 10,
     "filename": "10-faction-power",
     "title": "Optional: use your faction power",
-    "caption": "Criollo example: Law of Lead \u00b7 Convert is already open, and the highlighted Scum card (1) is selected for conversion into Vengeance. Click Confirm conversion (2) to apply it, or Cancel to return to ordinary play. To open this selection, click Law of Lead \u00b7 Convert. Other factions have different powers.",
+    "caption": "Criollo example: Law of Lead · Convert is already open, and the highlighted Scum card (1) is selected for conversion into Vengeance. Click Confirm conversion (2) to apply it, or Cancel to return to ordinary play. To open this selection, click Law of Lead · Convert. Other factions have different powers.",
     "marks": [
       {
         "height": 88.66741943359375,
@@ -331,7 +331,7 @@
     "num": 11,
     "filename": "11-play-scum",
     "title": "Optional: target another player",
-    "caption": "Click your Scum pile (1), then click an in-scene opponent\u2019s figure (2). Scum targeting is already active in this screenshot. Scum lowers their total by 1, or by 2 when the spent card matches your own character\u2019s suit. Busted players cannot be targeted.",
+    "caption": "Click your Scum pile (1), then click an in-scene opponent’s figure (2). Scum targeting is already active in this screenshot. Scum lowers their total by 1, or by 2 when the spent card matches your own character’s suit. Busted players cannot be targeted.",
     "marks": [
       {
         "height": 125.41415405273438,
@@ -397,7 +397,7 @@
     "num": 13,
     "filename": "13-rewards-and-next",
     "title": "Collect Rewards and continue",
-    "caption": "Here is the successful player\u2019s board: the earned Reward card (1) appears after Close Scene and contributes 5 Reward points in this example. Aim for exactly 21 Reward points. If Heal/Skip or Reward-discard choices appear, complete them before the next scene.",
+    "caption": "Here is the successful player’s board: the earned Reward card (1) appears after Close Scene and contributes 5 Reward points in this example. Aim for exactly 21 Reward points. If Heal/Skip or Reward-discard choices appear, complete them before the next scene.",
     "marks": [
       {
         "height": 91.426025390625,
@@ -419,6 +419,90 @@
         "width": 262.6311340332031,
         "x": 17.128889083862305,
         "y": 114.26049041748048
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 13,
+    "filename": "13-azzardo-setup",
+    "title": "Advanced: add or return Azzardo",
+    "caption": "After choosing participants and drawing an ordinary numbered difficulty below 21, click the deck once more to add optional Azzardo. The extra card stays face down (1), and the total shows '+ ?'. Before Start Scene (2), click that face-down card to return it to the deck if you change your mind. Starting locks this choice. The deck disables Azzardo for Ace, figure and Joker difficulties; Azzardo is also unavailable in Dark and PvP duels.",
+    "marks": [
+      {
+        "x": 446.3111267089844,
+        "y": 129.6444549560547,
+        "width": 99.26669311523438,
+        "height": 138.40000915527344
+      },
+      {
+        "x": 389.3111267089844,
+        "y": 276.5777893066406,
+        "width": 82.67776489257812,
+        "height": 31.28887939453125
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 14,
+    "filename": "14-azzardo-result",
+    "title": "Advanced: resolve an Azzardo scene",
+    "caption": "Players draw and Stay normally without knowing the extra difficulty. Azzardo turns face up (1) automatically when the scene resolves. Here the opening difficulty is 10 + 4 = 14, and Azzardo adds 4 for a final target of 18. Mae's 19 and Ash's 18 both succeed. If Azzardo pushes the Marshal's target over 21, non-busted participants succeed. Wait for player reactions and acknowledgments, then Close Scene to deal one Reward to each successful participant. Azzardo does not grant Dark's double Rewards.",
+    "marks": [
+      {
+        "x": 464.4318542480469,
+        "y": 117.51566314697266,
+        "width": 89.97988891601562,
+        "height": 125.45211029052734
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 15,
+    "filename": "15-declare-dark",
+    "title": "Advanced: declare the Dark before dealing",
+    "caption": "Start with a fresh scene and choose its participants. Before drawing any difficulty or choosing Azzardo, click Declare the Dark (1), the small Dark icon in Difficulty / Scene. Then click the deck (2) for the opening hidden difficulty and Start Scene to deal the players' hands. The Marshal sees the opening card; players see a concealed hand and no target value. Use Dark for a final confrontation or a moment of high tension. Dark cannot be combined with Azzardo or a PvP duel; it resets on New Scene.",
+    "marks": [
+      {
+        "x": 947.9111328125,
+        "y": 83.42222595214844,
+        "width": 28.4444580078125,
+        "height": 28.444442749023438
+      },
+      {
+        "x": 9.244444847106934,
+        "y": 107.60000610351562,
+        "width": 265.9555673599243,
+        "height": 168.95556640625
+      }
+    ]
+  },
+  {
+    "role": "marshal",
+    "num": 16,
+    "filename": "16-dark-hand",
+    "title": "Advanced: manage and reveal the Dark hand",
+    "caption": "During setup or while players act, click the deck (1) to add cards to your private Dark hand (2). If your total exceeds 21, click the last extra Dark card to discard it before continuing; you cannot reveal while over 21. After every participant has Stayed or busted, REVEAL (3) becomes available. Here your hidden total is 10 + 6 + 3 = 19: Mae's 19 succeeds for two Rewards, while Ash's 18 fails and takes one wound. A failed player also loses one Reward if they have one, choosing it after Close Scene. Reveal, allow reactions and acknowledgments, then Close Scene. Resolve Reward losses, healing and overflow choices before New Scene.",
+    "marks": [
+      {
+        "x": 18.761306762695312,
+        "y": 129.7908477783203,
+        "width": 261.9455108642578,
+        "height": 166.40806579589844
+      },
+      {
+        "x": 320.6289978027344,
+        "y": 148.70135498046875,
+        "width": 120.4669189453125,
+        "height": 97.27748107910156
+      },
+      {
+        "x": 888.40380859375,
+        "y": 273.37060546875,
+        "width": 70.98004150390625,
+        "height": 31.648834228515625
       }
     ]
   }

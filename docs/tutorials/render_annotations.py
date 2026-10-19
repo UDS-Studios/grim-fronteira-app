@@ -13,24 +13,31 @@ INK='#332a22'; RUST='#95462e'; PAPER='#faf5e9'; OLIVE='#535b42'; BRASS='#9b793c'
 records=json.loads((ROOT/'captures.json').read_text())
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--metadata-only', action='store_true', help='Update steps.json and READMEs without modifying PNGs, SVGs, or review sheets.')
+parser.add_argument('--role', choices=['marshal','player'], help='Regenerate only this role.')
+parser.add_argument('--from-step', type=int, default=1, help='Leave earlier image and SVG files untouched.')
 args=parser.parse_args()
 
-for role in ['marshal','player']:
+for role in ([args.role] if args.role else ['marshal','player']):
     out=ROOT/(role+'-tutorial')
     steps=[r for r in records if r['role']==role]
     (out/'annotations'/'steps.json').write_text(json.dumps(steps,indent=2))
     readme=[f'# Grim Fronteira - {role.title()} Tutorial','',
-        'Real screenshots from a local production build. Game app source files were not changed.',
+        'Screenshots of the actual game interface. Captions and numbered callouts explain the controls.',
         '', '**Branch:** feature/post-deploy-polish',
         '**Commit:** d2592b2731ba0919ed7dd2950be64947bc17e349',
         '**Captured:** 5 October 2026',
         '**Capture size:** 1280 x 720 CSS pixels (browser default).',
         '', '## Reading order','']
+    if role == 'marshal' and len(steps) > 12:
+        readme[readme.index('## Reading order'):readme.index('## Reading order')] = ['**Advanced pages 13–16:** captured 19 October 2026 on feature/marshal-advanced-tutorial, using the real TableRouterView and engine-generated isolated sample states. No live games or player credentials were used.', '']
     for r in steps:
         readme.extend([f"### {r['num']:02d}. {r['title']}",'',f"![{r['title']}](images/{r['filename']}.png)",'',r['caption'],''])
-        if args.metadata_only:
+        if args.metadata_only or r['num'] < args.from_step:
             continue
-        shot=out/'originals'/(r['filename']+'.jpg')
+        shot=out/'originals'/(r['filename']+'.png')
+        if not shot.exists():
+            shot=shot.with_suffix('.jpg')
+        mime='image/png' if shot.suffix == '.png' else 'image/jpeg'
         im=Image.open(shot).convert('RGB')
         sw,sh=im.size; pad=20; sy=20; w=sw+2*pad; height=sh+2*pad
         canvas=Image.new('RGB',(w,height),PAPER); draw=ImageDraw.Draw(canvas)
@@ -40,7 +47,7 @@ for role in ['marshal','player']:
         svg=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{height}" viewBox="0 0 {w} {height}">',
           f'<rect width="100%" height="100%" fill="{PAPER}"/>',
           '<g font-family="DejaVu Sans, sans-serif">',
-          f'<image x="{pad}" y="{sy}" width="{sw}" height="{sh}" href="data:image/jpeg;base64,{b64}"/>']
+          f'<image x="{pad}" y="{sy}" width="{sw}" height="{sh}" href="data:{mime};base64,{b64}"/>']
         for i,m in enumerate(r['marks'],1):
             assert m['x']>=0 and m['y']>=0 and m['x']+m['width']<=sw+1 and m['y']+m['height']<=sh+1,(r,m)
             x=pad+m['x']-5; y=sy+m['y']-5; bw=m['width']+10; bh=m['height']+10
@@ -71,8 +78,8 @@ for role in ['marshal','player']:
        'Use --metadata-only to update steps.json and this README without modifying any images. Numbered markers follow the marks array order, starting at 1. Titles and captions stay outside the PNGs and SVGs.',
        '','## Scope and verified flow','',
        'Verified through an ordinary two-player scene, player acknowledgments, Close Scene, Reward distribution, and New Scene. The UI automatically marks a character ready after name and feature selection.',
-       '','Healing, excess-Reward discards, detailed Azzardo and Dark play, and the other faction powers are not illustrated as separate walkthroughs. They are advanced follow-ups. The final Player screenshot shows the successful second player (Abner), while most earlier Player screenshots follow Leonor. The faction screenshot is an optional example: its selection was cancelled before ordinary play continued.',
-       '', 'These are local disposable sample games. No invitations were sent, no source files were changed, and nothing was committed or deployed.'])
+       '',('Marshal pages 13–16 cover Azzardo setup and resolution, Dark declaration, hidden-hand management, reveal timing, double Rewards and failure consequences. Healing, excess-Reward selection and other faction powers remain advanced follow-ups.' if role == 'marshal' and len(steps) > 12 else 'Detailed Azzardo and Dark controls are covered in the Marshal tutorial. The Player guide follows an ordinary scene; its final screenshot shows successful player Abner, while most earlier screenshots follow Leonor. The faction screenshot is an optional example: its selection was cancelled before ordinary play continued.'),
+       '', 'These are isolated local sample states. No invitations were sent and no live game or deployment was changed.'])
     (out/'README.md').write_text('\n'.join(readme))
     if args.metadata_only:
         print(role,len(steps),'steps updated; images unchanged')
