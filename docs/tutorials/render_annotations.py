@@ -34,7 +34,10 @@ for role in ([args.role] if args.role else ['marshal','player']):
         readme.extend([f"### {r['num']:02d}. {r['title']}",'',f"![{r['title']}](images/{r['filename']}.png)",'',r['caption'],''])
         if args.metadata_only or r['num'] < args.from_step:
             continue
-        shot=out/'originals'/(r['filename']+'.jpg')
+        shot=out/'originals'/(r['filename']+'.png')
+        if not shot.exists():
+            shot=shot.with_suffix('.jpg')
+        mime='image/png' if shot.suffix == '.png' else 'image/jpeg'
         im=Image.open(shot).convert('RGB')
         sw,sh=im.size; pad=20; sy=20; w=sw+2*pad; height=sh+2*pad
         canvas=Image.new('RGB',(w,height),PAPER); draw=ImageDraw.Draw(canvas)
@@ -44,7 +47,7 @@ for role in ([args.role] if args.role else ['marshal','player']):
         svg=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{height}" viewBox="0 0 {w} {height}">',
           f'<rect width="100%" height="100%" fill="{PAPER}"/>',
           '<g font-family="DejaVu Sans, sans-serif">',
-          f'<image x="{pad}" y="{sy}" width="{sw}" height="{sh}" href="data:image/jpeg;base64,{b64}"/>']
+          f'<image x="{pad}" y="{sy}" width="{sw}" height="{sh}" href="data:{mime};base64,{b64}"/>']
         for i,m in enumerate(r['marks'],1):
             assert m['x']>=0 and m['y']>=0 and m['x']+m['width']<=sw+1 and m['y']+m['height']<=sh+1,(r,m)
             x=pad+m['x']-5; y=sy+m['y']-5; bw=m['width']+10; bh=m['height']+10
