@@ -68,6 +68,7 @@ export type SoloState = {
   ending: "death" | "ascension" | "exhaustion" | null;
   needs_heal: boolean; needs_discard: boolean;
   resolved_hand?: string[];
+  ending_narrative?: string | null;
   special_completion?: { id: string; title: string; text: string } | null;
   history: { node: string; outcome: string; attempt: number; scene_number: number }[];
 };

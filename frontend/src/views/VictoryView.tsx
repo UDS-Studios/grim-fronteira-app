@@ -7,6 +7,7 @@ type VictoryViewProps = {
   winnerFigureCardId?: string | null;
   showMarshalPortrait?: boolean;
   reason?: string | null;
+  narrative?: string | null;
   onBackHome: () => void;
   resultLabel?: string;
   title?: string;
@@ -20,6 +21,7 @@ export default function VictoryView({
   winnerFigureCardId = null,
   showMarshalPortrait = false,
   reason = null,
+  narrative = null,
   onBackHome,
   resultLabel = "VICTORY",
   title,
@@ -61,6 +63,11 @@ export default function VictoryView({
             gap: 12,
           }}
         >
+          {narrative && <section aria-label="Final scene" style={{
+            fontFamily: "LavaArabic, Georgia, serif", fontSize: 24, lineHeight: 1.5,
+            textAlign: "left", maxWidth: 460, paddingBottom: 16,
+            borderBottom: "1px solid var(--border-strong)",
+          }}>{narrative}</section>}
           <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.12em", opacity: 0.7 }}>
             {resultLabel}
           </div>

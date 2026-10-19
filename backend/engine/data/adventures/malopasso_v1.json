@@ -21,7 +21,8 @@
         "success": "witnesses",
         "failure": "gun",
         "bust": "witnesses"
-      }
+      },
+      "fatal_outcome": "The trader's hand closes over the revolver. In the struggle, the gun goes off between you. You fall against the counter, then slide into the dust. The weapon you came to buy is the last thing you hear."
     },
     "witnesses": {
       "title": "Loose tongues",
@@ -40,7 +41,8 @@
         "success": "hideout",
         "failure": "witnesses",
         "bust": "hideout"
-      }
+      },
+      "fatal_outcome": "The cry of 'Opossum's accomplice!' brings the crowd down on you. You reach the broken fence, but a blow throws you onto its splintered stakes. The voices recede as you collapse. Your questions end here."
     },
     "hideout": {
       "title": "An invitation with teeth",
@@ -59,7 +61,8 @@
         "success": "captive",
         "failure": "hideout",
         "bust": "captive"
-      }
+      },
+      "fatal_outcome": "The wire snaps tight as you lift the latch. Opossum's hidden blade strikes deep. You fall across the threshold of the old customs house, and the door creaks shut against your boot. The hunt ends at his abandoned hideout."
     },
     "captive": {
       "title": "A knife and a name",
@@ -78,7 +81,8 @@
         "success": "farmer",
         "failure": "captive",
         "bust": "farmer"
-      }
+      },
+      "fatal_outcome": "She snatches the knife from the table and strikes before you can pull away. You collapse beside the overturned chair. She flees through the doorway, leaving the knife where it fell. Your hunt ends in Opossum's abandoned hideout."
     },
     "farmer": {
       "title": "The farmer keeps accounts",
@@ -97,7 +101,8 @@
         "success": "fire",
         "failure": "farmer",
         "bust": "fire"
-      }
+      },
+      "fatal_outcome": "Drywell raises the long gun before you can finish your question. The shot knocks you down beside the farm wall. His voice carries on above you, then fades. You die in the dust of a debt that was never yours."
     },
     "fire": {
       "title": "The burning ledger",
@@ -116,7 +121,8 @@
         "success": "canal",
         "failure": "fire",
         "bust": "canal"
-      }
+      },
+      "fatal_outcome": "You push the farmhand through the hatch, but the burning roof gives way before you can follow. A beam pins you beneath the flames. Outside, someone calls your name. You do not answer."
     },
     "canal": {
       "title": "Water under a broken bridge",
@@ -135,7 +141,8 @@
         "success": "rubble",
         "failure": "canal",
         "bust": "rubble"
-      }
+      },
+      "fatal_outcome": "The bridge breaks beneath you. Your grip slips from the far edge, and you fall onto the broken stone below. The canal has been dry for years. At its bottom, your trail ends."
     },
     "rubble": {
       "title": "A voice beneath the stones",
@@ -154,7 +161,8 @@
         "success": "lookout",
         "failure": "rubble",
         "bust": "lookout"
-      }
+      },
+      "fatal_outcome": "The timber shifts as you lift it. You push the scavenger clear, but the weight comes down on you with the rest of the wall. The stones settle. No footsteps follow yours out of the collapsed house."
     },
     "lookout": {
       "title": "A toll paid in teeth",
@@ -173,7 +181,8 @@
         "success": "tracking",
         "failure": "lookout",
         "bust": "tracking"
-      }
+      },
+      "fatal_outcome": "The lead slips. One mastiff knocks you down while the other closes its jaws. The handler hauls at the fraying ropes, too late. You die outside the tannery gate, with Opossum still beyond it."
     },
     "tracking": {
       "title": "The abandoned tannery",
@@ -192,7 +201,8 @@
         "success": "cart",
         "failure": "tracking",
         "bust": "cart"
-      }
+      },
+      "fatal_outcome": "The tannery floor gives way. You fall through rotten boards into the stone-lined vat below. Above you, dust drifts through the hole. Opossum's footprints continue toward the rear passage; yours stop here."
     },
     "cart": {
       "title": "The last warning",
@@ -211,7 +221,8 @@
         "success": "duel",
         "failure": "cart",
         "bust": "duel"
-      }
+      },
+      "fatal_outcome": "The loaded handcart catches you against the passage wall. Stone and timber crash over you, drowning out Opossum's retreating footsteps. The alley lies just beyond the wreckage. You never reach it."
     },
     "duel": {
       "title": "No more running",
@@ -230,7 +241,8 @@
         "success": "associates",
         "failure": "duel",
         "bust": "duel"
-      }
+      },
+      "fatal_outcome": "Opossum closes the gap before you can bring the revolver around. His rusty machete strikes, and you fall against the alley wall. The low sun drags your shadow across the stones. Opossum steps over it and walks away."
     },
     "associates": {
       "title": "The company Opossum kept",
@@ -249,7 +261,8 @@
         "success": "associates",
         "failure": "associates",
         "bust": "associates"
-      }
+      },
+      "fatal_outcome": "The challenger's shot catches you as you leave cover. You fall into the dust of Malopasso, your revolver slipping from your hand. Opossum is dead, but the company he kept has claimed the last word."
     }
   },
   "endings": {
@@ -259,7 +272,7 @@
     },
     "ascension": {
       "title": "You take the badge",
-      "text": "Exactly 21 Reward points. Your name becomes a frontier legend, and this tale ends here — even if the hunt was unfinished. The sun over Malopasso doesn't shine for heroes. Only for whoever's still standing."
+      "text": "Exactly 21 Reward points. You take the badge. Your name becomes a frontier legend."
     },
     "exhaustion": {
       "title": "You survived the hunt",
@@ -279,7 +292,8 @@
         "success": "The bookkeeper falls behind the column. That account is closed. Elsewhere in the ruins, someone has heard the argument.",
         "failure": "Your shot strikes the column. The bookkeeper ducks back into cover, alive and still collecting. The fight continues.",
         "bust": "The bookkeeper's shot catches you. You crawl behind the arcade wall, wounded. The same debt is still being disputed."
-      }
+      },
+      "fatal_outcome": "The bookkeeper's revolver cracks from behind the column. You fall beneath the ruined arcade, unable to raise your gun again. Somewhere above you, a voice says the account is settled. Malopasso keeps the receipt."
     },
     {
       "id": "rooftop",
@@ -293,7 +307,8 @@
         "success": "Your shot finds the balcony. The rifle clatters down into the empty square, and its owner does not follow it. For a moment, you can breathe.",
         "failure": "Stone chips fly from the balcony rail. The rifle disappears, then finds you again. The same shooter is still up there.",
         "bust": "A rifle shot catches you between cover. You stumble behind the fountain, wounded. The shooter on the balcony is still watching."
-      }
+      },
+      "fatal_outcome": "The rifle cracks from the balcony before you reach cover. You fall beside the dry fountain. Above the square, the barrel withdraws into shadow. The last thing you see is the empty sky over Malopasso."
     },
     {
       "id": "knife",
@@ -307,7 +322,8 @@
         "success": "Your shot stops the knife wielder beside the trough. Their blade lands in the dust. Somewhere beyond the square, boots scrape stone.",
         "failure": "Your shot goes wide. The knife wielder pulls back behind the trough, waiting for another opening. The fight continues.",
         "bust": "The knife catches your arm. You wrench free and retreat around the trough, wounded. Your opponent follows, blade still raised."
-      }
+      },
+      "fatal_outcome": "The knife wielder feints around the trough and gets inside your reach. Steel finds its mark. You sink against the dry stone, your revolver still caught between you. The blade is gone by the time you fall."
     },
     {
       "id": "gate",
@@ -321,7 +337,8 @@
         "success": "The rider falls beside the gatepost. The horse bolts into the open road. You are still standing, though Malopasso has more company to offer.",
         "failure": "Your shot strikes the gatepost. The rider stays behind it, very much alive. You still have to finish this fight.",
         "bust": "The rider's pistol catches you as you cross the gateway. You fall into cover, wounded. The same challenger still blocks the road."
-      }
+      },
+      "fatal_outcome": "The rider's pistol flashes beneath the broken gate. You fall across the road out of Malopasso. The horse stamps beside you, impatient to leave. You will not be going with it."
     }
   ],
   "special_completion": {
@@ -333,5 +350,18 @@
     "id": "opossum_finale",
     "title": "The perfect last shot",
     "text": "Opossum falls, his machete strikes stone, and your tale ends on that final shot. You survived to bring the hunt and the adventure to a close together. That is a finish worthy of a Fronteira legend."
+  },
+  "epilogues": {
+    "ascension": {
+      "unfinished": "A messenger finds you as the light begins to fail. Opossum has been shot, his accomplices taken into custody. Some of the goods recovered from his hideout might be yours, if you can convince the people keeping the inventory. Your hunt is over. In the Fronteira, that counts as a good ending.",
+      "unfinished_duel": "Before the duel can go any further, a shot rings out from the far end of the alley. Opossum falls. Armed riders move past you to take his surviving accomplices into custody. One tells you that recovered goods will be waiting at the settlement. Some might be yours. You lower the revolver. The hunt is over, even if the final shot belonged to somebody else.",
+      "after_opossum": "A messenger reaches you with news: Opossum's remaining accomplices have been taken into custody. The shooting is over. His machete will trouble nobody again, and some of the goods recovered from the hideout might still bear your name. You set off to claim what is yours. For once, the Fronteira owes you something.",
+      "on_opossum": "Your shot finds Opossum, and his machete clangs against the alley stones. He falls. This time there is no new challenger: riders entering the square cut off his surviving accomplices and take them into custody. The hunt and your adventure end together. Somewhere among the recovered goods, there may be a little of your old life left to reclaim."
+    },
+    "exhaustion": {
+      "unfinished": "You have pushed this hunt as far as you can. With nothing left to stake on the next encounter, you break off the pursuit and find a road back to safety. Opossum remains unfinished business. Tonight, getting home alive will have to be enough.",
+      "after_opossum": "At last, the footsteps stop following you. Opossum is dead, and the associates still standing have lost their appetite for the argument. You leave Malopasso alive, carrying what you managed to keep. The stolen goods can wait for another day. Tonight, the road out is enough.",
+      "on_opossum": "Opossum falls into the alley dust, his machete ringing once against the stone. You stay on your feet until the echoes fade. The figures beyond the square withdraw into the ruins. You have nothing left to give this hunt, and nothing more to prove to him. You turn toward the road home."
+    }
   }
 }
