@@ -6,6 +6,8 @@ import ResponsiveScaleBox from "../components/ResponsiveScaleBox";
 import PlayerLobbyView from "./PlayerLobbyView";
 import PlayerTableView from "./PlayerTableView";
 import VictoryView from "./VictoryView";
+import SoloNarration from "../components/SoloNarration";
+import { soloNarrationId } from "../utils/soloNarration";
 import { getPlayerFaction } from "../utils/factions";
 import "./SoloAdventureView.css";
 
@@ -82,7 +84,7 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
       winnerFigureCardId={solo.ending === "death" ? null : resp.state.zones?.[`players.${playerId}.character`]?.[0]}
       showMarshalPortrait={solo.ending === "death"}
       resultLabel={`${solo.adventure_title} · End of the tale`} title={solo.title}
-      reason={solo.text} invitation={solo.invitation} achievement={solo.special_completion} onBackHome={onBackHome}
+      narrative={solo.ending_narrative} reason={solo.text} invitation={solo.invitation} achievement={solo.special_completion} onBackHome={onBackHome}
       actions={<div className="solo-actions">
         <button type="button" onClick={onBackHome} disabled={busy}>Home</button>
         <button type="button" onClick={retry} disabled={disabled}>{solo.ending === "death" ? "Retry solo" : "Play solo again"}</button>
@@ -95,7 +97,8 @@ export default function SoloAdventureView({ resp, playerId, connectionLost, run,
         <h2 ref={heading} tabIndex={-1}>{solo.title}</h2>
         <span>{terminal ? "End of the tale" : `Scene ${solo.scene_number + (solo.step === "intro" ? 1 : 0) || 1} · ${solo.outcome === "bust" ? "Wound" : solo.outcome ?? "Your trail"}`}</span>
       </div>
-      <p className="solo-story-text">{solo.text}</p>
+      <SoloNarration key={soloNarrationId(resp.game_id, solo)} gameId={resp.game_id}
+        passageId={soloNarrationId(resp.game_id, solo)} text={solo.text} />
       {solo.step === "outcome" && <p className="solo-outcome-summary">Your total: <strong>{player?.hand_value}</strong> · Target: <strong>{scene?.difficulty?.value}</strong>. {solo.outcome === "success" ? "One Reward earned." : solo.outcome === "bust" ? "One wound taken; no Reward earned." : "No wound and no Reward."}</p>}
       {solo.has_gun && !terminal && <span className="solo-story-equipment">Armed with the trader's revolver</span>}
       {solo.step === "intro" ? <button type="button" disabled={disabled} onClick={continueStory}>Play this test</button>

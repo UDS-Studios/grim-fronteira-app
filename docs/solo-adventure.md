@@ -99,9 +99,25 @@ Player responses retain the existing hidden-deck projection.
 portrait, player board, Deck, Discard, scene lane, faction medallions, resources,
 healing and Reward controls are the same ones used in multiplayer. The authored
 Marshal's story sits above the player's scene; teaching notes occupy the space
-normally used by other players. Terminal invitations and continue/retry actions
-stay in the story box, with gameplay disabled after an ending. The same viewport
+normally used by other players. During play, continue/retry actions stay in the
+story box. Endings use the shared result page with the multiplayer invitation,
+special completion (when earned), Home and replay actions. The same viewport
 fitting and scrolling behavior as the multiplayer Table is retained.
+
+Scene descriptions and outcomes use the Saloon's character-by-character reveal
+style at 25 ms per character, with a 290 ms pause after commas and
+a 580 ms pause after periods. Across the authored passages this is roughly
+300 words per minute, including punctuation pauses. Titles and controls remain immediately
+available. Click the narration, or focus its reveal button and press Enter/Space,
+to show it all. The full paragraph's space is reserved to avoid table movement;
+screen readers receive the complete text once, rather than character updates.
+Reduced-motion preferences bypass typing and a live preference change reveals
+the text immediately. A passage identity based on game, scene, attempt, outcome
+and text prevents polling or intro-to-playing transitions from restarting it.
+Arrival is recorded in browser session storage, so reloads (even midway through
+typing) and returning from Home reveal the current passage in full. New scenes,
+retries, outcomes and new runs animate afresh. Endings remain static. This is a
+frontend-only presentation effect; card rules and multiplayer are unchanged.
 
 Both shared views accept an optional action transport. Solo provides its
 revision-safe transport and single-flight guard; ordinary multiplayer uses the
@@ -180,3 +196,28 @@ duel. This covers exact 21 from his Reward and deck exhaustion during its draw.
 Runs ending later against associates retain **A tale worth telling**. This is
 ending recognition only: it neither forces the adventure to end on his death nor
 changes Rewards, wounds, or deck rules. Both tiers survive reloads.
+
+## Contextual final scenes
+
+Every obstacle and associate encounter has a separate `fatal_outcome`. When a
+wound ends the run, the server records that scene's fatal text as
+`ending_narrative`, ahead of the ordinary death summary. It describes the actual
+trap, attack or accident and contains no next-step clue. Associate fatalities
+use the current opponent's persisted encounter variant. The final scene appears
+at the top of the shared result page, immediately and without typewriter
+animation, followed by the mechanical result, recognition, invitation and actions.
+
+Exact-21 endings before a personal kill close the hunt with a messenger reporting
+Opossum shot and his accomplices arrested, with a chance to recover stolen goods.
+If the player is already facing Opossum, arriving riders instead end that duel.
+Neither epilogue changes `outlaw_defeated` or grants personal-kill recognition.
+Later victories acknowledge the player's kill and the remaining accomplices'
+capture. Endings on Opossum's own defeat retain **The perfect last shot**.
+Deck exhaustion has its own survival epilogue for an unfinished hunt, a prior
+personal kill, or a run ending on the kill itself.
+
+The chosen ending narrative is saved with the terminal state so a reload does
+not rewrite that run's conclusion. Legacy endings without this field derive a
+compatible conclusion from their saved node, encounter and defeat flag. These
+are narrative changes; the two-wound limit, Reward victory and finite-deck rules
+remain unchanged.

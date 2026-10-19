@@ -154,6 +154,19 @@ test("solo reuses the real Saloon and Table, retaining safe transport and limita
       }
       assert.equal(multiplayer, 3); assert.equal(retries, 3); assert.equal(requests.length, 0);
     });
+    await t.test("fatal scene is shown before the result heading and never typed", () => {
+      reset(); const r = response();
+      r.state.meta!.solo!.ending = "death"; r.state.meta!.solo!.step = "ending";
+      r.state.meta!.solo!.title = "The trail ends here";
+      r.state.meta!.solo!.text = "Two wounds. Try again with a fresh deck.";
+      r.state.meta!.solo!.ending_narrative = "Her knife strikes. Your hunt ends beside the overturned chair.";
+      const tree = render(r), html = renderToStaticMarkup(tree);
+      assert.match(html, /aria-label="Final scene"/);
+      assert.ok(html.indexOf("Her knife strikes") < html.indexOf("End of the tale"));
+      assert.ok(html.indexOf("Her knife strikes") < html.indexOf("Two wounds"));
+      assert.ok(!html.includes("solo-narration") && !html.includes("solo-story"));
+      assert.ok(find(tree, p => p.narrative === r.state.meta!.solo!.ending_narrative));
+    });
     await t.test("special completion appears on the result page only when the server awards it", () => {
       reset(); const r = response();
       r.state.meta!.solo!.ending = "exhaustion"; r.state.meta!.solo!.step = "ending";

@@ -85,6 +85,38 @@ def guard_action(game: GameState, action: str) -> None:
         raise ValueError("Character creation is complete.")
 
 
+def _story_node(game: GameState) -> dict:
+    solo = game.meta["solo"]
+    story = adventure()
+    node = story["nodes"][solo["node"]]
+    if solo["node"] == "associates" and solo.get("associate"):
+        opponent = solo["associate"]
+        variants = story["associate_encounters"]
+        node = next((e for e in variants if e["id"] == opponent.get("encounter")),
+                    variants[(opponent.get("number", 1) - 1) % len(variants)])
+    return node
+
+
+def _ending_narrative(game: GameState, ending: str) -> str:
+    solo = game.meta["solo"]
+    # Freeze a completed run's conclusion; legacy saves derive it on first read.
+    saved = solo.get("ending_narrative")
+    if solo.get("ending") == ending and isinstance(saved, str) and saved:
+        return saved
+    if ending == "death":
+        return _story_node(game)["fatal_outcome"]
+    special = _special_completion(game, ending)
+    if special and special["id"] == "opossum_finale":
+        variant = "on_opossum"
+    elif solo["outlaw_defeated"]:
+        variant = "after_opossum"
+    elif ending == "ascension" and solo["node"] == "duel":
+        variant = "unfinished_duel"
+    else:
+        variant = "unfinished"
+    return adventure()["epilogues"][ending][variant]
+
+
 def _special_completion(game: GameState, ending: str | None) -> dict | None:
     if ending in {"ascension", "exhaustion"} and game.meta["solo"]["outlaw_defeated"]:
         scene = scenes._scene(game)
@@ -98,13 +130,14 @@ def _special_completion(game: GameState, ending: str | None) -> dict | None:
 
 def finish(game: GameState, ending: str) -> GameState:
     special = _special_completion(game, ending)
-    game = _update(game, step="ending", ending=ending, opossum_hunter=bool(special),
+    narrative = _ending_narrative(game, ending)
+    game = _update(game, ending_narrative=narrative, step="ending", ending=ending, opossum_hunter=bool(special),
                    opossum_finale=bool(special and special["id"] == "opossum_finale"))
     # No incomplete reaction should survive a terminal state.
     meta = {**game.meta, "phase": "victory", "pending_interaction": None,
             "victory": {"winner": "marshal" if ending == "death" else PLAYER,
                         "winner_label": "The Fronteira" if ending == "death" else "You",
-                        "reason": adventure()["endings"][ending]["text"] + (" " + special["text"] if special else "")}}
+                        "reason": narrative + "\n\n" + adventure()["endings"][ending]["text"] + (" " + special["text"] if special else "")}}
     return replace(game, meta=meta)
 
 
@@ -205,12 +238,7 @@ def presentation(game: GameState) -> dict:
     """Stable authored copy derived from persisted node/attempt, no random redraw."""
     solo = game.meta["solo"]
     story = adventure()
-    node = story["nodes"][solo["node"]]
-    if solo["node"] == "associates" and solo.get("associate"):
-        opponent = solo["associate"]
-        variants = story["associate_encounters"]
-        node = next((e for e in variants if e["id"] == opponent.get("encounter")),
-                    variants[(opponent.get("number", 1) - 1) % len(variants)])
+    node = _story_node(game)
     data = {**solo, "title": node["title"], "adventure_title": story["title"],
             "text": node["passages"][solo["attempt"] % len(node["passages"])],
             "invitation": story["invitation"], "needs_heal": False, "needs_discard": False,
@@ -223,6 +251,7 @@ def presentation(game: GameState) -> dict:
         data["text"] = f"{description} {data['text']}"
     if solo["ending"]:
         data.update(story["endings"][solo["ending"]])
+        data["ending_narrative"] = _ending_narrative(game, solo["ending"])
     elif game.meta.get("phase") == "table":
         data["needs_heal"] = scenes._must_heal_or_skip(game, PLAYER)
         data["needs_discard"] = scenes._must_discard_rewards(game, PLAYER)

@@ -642,3 +642,84 @@ def test_finale_needs_a_final_successful_opossum_duel(run, result, status):
     game = solo._update(replace(game, meta={**game.meta, "scene": scene}), node="duel", outlaw_defeated=True)
     assert solo._special_completion(game, "exhaustion")["id"] == "opossum_hunter"
     assert solo._special_completion(game, "death") is None
+
+
+@pytest.mark.parametrize("node,variant", [
+    *[(node, None) for node in solo.adventure()["nodes"] if node != "associates"],
+    *[("associates", encounter["id"]) for encounter in solo.adventure()["associate_encounters"]],
+])
+def test_fatal_bust_reports_the_current_scene_and_freezes_it_in_the_save(run, node, variant):
+    ready(run)
+    game = GAMES[run[0]].state
+    players = {**game.meta["players"], solo.PLAYER: {**game.meta["players"][solo.PLAYER], "wounds": 1}}
+    game = solo._update(replace(game, meta={**game.meta, "players": players}),
+        node=node, outlaw_defeated=node == "associates")
+    if variant:
+        game = solo._ensure_associate(game)
+        game = solo._update(game, associate={**game.meta["solo"]["associate"], "encounter": variant})
+    GAMES[run[0]].state = game
+    start_scene(run, "2C", "10H")
+    stack(run, ["3D"])
+    response = act(run, "gf.scene_draw_card")
+    accept(run)
+    game = GAMES[run[0]].state
+    expected = solo._story_node(game)["fatal_outcome"]
+    assert game.meta["solo"]["ending"] == "death"
+    assert game.meta["solo"]["node"] == node
+    assert game.meta["solo"]["ending_narrative"] == expected
+    assert solo.presentation(game)["ending_narrative"] == expected
+    assert game.meta["victory"]["reason"].startswith(expected)
+    assert response.state["meta"]["solo"]["ending_narrative"] == expected
+    assert solo.presentation(game)["special_completion"] is None
+    restored = decode_envelope(json.dumps(encode_envelope(run[0], game, GAMES[run[0]].sessions)), run[0])
+    assert solo.presentation(restored.state)["ending_narrative"] == expected
+    # Old completed snapshots have no frozen narrative: infer the correct scene
+    # without changing the snapshot on a read.
+    legacy = replace(game, meta={**game.meta, "solo": {k: v for k, v in game.meta["solo"].items() if k != "ending_narrative"}})
+    before = deepcopy(legacy)
+    assert solo.presentation(legacy)["ending_narrative"] == expected
+    assert legacy == before
+    if node == "captive":
+        assert "knife" in expected
+        assert "Drywell" not in expected and "farmer" not in expected
+
+
+def test_early_21_has_a_messenger_epilogue_without_awarding_a_personal_kill(run):
+    ready(run)
+    start_scene(run, "2C", "10H")
+    add_rewards(run, ["AS"])
+    stack(run, ["10C"])
+    act(run, "gf.scene_stand")
+    accept(run)
+    game = GAMES[run[0]].state
+    view = solo.presentation(game)
+    assert game.meta["solo"]["ending"] == "ascension"
+    assert not game.meta["solo"]["outlaw_defeated"]
+    assert not game.meta["solo"]["opossum_hunter"]
+    assert not game.meta["solo"]["opossum_finale"]
+    assert view["special_completion"] is None
+    assert view["ending_narrative"] == solo.adventure()["epilogues"]["ascension"]["unfinished"]
+    assert "messenger" in view["ending_narrative"]
+    assert "even if the hunt was unfinished" not in view["text"]
+
+
+@pytest.mark.parametrize("ending", ["ascension", "exhaustion"])
+@pytest.mark.parametrize("stage", ["trail", "live_duel", "associates", "final_shot"])
+def test_epilogue_matches_hunt_progress_without_rewriting_kill_credit(run, ending, stage):
+    ready(run)
+    game = GAMES[run[0]].state
+    node = {"trail": "captive", "live_duel": "duel", "associates": "associates", "final_shot": "duel"}[stage]
+    defeated = stage in {"associates", "final_shot"}
+    if stage == "final_shot":
+        scene = {**game.meta["scene"], "status": "closed", "players": {solo.PLAYER: {"result": "success"}}}
+        game = replace(game, meta={**game.meta, "scene": scene})
+    game = solo._update(game, node=node, outlaw_defeated=defeated)
+    game = solo.finish(game, ending)
+    variant = "on_opossum" if stage == "final_shot" else "after_opossum" if defeated else "unfinished_duel" if stage == "live_duel" and ending == "ascension" else "unfinished"
+    expected = solo.adventure()["epilogues"][ending][variant]
+    assert solo.presentation(game)["ending_narrative"] == expected
+    assert game.meta["solo"]["outlaw_defeated"] is defeated
+    assert game.meta["solo"]["opossum_hunter"] is defeated
+    # Once committed, later content changes do not rewrite this run's ending.
+    game = solo._update(game, ending_narrative="A saved final scene.")
+    assert solo.presentation(game)["ending_narrative"] == "A saved final scene."
